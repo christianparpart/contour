@@ -93,6 +93,10 @@
 - [ ] contour: provide `--mono` (or alike) CLI flag to "just" provide a QOpenGLWindow for best performance,
       lacking UI features as compromise.
 
+### Good Image Protocol
+
+- [ ] Make sure Screen::Image does not need to know about the underlying image format. (only the frontend needs to know about the actual format in use, so it can *render* the pixmaps)
+
 ### Usability Improvements
 
 - ? Images: copy action should uxe U+FFFC (object replacement) on grid cells that contain an image for text-based clipboard action

@@ -17,6 +17,7 @@ option(LIBTERMINAL_PASSIVE_RENDER_BUFFER_UPDATE "Updates the render buffer withi
 # Compile-time terminal features
 option(LIBTERMINAL_IMAGES "Enables image support [default: ON]" ON)
 option(LIBTERMINAL_HYPERLINKS "Enables hyperlink support [default: ON]" ON)
+option(GOOD_IMAGE_PROTOCOL "Enables building with Good Image Protocol support [default: OFF]" OFF)
 
 if(MSVC)
     add_definitions(-DNOMINMAX)
@@ -33,6 +34,7 @@ set(terminal_HEADERS
     InputBinding.h
     InputGenerator.h
     MatchModes.h
+    MessageParser.h
     Parser.h
     Process.h
     pty/Pty.h
@@ -63,6 +65,7 @@ set(terminal_SOURCES
     InputBinding.cpp
     InputGenerator.cpp
     MatchModes.cpp
+    MessageParser.cpp
     Parser.cpp
     Process.cpp
     RenderBuffer.cpp
@@ -104,6 +107,9 @@ endif()
 if(LIBTERMINAL_LOG_TRACE)
     target_compile_definitions(terminal PRIVATE LIBTERMINAL_LOG_TRACE=1)
 endif()
+if(GOOD_IMAGE_PROTOCOL)
+    target_compile_definitions(terminal PUBLIC GOOD_IMAGE_PROTOCOL=1)
+endif()
 
 if(LIBTERMINAL_IMAGES)
     target_compile_definitions(terminal PUBLIC LIBTERMINAL_IMAGES=1)
@@ -126,6 +132,7 @@ if(LIBTERMINAL_TESTING)
 		Selector_test.cpp
         Functions_test.cpp
         Grid_test.cpp
+        MessageParser_test.cpp
         Parser_test.cpp
         Screen_test.cpp
         Terminal_test.cpp
