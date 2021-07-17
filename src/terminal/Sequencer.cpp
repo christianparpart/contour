@@ -15,8 +15,9 @@
 #include <terminal/Sequencer.h>
 
 #include <terminal/Functions.h>
-#include <terminal/SixelParser.h>
+#include <terminal/MessageParser.h>
 #include <terminal/Screen.h>
+#include <terminal/SixelParser.h>
 #include <terminal/logging.h>
 
 #include <crispy/algorithm.h>
@@ -1129,6 +1130,20 @@ void Sequencer::hook(char _finalChar)
             case XTGETTCAP:
                 hookedParser_ = hookXTGETTCAP(sequence_);
                 break;
+#if defined(GOOD_IMAGE_PROTOCOL)
+            case GIUPLOAD:
+                hookedParser_ = hookGoodImageUpload(sequence_);
+                break;
+            case GIRENDER:
+                hookedParser_ = hookGoodImageRender(sequence_);
+                break;
+            case GIDELETE:
+                hookedParser_ = hookGoodImageRelease(sequence_);
+                break;
+            case GIONESHOT:
+                hookedParser_ = hookGoodImageOneshot(sequence_);
+                break;
+#endif
         }
 
         if (hookedParser_)
@@ -1252,6 +1267,189 @@ unique_ptr<ParserExtension> Sequencer::hookXTGETTCAP(Sequence const& /*_seq*/)
         }
     );
 }
+
+#if defined(GOOD_IMAGE_PROTOCOL) // {{{
+namespace
+{
+    int toNumber(string const* _value, int _default)
+    {
+        if (!_value)
+            return _default;
+
+        int result = 0;
+        for (char const ch : *_value)
+        {
+            if (ch >= '0' && ch <= '9')
+                result = result * 10 + (ch - '0');
+            else
+                return _default;
+        }
+
+        return result;
+    }
+
+    optional<ImageAlignment> toImageAlignmentPolicy(string const* _value, ImageAlignment _default)
+    {
+        if (!_value)
+            return _default;
+
+        if (_value->size() != 1)
+            return nullopt;
+
+        switch (_value->at(0))
+        {
+            case '1': return ImageAlignment::TopStart;
+            case '2': return ImageAlignment::TopCenter;
+            case '3': return ImageAlignment::TopEnd;
+            case '4': return ImageAlignment::MiddleStart;
+            case '5': return ImageAlignment::MiddleCenter;
+            case '6': return ImageAlignment::MiddleEnd;
+            case '7': return ImageAlignment::BottomStart;
+            case '8': return ImageAlignment::BottomCenter;
+            case '9': return ImageAlignment::BottomEnd;
+        }
+
+        return nullopt;
+    }
+
+    optional<ImageResize> toImageResizePolicy(string const* _value, ImageResize _default)
+    {
+        if (!_value)
+            return _default;
+
+        if (_value->size() != 1)
+            return nullopt;
+
+        switch (_value->at(0))
+        {
+            case '0': return ImageResize::NoResize;
+            case '1': return ImageResize::ResizeToFit;
+            case '2': return ImageResize::ResizeToFill;
+            case '3': return ImageResize::StretchToFill;
+        }
+
+        return nullopt; // TODO
+    }
+
+    optional<ImageFormat> toImageFormat(string const* _value)
+    {
+        auto constexpr DefaultFormat = ImageFormat::RGB;
+
+        if (_value)
+        {
+            if (_value->size() == 1)
+            {
+                switch (_value->at(0))
+                {
+                    case '1': return ImageFormat::RGB;
+                    case '2': return ImageFormat::RGBA;
+                    case '3': return ImageFormat::PNG;
+                    default: return nullopt;
+                }
+            }
+            else
+                return nullopt;
+        }
+        else
+            return DefaultFormat;
+    }
+}
+
+unique_ptr<ParserExtension> Sequencer::hookGoodImageUpload(Sequence const&)
+{
+    return make_unique<MessageParser>(
+        [this](Message&& _message) {
+            auto const name = _message.header("n");
+            auto const imageFormat = toImageFormat(_message.header("f"));
+            auto const width = toNumber(_message.header("w"), 0);
+            auto const height = toNumber(_message.header("h"), 0);
+            auto const size = Size{width, height};
+
+            bool const validImage = imageFormat.has_value()
+                                && ((*imageFormat == ImageFormat::PNG && !size.width && !size.height) ||
+                                    (*imageFormat != ImageFormat::PNG && size.width && size.height));
+
+            if (name && validImage)
+            {
+                screen_.uploadImage(*name, imageFormat.value(), size, _message.takeBody());
+            }
+        }
+    );
+}
+
+unique_ptr<ParserExtension> Sequencer::hookGoodImageRender(Sequence const&)
+{
+    return make_unique<MessageParser>(
+        [this](Message&& _message) {
+            auto const screenRows = toNumber(_message.header("r"), 0);
+            auto const screenCols = toNumber(_message.header("c"), 0);
+            auto const name = _message.header("n");
+            auto const x = toNumber(_message.header("x"), 0);           // XXX grid x offset
+            auto const y = toNumber(_message.header("y"), 0);           // XXX grid y offset
+            auto const imageWidth = toNumber(_message.header("w"), 0);  // XXX image width in grid coords
+            auto const imageHeight = toNumber(_message.header("h"), 0); // XXX image height in grid coords
+            auto const alignmentPolicy = toImageAlignmentPolicy(_message.header("a"), ImageAlignment::MiddleCenter);
+            auto const resizePolicy = toImageResizePolicy(_message.header("z"), ImageResize::NoResize);
+            auto const requestStatus = _message.header("s") != nullptr;
+            auto const autoScroll = _message.header("l") != nullptr;
+
+            auto const imageOffset = Coordinate{y, x};
+            auto const imageSize = Size{imageWidth, imageHeight};
+            auto const screenExtent = Size{screenCols, screenRows};
+
+            screen_.renderImage(
+                name ? *name : "",
+                screenExtent,
+                imageOffset,
+                imageSize,
+                *alignmentPolicy,
+                *resizePolicy,
+                autoScroll,
+                requestStatus
+            );
+        }
+    );
+}
+
+unique_ptr<ParserExtension> Sequencer::hookGoodImageRelease(Sequence const&)
+{
+    return make_unique<MessageParser>(
+        [this](Message&& _message) {
+            if (auto const name = _message.header("n"); name)
+                screen_.releaseImage(*name);
+        }
+    );
+}
+
+unique_ptr<ParserExtension> Sequencer::hookGoodImageOneshot(Sequence const&)
+{
+    return make_unique<MessageParser>(
+        [this](Message&& _message) {
+            auto const screenRows = toNumber(_message.header("r"), 0);
+            auto const screenCols = toNumber(_message.header("c"), 0);
+            auto const autoScroll = _message.header("l") != nullptr;
+            auto const alignmentPolicy = toImageAlignmentPolicy(_message.header("a"), ImageAlignment::MiddleCenter);
+            auto const resizePolicy = toImageResizePolicy(_message.header("z"), ImageResize::NoResize);
+            auto const imageWidth = toNumber(_message.header("w"), 0);
+            auto const imageHeight = toNumber(_message.header("h"), 0);
+            auto const imageFormat = toImageFormat(_message.header("f"));
+
+            auto const imageSize = Size{imageWidth, imageHeight};
+            auto const screenExtent = Size{screenCols, screenRows};
+
+            screen_.renderImage(
+                *imageFormat,
+                imageSize ,
+                _message.takeBody(),
+                screenExtent,
+                *alignmentPolicy,
+                *resizePolicy,
+                autoScroll
+            );
+        }
+    );
+}
+#endif // }}}
 
 unique_ptr<ParserExtension> Sequencer::hookDECRQSS(Sequence const& /*_seq*/)
 {

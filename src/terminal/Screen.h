@@ -308,6 +308,25 @@ class Screen : public capabilities::StaticDatabase {
     void requestPixelSize(RequestPixelSize _area);
     void requestCharacterSize(RequestPixelSize _area);
     void sixelImage(ImageSize _pixelSize, Image::Data&& _rgba);
+#if defined(GOOD_IMAGE_PROTOCOL)
+    void uploadImage(std::string const& _name, ImageFormat _format, crispy::Size _imageSize, Image::Data&& _pixmap);
+    void renderImage(std::string const& _name,
+                     crispy::Size _gridSize,
+                     Coordinate _imageOffset,
+                     crispy::Size _imageSize,
+                     ImageAlignment _alignmentPolicy,
+                     ImageResize _resizePolicy,
+                     bool _autoScroll,
+                     bool _requestStatus);
+    void releaseImage(std::string const& _name);
+    void renderImage(ImageFormat _format,
+                     crispy::Size _imageSize,
+                     Image::Data&& _pixmap,
+                     crispy::Size _gridSize,
+                     ImageAlignment _alignmentPolicy,
+                     ImageResize _resizePolicy,
+                     bool _autoScroll);
+#endif
     void requestStatusString(RequestStatusString _value);
     void requestTabStops();
     void resetDynamicColor(DynamicColorName _name);

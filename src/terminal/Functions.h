@@ -366,6 +366,15 @@ constexpr inline auto RCOLORHIGHLIGHTBG = detail::OSC(117, "RCOLORHIGHLIGHTBG", 
 constexpr inline auto NOTIFY        = detail::OSC(777, "NOTIFY", "Send Notification.");
 constexpr inline auto DUMPSTATE     = detail::OSC(888, "DUMPSTATE", "Dumps internal state to debug stream.");
 
+// DCS: Good Image Protocol
+#if defined(GOOD_IMAGE_PROTOCOL)
+// TODO: use OSC instead of DCS?
+constexpr inline auto GIUPLOAD    = detail::DCS(std::nullopt, 0, 0, std::nullopt, 'u', VTType::VT525, "GIUPLOAD", "Uploads an image.");
+constexpr inline auto GIRENDER    = detail::DCS(std::nullopt, 0, 0, std::nullopt, 'r', VTType::VT525, "GIRENDER", "Renders an image.");
+constexpr inline auto GIDELETE    = detail::DCS(std::nullopt, 0, 0, std::nullopt, 'd', VTType::VT525, "GIDELETE", "Deletes an image.");
+constexpr inline auto GIONESHOT   = detail::DCS(std::nullopt, 0, 0, std::nullopt, 's', VTType::VT525, "GIONESHOT", "Uploads and renders an unnamed image.");
+#endif
+
 inline auto const& functions() noexcept
 {
     static auto const funcs = []() constexpr { // {{{
@@ -465,6 +474,12 @@ inline auto const& functions() noexcept
             XTVERSION,
 
             // DCS
+#if defined(GOOD_IMAGE_PROTOCOL)
+            GIUPLOAD,
+            GIRENDER,
+            GIDELETE,
+            GIONESHOT,
+#endif
             STP,
             DECRQSS,
             DECSIXEL,

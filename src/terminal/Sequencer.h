@@ -631,6 +631,13 @@ class Sequencer : public ParserEvents {
     [[nodiscard]] std::unique_ptr<ParserExtension> hookDECRQSS(Sequence const& _ctx);
     [[nodiscard]] std::unique_ptr<ParserExtension> hookXTGETTCAP(Sequence const& /*_seq*/);
 
+#if defined(GOOD_IMAGE_PROTOCOL)
+    [[nodiscard]] std::unique_ptr<ParserExtension> hookGoodImageUpload(Sequence const& _ctx);
+    [[nodiscard]] std::unique_ptr<ParserExtension> hookGoodImageRender(Sequence const& _ctx);
+    [[nodiscard]] std::unique_ptr<ParserExtension> hookGoodImageRelease(Sequence const& _ctx);
+    [[nodiscard]] std::unique_ptr<ParserExtension> hookGoodImageOneshot(Sequence const& _ctx);
+#endif
+
     void flushBatchedSequences();
 
     void applyAndLog(FunctionDefinition const& _function, Sequence const& _context);

@@ -35,6 +35,7 @@ class ContourApp : public crispy::App
     int terminfoAction();
     int configAction();
     int integrationAction();
+    int imageAction();
 };
 
 }

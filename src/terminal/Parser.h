@@ -742,6 +742,11 @@ class Parser {
 
     void parseFragment(std::string_view const& s)
     {
+        parseFragment((uint8_t const*) &s[0], (uint8_t const*) &s[0] + s.size());
+    }
+
+    void parseFragment(std::string const& s)
+    {
         parseFragment(iterator(s.data()), iterator(s.data() + s.size()));
     }
 
