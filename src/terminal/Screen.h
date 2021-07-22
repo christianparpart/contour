@@ -141,7 +141,7 @@ class Screen : public capabilities::StaticDatabase {
            ScreenEvents& _eventListener,
            bool _logRaw = false,
            bool _logTrace = false,
-           std::optional<LineCount> _maxHistoryLineCount = std::nullopt,
+           LineCount _maxHistoryLineCount = LineCount(0),
            ImageSize _maxImageSize = ImageSize{Width(800), Height(600)},
            int _maxImageColorRegisters = 256,
            bool _sixelCursorConformance = true,
@@ -173,8 +173,8 @@ class Screen : public capabilities::StaticDatabase {
         terminalId_ = _id;
     }
 
-    void setMaxHistoryLineCount(std::optional<LineCount> _maxHistoryLineCount);
-    std::optional<LineCount> maxHistoryLineCount() const noexcept { return grid().maxHistoryLineCount(); }
+    void setMaxHistoryLineCount(LineCount _maxHistoryLineCount);
+    LineCount maxHistoryLineCount() const noexcept { return grid().maxHistoryLineCount(); }
 
     LineCount historyLineCount() const noexcept { return grid().historyLineCount(); }
 
@@ -439,29 +439,35 @@ class Screen : public capabilities::StaticDatabase {
     Cell& lastPosition() noexcept { return grid().at(lastCursorPosition_); }
     Cell const& lastPosition() const noexcept { return grid().at(lastCursorPosition_); }
 
+    Line& currentLine() { return grid().lineAt(cursor_.position.row); }
+    Line const& currentLine() const { return grid().lineAt(cursor_.position.row); }
+
+    Lines::iterator currentLineIterator() { return grid().lineIteratorAt(cursor_.position.row); }
+
     auto currentColumn() noexcept
     {
-        return std::next(currentLine_->begin(), cursor_.position.column - 1);
+        return std::next(
+            begin(activeGrid_->lineAt(cursor_.position.row)),
+            cursor_.position.column - 1
+        );
     }
 
     auto currentColumn() const noexcept
     {
-        return std::next(currentLine_->cbegin(), cursor_.position.column - 1);
+        return std::next(
+            begin(activeGrid_->lineAt(cursor_.position.row)),
+            cursor_.position.column - 1
+        );
     }
 
     Cell const& currentCell() const noexcept
     {
-        return (*currentLine_)[cursor_.position.column - 1];
+        return activeGrid_->at(cursor_.position);
     }
 
     Cell& currentCell() noexcept
     {
-        return (*currentLine_)[cursor_.position.column - 1];
-    }
-
-    Cell& currentCell(Cell value)
-    {
-        return (*currentLine_)[cursor_.position.column - 1] = std::move(value);
+        return activeGrid_->at(cursor_.position);
     }
 
     void moveCursorTo(Coordinate to);
@@ -597,11 +603,6 @@ class Screen : public capabilities::StaticDatabase {
 
     void fail(std::string const& _message) const;
 
-    void updateCursorIterators()
-    {
-        currentLine_ = next(begin(grid().mainPage()), cursor_.position.row - 1);
-    }
-
     /// @returns an iterator to @p _n columns after column @p _begin.
     ColumnIterator columnIteratorAt(ColumnIterator _begin, int _n)
     {
@@ -611,7 +612,7 @@ class Screen : public capabilities::StaticDatabase {
     /// @returns an iterator to the real column number @p _n.
     ColumnIterator columnIteratorAt(int _n)
     {
-        return columnIteratorAt(std::begin(*currentLine_), _n);
+        return next(begin(activeGrid_->lineAt(cursor_.position.row)), _n);
     }
 
     /// @returns an iterator to the real column number @p _n.
@@ -683,7 +684,6 @@ class Screen : public capabilities::StaticDatabase {
     Cursor cursor_;
     Cursor savedCursor_;
     Cursor savedPrimaryCursor_; //!< saved cursor of primary-screen when switching to alt-screen.
-    LineIterator currentLine_;
     Coordinate lastCursorPosition_;
 
     CursorDisplay cursorDisplay_ = CursorDisplay::Steady;

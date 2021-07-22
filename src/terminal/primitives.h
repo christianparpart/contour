@@ -20,6 +20,7 @@ namespace detail::tags // {{{
 
     // line types
     struct LineCount{};
+    struct LineOffset{};
     struct LinePosition{};
     struct RelativeLinePosition{};
     struct RelativeScrollbackPosition{};
@@ -59,6 +60,8 @@ using ColumnPosition = crispy::boxed<int, detail::tags::Column>;
 
 /// LineCount represents a number of lines.
 using LineCount = crispy::boxed<int, detail::tags::LineCount>;
+
+using LineOffset = crispy::boxed<int, detail::tags::LineOffset>;
 
 /// LinePosition is the 1-based line coordinate of the main-page area (or viewport).
 using LinePosition = crispy::boxed<int, detail::tags::LinePosition>;

@@ -127,7 +127,7 @@ struct TerminalProfile {
     terminal::PageSize terminalSize = {terminal::LineCount(10), terminal::ColumnCount(40)};
     terminal::VTType terminalId = terminal::VTType::VT525;
 
-    std::optional<terminal::LineCount> maxHistoryLineCount;
+    terminal::LineCount maxHistoryLineCount;
     terminal::LineCount historyScrollMultiplier;
     ScrollBarPosition scrollbarPosition = ScrollBarPosition::Right;
     bool hideScrollbarInAltScreen = true;

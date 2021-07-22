@@ -345,7 +345,7 @@ namespace // {{{ helper
 
     constexpr bool GridTextReflowEnabled = true;
 
-    array<Grid, 2> emptyGrids(PageSize _size, optional<LineCount> _maxHistoryLineCount)
+    array<Grid, 2> emptyGrids(PageSize _size, LineCount _maxHistoryLineCount)
     {
         return array<Grid, 2>{
             Grid(_size, GridTextReflowEnabled, _maxHistoryLineCount),
@@ -359,7 +359,7 @@ Screen::Screen(PageSize _size,
                ScreenEvents& _eventListener,
                bool _logRaw,
                bool _logTrace,
-               optional<LineCount> _maxHistoryLineCount,
+               LineCount _maxHistoryLineCount,
                ImageSize _maxImageSize,
                int _maxImageColorRegisters,
                bool _sixelCursorConformance,
@@ -409,7 +409,7 @@ unsigned Screen::numericCapability(capabilities::Code _cap) const
     }
 }
 
-void Screen::setMaxHistoryLineCount(optional<LineCount> _maxHistoryLineCount)
+void Screen::setMaxHistoryLineCount(LineCount _maxHistoryLineCount)
 {
     primaryGrid().setMaxHistoryLineCount(_maxHistoryLineCount);
 }
@@ -461,7 +461,6 @@ void Screen::resize(PageSize _newSize)
     size_ = _newSize;
 
     cursor_.position = clampCoordinate(cursor_.position);
-    updateCursorIterators();
 
     // update last-cursor position & iterators
     lastCursorPosition_ = clampCoordinate(lastCursorPosition_);
@@ -495,15 +494,6 @@ void Screen::verifyState() const
     if (cursor_.position != clampedCursorPos)
         fail(fmt::format("Cursor {} does not match clamp to screen {}.", cursor_, clampedCursorPos));
     // FIXME: the above triggers on tmux vertical screen split (cursor.column off-by-one)
-
-    // verify iterators
-    [[maybe_unused]] auto const line = next(begin(grid().mainPage()), cursor_.position.row - 1);
-    [[maybe_unused]] auto const col = columnIteratorAt(cursor_.position.column);
-
-    if (line != currentLine_)
-        fail(fmt::format("Calculated current line does not match."));
-    else if (col != currentColumn())
-        fail(fmt::format("Calculated current column does not match."));
 
     if (wrapPending_ && (cursor_.position.column + wrapPending_ - 1) != unbox<int>(size_.columns) && cursor_.position.column != margin_.horizontal.to)
         fail(fmt::format("wrapPending flag set when cursor is not in last column."));
@@ -564,7 +554,7 @@ void Screen::writeText(char32_t _char)
     {
         linefeed(margin_.horizontal.from);
         if (isModeEnabled(DECMode::TextReflow))
-            currentLine_->setWrapped(true);
+            currentLine().setWrapped(true);
     }
 
     char32_t const ch =
@@ -785,7 +775,6 @@ void Screen::restoreCursor(Cursor const& _savedCursor)
 {
     wrapPending_ = 0;
     cursor_ = _savedCursor;
-    updateCursorIterators();
 }
 
 void Screen::resetSoft()
@@ -833,7 +822,6 @@ void Screen::resetHard()
     activeGrid_ = &primaryGrid();
 
     cursor_ = {};
-    updateCursorIterators();
 
     lastCursorPosition_ = cursor_.position;
 
@@ -854,7 +842,6 @@ void Screen::moveCursorTo(Coordinate to)
 {
     wrapPending_ = 0;
     cursor_.position = clampToScreen(toRealCoordinate(to));
-    updateCursorIterators();
 }
 
 void Screen::setBuffer(ScreenType _type)
@@ -898,20 +885,17 @@ void Screen::linefeed(int _newColumn)
         // moveCursorTo({cursorPosition().row + 1, margin_.horizontal.from});
         cursor_.position.row++;
         cursor_.position.column = _newColumn;
-        currentLine_++;
     }
 }
 
 void Screen::scrollUp(LineCount _n, Margin const& _margin)
 {
     grid().scrollUp(_n, cursor().graphicsRendition, _margin);
-    updateCursorIterators();
 }
 
 void Screen::scrollDown(LineCount _n, Margin const& _margin)
 {
     grid().scrollDown(_n, cursor().graphicsRendition, _margin);
-    updateCursorIterators();
 }
 
 void Screen::setCurrentColumn(ColumnPosition _n)
@@ -1056,7 +1040,7 @@ void Screen::clearToEndOfScreen()
 
     for_each(
         LIBTERMINAL_EXECUTION_COMMA(par)
-        next(currentLine_),
+        next(currentLineIterator()),
         end(grid().mainPage()),
         [&](Line& line) {
             fill(begin(line), end(line), Cell{{}, cursor_.graphicsRendition});
@@ -1071,7 +1055,7 @@ void Screen::clearToBeginOfScreen()
     for_each(
         LIBTERMINAL_EXECUTION_COMMA(par)
         begin(grid().mainPage()),
-        currentLine_,
+        currentLineIterator(),
         [&](Line& line) {
             fill(begin(line), end(line), Cell{{}, cursor_.graphicsRendition});
         }
@@ -1108,7 +1092,7 @@ void Screen::clearToEndOfLine()
 {
     fill(
         currentColumn(),
-        end(*currentLine_),
+        end(currentLine()),
         Cell{{}, cursor_.graphicsRendition}
     );
 }
@@ -1116,7 +1100,7 @@ void Screen::clearToEndOfLine()
 void Screen::clearToBeginOfLine()
 {
     fill(
-        begin(*currentLine_),
+        begin(currentLine()),
         next(currentColumn()),
         Cell{{}, cursor_.graphicsRendition}
     );
@@ -1125,8 +1109,8 @@ void Screen::clearToBeginOfLine()
 void Screen::clearLine()
 {
     fill(
-        begin(*currentLine_),
-        end(*currentLine_),
+        begin(currentLine()),
+        end(currentLine()),
         Cell{{}, cursor_.graphicsRendition}
     );
 }
@@ -1236,8 +1220,6 @@ void Screen::copyArea(int _top, int _left, int _bottom, int _right, int _page,
             targetCell = sourceCell;
         }
     }
-
-    updateCursorIterators();
 }
 
 void Screen::eraseArea(int _top, int _left, int _bottom, int _right)
@@ -1315,8 +1297,6 @@ void Screen::deleteChars(int _lineNo, ColumnCount _n)
         rightMargin
     );
 
-    updateCursorIterators();
-
     rightMargin = next(begin(*line), margin_.horizontal.to);
 
     fill(
@@ -1386,7 +1366,6 @@ void Screen::moveCursorUp(LineCount _n)
     );
 
     cursor_.position.row -= n;
-    currentLine_ = prev(currentLine_, n);
     setCurrentColumn(ColumnPosition::cast_from(cursorPosition().column));
 }
 
@@ -1405,7 +1384,6 @@ void Screen::moveCursorDown(LineCount _n)
     //         : min(v.n, margin_.vertical.to - cursorPosition().row);
 
     cursor_.position.row += n;
-    currentLine_ = next(currentLine_, n);
     setCurrentColumn(ColumnPosition(cursorPosition().column));
 }
 
@@ -1750,7 +1728,7 @@ void Screen::setGraphicsRendition(GraphicsRendition _rendition)
 
 void Screen::setMark()
 {
-    currentLine_->setMarked(true);
+    currentLine().setMarked(true);
 }
 
 void Screen::saveModes(std::vector<DECMode> const& _modes)
@@ -1824,7 +1802,7 @@ void Screen::setMode(DECMode _mode, bool _enable)
                     auto const endLine = LinePosition(numHistLines + numScreenLines);
                     // auto const startLine = LinePosition(*historyLineCount() + realCursorPosition().row - 1);
                     // auto const endLine = LinePosition(*historyLineCount() + *size_.lines);
-                    assert(primaryGrid().lines(startLine, endLine).begin() == currentLine_);
+                    assert(primaryGrid().lines(startLine, endLine).begin() == currentLineIterator());
                     for (Line& line : primaryGrid().lines(startLine, endLine))
                         line.setFlag(Line::Flags::Wrappable, _enable);
                 }

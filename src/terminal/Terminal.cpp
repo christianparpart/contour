@@ -74,7 +74,7 @@ namespace // {{{ helpers
 Terminal::Terminal(Pty& _pty,
                    int _ptyReadBufferSize,
                    Terminal::Events& _eventListener,
-                   optional<LineCount> _maxHistoryLineCount,
+                   LineCount _maxHistoryLineCount,
                    chrono::milliseconds _cursorBlinkInterval,
                    chrono::steady_clock::time_point _now,
                    string const& _wordDelimiters,

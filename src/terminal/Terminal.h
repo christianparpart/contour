@@ -68,7 +68,7 @@ class Terminal : public ScreenEvents {
     Terminal(Pty& _pty,
              int _ptyReadBufferSize,
              Events& _eventListener,
-             std::optional<LineCount> _maxHistoryLineCount = std::nullopt,
+             LineCount _maxHistoryLineCount = LineCount(0),
              std::chrono::milliseconds _cursorBlinkInterval = std::chrono::milliseconds{500},
              std::chrono::steady_clock::time_point _now = std::chrono::steady_clock::now(),
              std::string const& _wordDelimiters = "",

@@ -40,7 +40,7 @@ namespace // {{{ helper
 
     Grid setupGrid5x2()
     {
-        auto grid = Grid(PageSize{LineCount(2), ColumnCount(5)}, true, std::nullopt);
+        auto grid = Grid(PageSize{LineCount(2), ColumnCount(5)}, true, LineCount(0));
         grid.lineAt(1).setText("ABCDE");
         grid.lineAt(2).setText("abcde");
         logGridText(grid, "setup grid at 5x2");
@@ -49,7 +49,7 @@ namespace // {{{ helper
 
     Grid setupGrid8x2()
     {
-        auto grid = Grid(PageSize{LineCount(2), ColumnCount(8)}, true, std::nullopt);
+        auto grid = Grid(PageSize{LineCount(2), ColumnCount(8)}, true, LineCount(0));
         grid.lineAt(1).setText("ABCDEFGH");
         grid.lineAt(2).setText("abcdefgh");
         logGridText(grid, "setup grid at 5x2");
@@ -101,7 +101,7 @@ TEST_CASE("Line.reflow.empty", "[grid]")
 
 TEST_CASE("Grid.reflow.shrink.wrappable", "[grid]")
 {
-    auto grid = Grid(PageSize{LineCount(4), ColumnCount(4)}, true, std::nullopt);
+    auto grid = Grid(PageSize{LineCount(4), ColumnCount(4)}, true, LineCount(0));
     grid.lineAt(1).setText("ABCD");
     grid.lineAt(1).setWrappable(true);
     grid.lineAt(2).setWrappable(false);

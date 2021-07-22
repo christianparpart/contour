@@ -1,7 +1,7 @@
-# Current PR (box drawings)
+# Current PR
 
-- [ ] `builtin_box_drawing: false` ignored? check!
-- [ ]  top-left and bottom-left arc show artifacts on very left side. why? most likely overflow in pixel painting.
+- [ ] maxHistoryLineCount cannot be "unlimited" anymore.
+
 
 # RELEASE CHECKLIST
 

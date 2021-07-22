@@ -1136,10 +1136,10 @@ TerminalProfile loadTerminalProfile(UsedKeys& _usedKeys,
     else
         errorlog().write("Invalid render_mode \"{}\" in configuration.", renderModeStr);
 
-    auto intValue = profile.maxHistoryLineCount.value_or(std::numeric_limits<LineCount>::max());
+    auto intValue = profile.maxHistoryLineCount;
     tryLoadChild(_usedKeys, _doc, basePath, "history.limit", intValue);
-    if (unbox<int>(intValue) < 0 || intValue == std::numeric_limits<LineCount>::max())
-        profile.maxHistoryLineCount = nullopt;
+    if (unbox<int>(intValue) < 0)
+        profile.maxHistoryLineCount = LineCount(0);
     else
         profile.maxHistoryLineCount = intValue;
 

@@ -247,18 +247,20 @@ Line::Buffer Line::reflow(ColumnCount _newColumnCount)
 }
 // }}}
 // {{{ Grid impl
-Grid::Grid(PageSize _screenSize, bool _reflowOnResize, optional<LineCount> _maxHistoryLineCount) :
+Grid::Grid(PageSize _screenSize, bool _reflowOnResize, LineCount _maxHistoryLineCount) :
     screenSize_{ _screenSize },
     reflowOnResize_{ _reflowOnResize },
     maxHistoryLineCount_{ _maxHistoryLineCount },
     lines_(
-        unbox<size_t>(_screenSize.lines),
+        unbox<size_t>(_screenSize.lines + _maxHistoryLineCount),
         Line(
             _screenSize.columns,
             Cell{},
             _reflowOnResize ? Line::Flags::Wrappable : Line::Flags::None
         )
-    )
+    ),
+    linesUsed_{_screenSize.lines},
+    firstLineOffset_{0}
 {
 }
 
@@ -299,7 +301,7 @@ void addNewWrappedLines(Lines& _targetLines,
     }
 }
 
-void Grid::setMaxHistoryLineCount(optional<LineCount> _maxHistoryLineCount)
+void Grid::setMaxHistoryLineCount(LineCount _maxHistoryLineCount)
 {
     maxHistoryLineCount_ = _maxHistoryLineCount;
     clampHistory();
@@ -447,7 +449,7 @@ Coordinate Grid::resize(PageSize _newSize, Coordinate _currentCursorPos, bool _w
             lines_ = move(grownLines);
             screenSize_.columns = _newColumnCount;
 
-            //auto diff = int(lines_.size()) - unbox<int>(screenSize_.lines);
+            //auto diff = unbox<int>(linesUsed_) - unbox<int>(screenSize_.lines);
             auto cy = 0;
             if (*historyLineCount() < 0)
             {
@@ -582,31 +584,23 @@ Coordinate Grid::resize(PageSize _newSize, Coordinate _currentCursorPos, bool _w
 
 void Grid::appendNewLines(LineCount _count, GraphicsAttributes _attr)
 {
-    auto const wrappableFlag = lines_.back().wrappableFlag();
+    auto const wrappable = lines_[*linesUsed_].wrappableFlag() == Line::Flags::Wrappable;
 
-    if (historyLineCount() == maxHistoryLineCount().value_or(std::numeric_limits<LineCount>::max()))
+    for (LineCount i = LineCount(0); i < _count; ++i)
     {
-        // We've reached to history line count limit already.
-        // Rotate lines that would fall off down to the bottom again in a clean state.
-        // We do save quite some overhead due to avoiding unnecessary memory allocations.
-        for (int i = 0; i < unbox<int>(_count); ++i)
-        {
-            Line line = move(lines_.front());
-            lines_.pop_front();
-            line.reset(_attr);
-            lines_.emplace_back(move(line));
-        }
-        return;
+        auto const realOffset = (boxed_cast<LineCount>(firstLineOffset_) + linesUsed_ + i).as<size_t>() % lines_.size();
+        Line& line = lines_[realOffset];
+        line.reset(_attr);
+        line.setWrappable(wrappable);
     }
 
-    if (auto const n = min(_count, screenSize_.lines); *n > 0)
+    if (linesUsed_ + _count < LineCount::cast_from(lines_.size()))
     {
-        generate_n(
-            back_inserter(lines_),
-            *n,
-            [&]() { return Line(screenSize_.columns, Cell{{}, _attr}, wrappableFlag); }
-        );
-        clampHistory();
+        linesUsed_ += _count;
+    }
+    else
+    {
+        firstLineOffset_ = boxed_cast<LineOffset>((linesUsed_ + _count) % LineCount::cast_from(lines_.size()));
     }
 }
 
@@ -618,30 +612,7 @@ void Grid::clearHistory()
 
 void Grid::clampHistory()
 {
-    if (!maxHistoryLineCount_.has_value())
-        return;
-
-    auto const actual = historyLineCount();
-    auto const maxHistoryLines = maxHistoryLineCount_.value();
-    if (actual < maxHistoryLines)
-        return;
-
-    auto const diff = actual - maxHistoryLines;
-
-    // any line that moves into history is using the default Wrappable flag.
-    for (auto& line: lines(boxed_cast<LinePosition>(historyLineCount() - diff),
-                           boxed_cast<LinePosition>(historyLineCount())))
-    {
-        auto const wrappable = true;
-        // std::cout << fmt::format(
-        //     "clampHistory: wrappable={}: \"{}\"\n",
-        //     wrappable ? "true" : "false",
-        //     line.toUtf8()
-        // );
-        line.setFlag(Line::Flags::Wrappable, wrappable);
-    }
-
-    lines_.erase(begin(lines_), next(begin(lines_), unbox<long>(diff)));
+    linesUsed_ = screenSize_.lines;
 }
 
 void Grid::scrollUp(LineCount _n, GraphicsAttributes const& _defaultAttributes, Margin const& _margin)

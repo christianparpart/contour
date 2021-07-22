@@ -33,7 +33,7 @@ class HeadlessBench: public terminal::Terminal::Events
 public:
     HeadlessBench(terminal::PageSize _pageSize,
                   int _ptyReadBufferSize,
-                  std::optional<terminal::LineCount> _maxHistoryLineCount);
+                  terminal::LineCount _maxHistoryLineCount);
 
     terminal::MockViewPty& pty() noexcept { return *pty_; }
     terminal::Terminal& terminal() noexcept { return vt_; }
@@ -45,7 +45,7 @@ private:
 
 HeadlessBench::HeadlessBench(terminal::PageSize _pageSize,
                              int _ptyReadBufferSize,
-                             std::optional<terminal::LineCount> _maxHistoryLineCount):
+                             terminal::LineCount _maxHistoryLineCount):
     pty_{std::make_unique<terminal::MockViewPty>(_pageSize)},
     vt_{
         *pty_,
@@ -63,7 +63,7 @@ int main(int argc, char const* argv[])
 
     auto pageSize = terminal::PageSize{terminal::LineCount(25), terminal::ColumnCount(80)};
     auto const ptyReadBufferSize = 8192;
-    auto maxHistoryLineCount = optional{terminal::LineCount(10000)};
+    auto maxHistoryLineCount = terminal::LineCount(4096);
     auto hb = HeadlessBench{pageSize, ptyReadBufferSize, maxHistoryLineCount};
 
     auto tbp = contour::termbench::Benchmark{
@@ -73,7 +73,7 @@ int main(int argc, char const* argv[])
             do hb.terminal().processInputOnce();
             while (!hb.pty().stdoutBuffer().empty());
         },
-        16, // MB
+        8, // MB
         80,
         24,
         [&](contour::termbench::Test const& _test)
@@ -82,10 +82,10 @@ int main(int argc, char const* argv[])
         }
     };
 
-    tbp.add(contour::termbench::tests::many_lines());
+    //tbp.add(contour::termbench::tests::many_lines());
     tbp.add(contour::termbench::tests::long_lines());
-    tbp.add(contour::termbench::tests::sgr_fg_lines());
-    tbp.add(contour::termbench::tests::sgr_fgbg_lines());
+    // tbp.add(contour::termbench::tests::sgr_fg_lines());
+    // tbp.add(contour::termbench::tests::sgr_fgbg_lines());
     //tbp.add(contour::termbench::tests::binary());
 
     tbp.runAll();
@@ -94,7 +94,7 @@ int main(int argc, char const* argv[])
     tbp.summarize(cout);
     cout << fmt::format("{:>12}: {}\n",
                         "history size",
-                        hb.terminal().screen().maxHistoryLineCount().value_or(terminal::LineCount(0)));
+                        hb.terminal().screen().maxHistoryLineCount());
 
     return EXIT_SUCCESS;
 }
