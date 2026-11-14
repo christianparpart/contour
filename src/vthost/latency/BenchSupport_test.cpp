@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -98,3 +99,16 @@ TEST_CASE("publish says when the record cannot be written", "[vthost][latency]")
         publish(BenchReport {}, std::filesystem::path { "/nonexistent-directory/record.tsv" }, out);
     CHECK_FALSE(result.has_value());
 }
+
+#ifndef _WIN32
+TEST_CASE("a benchmark child that fills its terminal is not left blocked on it", "[vthost][latency]")
+{
+    // A daemon logs to the terminal it runs on, and a pseudo terminal holds a kilobyte or so on macOS: with
+    // nothing reading, the daemon stopped in the middle of a log line, before it served anything.
+    constexpr auto Megabyte = std::size_t { 1024 } * 1024;
+    auto const script = std::format("head -c {} /dev/zero", Megabyte);
+    auto process = BenchProcess::start("/bin/sh", { "-c", script });
+    REQUIRE(process.has_value());
+    CHECK((*process)->waitFor(10s).has_value());
+}
+#endif
