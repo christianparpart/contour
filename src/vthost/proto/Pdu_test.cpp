@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <optional>
 #include <ranges>
@@ -21,6 +22,7 @@
 #include <vthost/proto/Pdu.hpp>
 #include <vthost/testing/PduExamples.hpp>
 #include <vthost/testing/PreNegotiationCodec.hpp>
+#include <vthost/testing/RecordedNameEncodings.hpp>
 #include <vthost/testing/ShippedCodec.hpp>
 
 using namespace vthost::proto;
@@ -3267,4 +3269,67 @@ TEST_CASE("a key proof larger than its caps is refused", "[vthost][pdu][auth]")
     auto sink = Writer {};
     encodePdu(sink, 1, DecodedPdu { bigSignature });
     CHECK_FALSE(decodePdu(std::vector<std::byte>(sink.view().begin(), sink.view().end())).has_value());
+}
+
+namespace
+{
+
+/// A LayoutState of one tab whose name-bearing fields are both set: the label the user gave it and the
+/// runtime title. Recorded as testing::RecordedWireTabNames.
+[[nodiscard]] LayoutState namedLayout()
+{
+    auto const tab = WireTab { .tabId = 2,
+                               .activePane = 3,
+                               .zoomedPane = 0,
+                               .title = "edited {Cwd}",
+                               .label = "build",
+                               .hasColor = 0,
+                               .color = 0,
+                               .root = WirePane { .paneId = 3, .session = 1 } };
+    return LayoutState { .workspace = 1, .activeTab = 0, .tabs = { tab } };
+}
+
+/// Encodes @p pdu under serial 1 and checks its frame is @p recorded; with CONTOUR_UPDATE_FIXTURES=1 prints
+/// the frame as @p name instead, and fails.
+/// @param name The recording's name in RecordedNameEncodings.hpp.
+/// @param pdu The PDU the recording stands for.
+/// @param recorded The recording.
+void checkPinnedFrame(std::string_view name, DecodedPdu const& pdu, std::span<std::uint8_t const> recorded)
+{
+    auto stream = Writer {};
+    encodePdu(stream, 1, pdu);
+    if (vthost::testing::isFixtureUpdateRequested(core::LiveEnvironment {}))
+    {
+        std::cout << vthost::testing::spelledFixture(name, stream.view());
+        FAIL("printed " << name << " instead of comparing; paste it into RecordedNameEncodings.hpp");
+    }
+    CHECK(std::ranges::equal(stream.view(), std::as_bytes(recorded)));
+}
+
+} // namespace
+
+TEST_CASE("the LayoutState of a named and titled tab is pinned", "[vthost][pdu][encoding-pin]")
+{
+    auto const layout = namedLayout();
+    checkPinnedFrame("RecordedWireTabNames", layout, vthost::testing::RecordedWireTabNames);
+
+    auto const decoded =
+        decodeAs<LayoutState>(std::as_bytes(std::span { vthost::testing::RecordedWireTabNames }));
+    CHECK(decoded == layout);
+    REQUIRE(decoded.tabs.size() == 1);
+    CHECK(decoded.tabs.at(0).label == "build");
+    CHECK(decoded.tabs.at(0).title == "edited {Cwd}");
+}
+
+TEST_CASE("the EditTab that sets a tab's title is pinned", "[vthost][pdu][encoding-pin]")
+{
+    auto const edit = EditTab { .session = 7, .kind = TabEditKind::SetTitle, .title = "x" };
+    checkPinnedFrame("RecordedEditTabSetTitle", edit, vthost::testing::RecordedEditTabSetTitle);
+
+    auto const decoded =
+        decodeAs<EditTab>(std::as_bytes(std::span { vthost::testing::RecordedEditTabSetTitle }));
+    CHECK(decoded == edit);
+    CHECK(decoded.session == 7);
+    CHECK(decoded.kind == TabEditKind::SetTitle);
+    CHECK(decoded.title == "x");
 }

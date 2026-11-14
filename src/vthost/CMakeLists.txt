@@ -425,6 +425,7 @@ if(VTHOST_TESTING)
         testing/TlsDaemon.hpp
         testing/PduExamples.hpp
         testing/PreNegotiationCodec.hpp
+        testing/RecordedNameEncodings.hpp
         testing/RecordedSnapshots.hpp
         testing/CountingRandom.hpp
         testing/RecordingFilePrivacy.hpp
