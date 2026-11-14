@@ -280,6 +280,17 @@ struct SidebarWindow
         return found;
     }
 
+    /// Moves the pointer onto the middle of @p target, from elsewhere first: Qt sends no hover for a move to
+    /// where the pointer already rests, and what an earlier test left it on is as good as a click there.
+    void hover(QQuickItem const& target) const
+    {
+        QTest::mouseMove(window, QPoint { window->width() / 2, window->height() - 5 });
+        auto const centre = target.mapToScene(QPointF { target.width() / 2, target.height() / 2 }).toPoint();
+        QTest::mouseMove(window, centre - QPoint { 2, 0 });
+        QTest::mouseMove(window, centre);
+        QCoreApplication::processEvents();
+    }
+
     /// The row titled @p title, or null.
     [[nodiscard]] QQuickItem* rowTitled(QString const& title) const
     {
@@ -1519,9 +1530,31 @@ TEST_CASE("a row shows hover where its platform does (offscreen)", "[contour][gu
         auto const* feedback = SidebarWindow::findNamed(*docs, QStringLiteral("sidebarRowFeedback"));
         REQUIRE(feedback != nullptr);
         CHECK_FALSE(feedback->isVisible());
-        auto const centre = docs->mapToScene(QPointF { docs->width() / 2, docs->height() / 2 }).toPoint();
-        QTest::mouseMove(scene.window, centre);
-        QCoreApplication::processEvents();
+        scene.hover(*docs);
+        CHECK(QTest::qWaitFor([&] { return feedback->isVisible() == (scene.token("rowFeedback") != 0); },
+                              1000));
+    }
+}
+
+TEST_CASE("a row shows hover where the pointer rested after a click in the window before (offscreen)",
+          "[contour][gui][qml][sidebar]")
+{
+    for (auto const row: drawnRows())
+    {
+        INFO("row " << static_cast<int>(row));
+        {
+            // What the test before leaves behind: the pointer on the row's middle, as a click there ends.
+            auto before = SidebarWindow { { .row = row } };
+            auto* docs = before.rowTitled(QStringLiteral("docs"));
+            REQUIRE(docs != nullptr);
+            before.click(*docs);
+        }
+        auto scene = SidebarWindow { { .row = row } };
+        auto* docs = scene.rowTitled(QStringLiteral("docs"));
+        REQUIRE(docs != nullptr);
+        auto const* feedback = SidebarWindow::findNamed(*docs, QStringLiteral("sidebarRowFeedback"));
+        REQUIRE(feedback != nullptr);
+        scene.hover(*docs);
         CHECK(QTest::qWaitFor([&] { return feedback->isVisible() == (scene.token("rowFeedback") != 0); },
                               1000));
     }
