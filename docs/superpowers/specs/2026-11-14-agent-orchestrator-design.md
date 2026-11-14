@@ -1,7 +1,9 @@
 # Agent orchestrator — design
 
 Date: 2026-11-14
-Status: revision 3, awaiting approval. Supersedes revision 2 (the artifact of 2026-11-13).
+Status: revision 4, awaiting approval. Supersedes revision 2 (the artifact of 2026-11-13) and revision
+3 (which specified a Rust guest with its own renderer). Revision 4 writes the extension in C++23 and
+draws its tab with core-cpp's `core::tui` — see D1, D6, D7 and §13.
 Reviewed: audited against the code, dry-run for phase 0, and reviewed independently twice; §12 lists
 what each review changed.
 Plan: `docs/superpowers/plans/2026-11-14-agent-orchestrator.md`
@@ -11,7 +13,8 @@ Plan: `docs/superpowers/plans/2026-11-14-agent-orchestrator.md`
 One extension per Contour daemon watches the user's repositories, lists their open pull/merge requests
 and the issues that have none, and starts Claude Code agents for them — each in a fresh git worktree and
 its own tab. The user drives it from a terminal tab the extension serves. It is built on Contour's
-WebAssembly extension system and adds what that system lacks.
+WebAssembly extension system and adds what that system lacks. The extension itself is C++23, and its
+user interface is built with `core::tui` from core-cpp.
 
 Revision 2 fixed the product decisions. This revision keeps all of them and corrects the engineering,
 after an audit of what `src/vtextension`, `src/vthost` and Claude Code actually provide. Revision 2
@@ -39,12 +42,9 @@ default binding (§2, D2).
 
 Each is a judgment call that departs from revision 2. The plan assumes the recommended option.
 
-- **D1 — JSON in the guest.** `serde` + `serde_json` become direct dependencies of the orchestrator
-  crates. Both are already pinned in `extensions/Cargo.lock` (optional dependencies of `wit-bindgen`'s
-  tooling), so no version is added to the dependency graph — but no crate has built them until now, so
-  packagers who vendor crates for offline builds must re-vendor once. Alternative: a hand-written JSON
-  reader, which is more code to test for no isolation benefit (the guest is sandboxed either way).
-  **Recommended: serde_json.**
+- **D1 — JSON in the guest is glaze.** Contour already depends on glaze 9.0.0 (header-only) for its
+  control API. It was compiled into a wasm guest with exceptions and RTTI off and run under Contour's
+  own WAMR build: it works, adds about 32 KiB, and adds no imports. No new dependency.
 - **D2 — No key binding contributed by a manifest in v1.** Contour's bindings are compiled-in rows plus
   the user's YAML; a daemon-supplied default chord would need a third source and collision rules. v1
   ships an `ExtensionAction` action the user binds themselves; the docs give the `Ctrl+Shift+A` snippet.
@@ -64,9 +64,22 @@ Each is a judgment call that departs from revision 2. The plan assumes the recom
   palette" while also ruling out per-item palette rows, so it had no way to choose an item. The
   read-only dashboard now comes first; dispatch lands on top of it. This also puts the riskiest host
   work (the extension-served tab) early, while changing course is cheap (§9, R1).
-- **D6 — The core is Rust and sans-IO.** Shipped guests are Rust (`extensions/`, `wasm32-wasip1`). The
-  orchestrator's logic is one dependency-light crate that maps inputs to effects and never performs
-  I/O. The phase-0 prototype and the final guest are two thin drivers over the same crate.
+- **D6 — The extension is C++23, and its core is sans-IO.** Every guest shipped so far is Rust; this
+  is the first C++ one. That was tried before being written down: a C++23 reactor module built with
+  wasi-sdk 34 (`std::expected`, `std::format`, ranges, `std::variant`) loads and runs under Contour's
+  WAMR build (§13). The orchestrator's logic is one library that maps inputs to effects and never
+  performs I/O. It is compiled twice: natively, where Catch2 tests it and the phase-0 prototype drives
+  it, and to `wasm32-wasip1`, where the guest drives it. The code follows `AGENT.md` like the rest of
+  the tree, plus the limits a guest imposes: **no exceptions** (WAMR here has no exception-handling
+  support, so a `throw` cannot even load — which suits `std::expected`), no `<iostream>` (it imports a
+  WASI call the host refuses), no threads, no filesystem.
+- **D7 — The tab is drawn with `core::tui`.** core-cpp's TUI module has the pieces a guest needs — an
+  incremental input decoder (`VtParser`), a cell buffer and canvas, widgets (lists, tree tables,
+  dialogs, input fields), key bindings, themes — and they perform no terminal I/O. But it cannot be
+  used as it stands: `Screen`, which holds the diffing, focus and overlay logic, requires a `Terminal`
+  that owns the tty; core-cpp has no WASI build; it throws in places; and Contour vendors core-cpp
+  v0.19.0 *without* `tui`. So this design depends on a **core-cpp work package** (§5.8) that must be
+  released and re-vendored before the dashboard can be built. Phases 0 and 1 do not need it.
 
 ## 3. What the audit found (corrections to revision 2)
 
@@ -108,8 +121,9 @@ with `/plugin:skill` runs that skill, and that the model reliably acts on inject
 
 ```
 contour daemon
-├─ orchestrator.wasm            world terminal-extensions:daemon@0.1.0
-│    orchestrator-core (Rust)   pure: Input → Vec<Effect>
+├─ orchestrator.wasm            world terminal-extensions:daemon@0.1.0   (C++23, wasm32-wasip1)
+│    orchestrator_core          pure: Input → effects; also built natively for tests
+│    view (core::tui)           state → cell buffer → bytes; bytes → input events
 │    guest driver               turns effects into host calls
 │        │  host calls (pull)          ▲  hints (payload-less events)
 │        ▼                             │
@@ -133,10 +147,11 @@ anything else. So the daemon world has only payload-less events — `wake`, `pro
 processes, the owned-pane list, served-tab input, pending actions. A coalesced or repeated hint is
 harmless, and the guest also pulls everything on a slow timer, so a lost hint only delays.
 
-**The core is sans-IO.** `orchestrator-core` exposes `Core::step(Input) -> Vec<Effect>`. It holds the
-provider table, the JSON mapping, the run state machine, reconciliation, naming, prompt building,
-sanitising and (later) the screen rendering. It can be tested with table tests on any host, with no
-wasm and no daemon.
+**The core is sans-IO.** `orchestrator_core` exposes `Engine::step(Input) -> std::vector<Effect>`. It
+holds the provider table, the JSON mapping, the run state machine, reconciliation, naming, prompt
+building and sanitising. The view sits beside it: it turns the engine's state into a `core::tui`
+cell buffer and input bytes into actions, again with no I/O. Both are ordinary C++ libraries tested
+with Catch2 on the build machine, with no wasm and no daemon.
 
 ## 5. What gets built in Contour
 
@@ -311,6 +326,51 @@ action id, no arguments) and `RevealPane` (server→client, sent to the connecti
 (C17). The transcript verb finds the log by its session UUID under Claude's projects directory and
 prints a stable, sanitised, paged format. It is a declared command of the orchestrator, so the
 extension never opens `~/.claude` itself.
+
+### 5.8 The core-cpp work package (upstream)
+
+Done in core-cpp, released, then re-vendored — `vendor/core-cpp` is never edited here. What the guest
+needs, from a reading of core-cpp v0.20.0:
+
+1. **A headless target.** Split out of `tui` a target holding `VtParser`, `InputEvent`,
+   `KeyBindings`, `Cell`, `Buffer`, `Canvas`, `Component`, `Theme`, `Unicode` and the widgets, that
+   depends on `base` and `tui_output` only — not `platform`, `async` or `net` — and builds on any
+   platform. Today widgets include `Screen.hpp`, which drags in `Terminal`.
+2. **`Screen` without a tty.** `Screen` takes a `Terminal&`; it needs only a size and a byte sink
+   (the inline viewport alone asks the terminal a question).
+3. **An output with no operating system under it.** `TerminalOutput`'s byte sink is already virtual,
+   but its default behaviour exists only in POSIX and Windows sources.
+4. **No `dynamic_cast`.** `Terminal` detects a headless output by RTTI; make it an explicit property.
+5. **No `throw`.** `Buffer::at` throws.
+6. **A WASI row in the build.** Only Emscripten is recognised today, and it switches `tui` off.
+7. **An injected clock** in `HoverState`, `TreeTableView`, `InputField` and `Screen` — they read
+   `steady_clock::now()` directly, which makes screens untestable against time.
+8. **The diff as a function**: two buffers in, bytes out (today private to `Screen`).
+9. **Width tables.** `tui` measures text with libunicode. Either confirm libunicode builds for
+   `wasm32-wasip1`, or let the caller supply the width function (R8).
+
+Acceptance: a core-cpp release whose headless TUI target builds for `wasm32-wasip1` with
+`-fno-exceptions -fno-rtti` in core-cpp's own CI. Then Contour re-vendors it with the modules `tui`
+and `codec` added (`codec` became mandatory in v0.20.0), which also moves the other vendored modules
+from v0.19.0 forward.
+
+### 5.9 Building a C++ guest
+
+- **Toolchain:** clang with the wasm32 target, `wasm-ld`, and a WASI sysroot with libc, libc++ and
+  compiler-rt (the wasi-sdk, or the distribution's `wasi-libc`, `wasi-libc++`, `wasi-libc++abi`,
+  `wasi-compiler-rt`). The Rust toolchain stays, for the existing guests.
+- **Shape:** the guest is cross-compiled as its own CMake sub-build with a `wasm32-wasip1` toolchain
+  file, because from phase 2 it links libraries (the headless TUI) that must be built for wasm too.
+- **Flags that are not optional:** `-mexec-model=reactor`, `-fno-exceptions`, `-fno-rtti`; no start
+  section; the manifest is emitted through the assembler (`.section ".custom_section.…"`) — the
+  `section` attribute silently produces nothing.
+- **Bindings:** the import and export glue for the daemon world is generated by `wit-bindgen c`
+  (0.63.0, the version the Rust guests use) and committed; its names and signatures were checked
+  against the host for the status-line world and match.
+- **The manifest is generated**, at build time, from the same command table the engine uses, so the
+  two cannot drift.
+- **Opt-in.** Building the orchestrator is its own option, off by default until phase 4, so a
+  distribution without a WASI C++ toolchain keeps building Contour unchanged.
 
 ## 6. The orchestrator
 
@@ -498,9 +558,10 @@ not start with `-` (the argument rule); write `assignee:@me -label:x`, not `-lab
 
 | Phase | Builds | Usable result |
 | --- | --- | --- |
-| 0 | `orchestrator-core` (sans-IO) with fixtures; a native prototype driver over today's control socket; four spikes | Try the workflow from a shell. Not shipped. |
-| 1 | Manifest v2, the daemon world and its engine, runner, process service, store, `daemon.extensions`, grant verbs, the summary status-line item, the guest | A "my PRs" status-line segment that polls with no window attached. |
-| 2 | Served tabs, chrome marker, input refusal, live-upgrade support, palette action, the dashboard view | The read-only dashboard tab. |
+| 0 | `orchestrator_core` (sans-IO, C++) with fixtures; a native prototype driver over today's control socket; four spikes | Try the workflow from a shell. Not shipped. |
+| U | The core-cpp work package (§5.8), released and re-vendored. Runs **in parallel** with 0 and 1 | `core::tui` usable from a guest. |
+| 1 | Manifest v2, the daemon world and its engine, runner, process service, store, `daemon.extensions`, grant verbs, the summary status-line item, the C++ guest toolchain, the guest | A "my PRs" status-line segment that polls with no window attached. |
+| 2 | Served tabs, chrome marker, input refusal, live-upgrade support, palette action, the dashboard view on `core::tui`. **Needs U** | The read-only dashboard tab. |
 | 3 | Pane templates, ownership, pane hints, `file-read`, reveal, dispatch form, lifecycle, reconciliation, cleanup | Dispatch, agent tabs, worktree cleanup. |
 | 4 | Inbox through `agent report` and `pane.takeInbox`, status-board view, `contour agent transcript`, transcript view; GitLab and Jira rows | Everything in revision 2's screens. |
 
@@ -512,21 +573,42 @@ not start with `-` (the argument rule); write `assignee:@me -label:x`, not `-lab
   through `InvokeExtensionAction`-style PDUs. The fallback loses the chrome marker and the input
   refusal; it would need its own review.
 - **R2 — The 50 ms callback budget (C6).** Gate in phase 1: parse the largest recorded `gh pr list`
-  fixture inside the real guest on WAMR and measure. If it does not fit a deadline the daemon world can
+  fixture inside the real guest on WAMR and measure. Gate again in phase 2: a full repaint and diff of
+  a 120×40 screen through `core::tui` in the interpreter. If it does not fit a deadline the daemon world can
   justify, shrink the reply at the source with `gh … --jq`, or parse across several wakes.
 - **R3 — Undocumented Claude Code behaviour.** Covered by phase-0 spikes; the fallback for a positional
   slash command that does not run is a plain-language prompt that names the skill.
 - **R4 — The session log format (C17)** can change under us. The reader degrades to "N entries not
   understood" instead of failing, and fixtures carry the version that wrote them.
 - **R5 — `glab`, `acli`, `jira-cli` are unverified.** They are phase-4 rows gated on recorded fixtures.
+- **R7 — The core-cpp work package (§5.8) is on the critical path of the dashboard**, and it is in
+  another repository with its own review and release. It starts with phase 0, not after phase 1. If
+  it is not released when phase 2 is due, the host half of phases 2 and 3 can proceed; the views
+  cannot. Re-vendoring also moves Contour's other core-cpp modules past v0.19.0, which may need
+  adaptations in Contour.
+- **R8 — libunicode in a guest.** `core::tui` needs character widths from libunicode. Building it for
+  wasm is unverified, its tables add size, and a distribution that takes libunicode as a system
+  package has no source to cross-compile. Decided inside the work package (item 9).
+- **R9 — The C++ guest toolchain** is new to Contour's CI and to packagers (§5.9). The guest's
+  libraries need bulk-memory, sign-extension and saturating float conversion in the runtime; Contour's
+  bundled WAMR has them, but a *system* WAMR built without them could not load the guest, and no guest
+  flag fixes that. The orchestrator stays opt-in until that is settled.
+- **R10 — A fault is cheap to cause in C++ without exceptions.** `vector::at`, a bad format string or
+  `expected::value()` on an error abort, which the host sees as a guest fault; three in a minute
+  disable the extension. The code rules (§10) forbid those calls, and a lint test enforces it.
 - **R6 — The daemon's environment** may lack the user's `PATH` or keyring access when started by a
   service manager. Detected and shown; not solved.
 
 ## 10. Testing
 
-- **Core:** `cargo test -p orchestrator-core`, run by CTest. Table tests over recorded CLI output,
-  including errors and truncation; state-machine tests for lost hints, a cold restart, a worktree
-  removed by hand, kept worktrees, and both agent limits.
+- **Core and view:** a Catch2 target, `orchestrator_test`, built natively. Table tests over recorded
+  CLI output, including errors and truncation; state-machine tests for lost hints, a cold restart, a
+  worktree removed by hand, kept worktrees, and both agent limits; golden screens through
+  `core::tui`'s own test helpers.
+- **Guest portability:** a lint test fails on `throw`, `try`, `.at(`, `.value()`, `<iostream>`,
+  `<thread>`, `<filesystem>` and `dynamic_cast` in the orchestrator's sources, so a mistake is caught
+  on a machine without the wasm toolchain. From phase 1 the wasm build is the second check, and the
+  built module is run against the host's fakes.
 - **Host:** `vtextension_test` for manifest v2, the world check, the runner, and each service against
   fakes; `vthost_test` for ownership, served sessions, control refusals and the handover; byte-level
   PDU round-trips in `vthost/proto`.
@@ -534,7 +616,7 @@ not start with `-` (the argument rule); write `assignee:@me -label:x`, not `-lab
   extension cannot close, list or post to a pane it did not start; `file-read` refuses `..` and an
   escaping symlink; a placeholder value starting with `-` is refused; `InvokeExtensionAction` cannot
   carry arguments.
-- **Screens:** snapshots of the dashboard through `MockTerm`.
+- **Screens end to end:** snapshots of the dashboard through `MockTerm`, in the daemon.
 - **Performance:** `bench-headless` with the orchestrator loaded and polling shows no throughput
   regression.
 
@@ -580,3 +662,28 @@ A second independent review, of the text as revised after the first, found and t
 17. Two worlds in one process could cross-link host functions. → C22.
 18. An agent that failed to start vanished without a trace. → §6.3.
 19. "Open a shell there" had no mechanism. → dropped for v1.
+
+## 13. What changed for C++ and `core::tui` (revision 4), and what was measured
+
+Requested after revision 3: write the extension in C++ and use core-cpp for the TUI. Before changing
+the text, both were tried.
+
+**A C++23 guest — measured.** A hand-written reactor for the existing status-line world, built with
+wasi-sdk 34 (clang 23.1, `-std=c++23 -Os -flto -fno-exceptions -fno-rtti -mexec-model=reactor`),
+loaded and ran correctly under Contour's own WAMR 2.4.5 build through a small harness: `load`,
+`update`, `render` and the host calls in both directions. Not exercised: Contour's own world check,
+which was compared by reading. Findings that shaped §5.9 and D6:
+
+- With exceptions on, the module needs WebAssembly exception handling and WAMR refuses to load it.
+- `<iostream>` imports `fd_read`, which the host's WASI allow-list refuses.
+- The `section` attribute does not create a custom section; module-level assembly does.
+- `std::format` costs about 400 KiB of module (about 240 KiB after `wasm-opt`); glaze about 32 KiB.
+  Both are far inside the 16 MiB limit.
+- `wit-bindgen c` output for the status-line world matches the host's names and signatures.
+- The same sources build natively with the system compiler.
+
+**`core::tui` — read, not built.** §5.8 lists what stands between it and a guest. Nothing in it was
+compiled for wasm, and libunicode's wasm build is unverified (R8).
+
+What this revision does not change: every product decision in §1, the host design in §5.1–§5.7, the
+lifecycle in §6, and the safety model in §7.
