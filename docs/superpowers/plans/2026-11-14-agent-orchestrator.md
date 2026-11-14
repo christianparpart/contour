@@ -55,8 +55,12 @@ Do not start a phase whose predecessor's gate has not been met.
   impact, a risk assessment and coverage.
 - **Manifest grammar limits** (version 1 and 2): an argv word cannot contain a space; `{` and `}` may
   appear only as a whole-word `{name}` placeholder.
-- **No declared command takes a directory as an argument.** No `git -C`. A command runs in a working
-  directory the host validates. Every placeholder has a declared kind (§5.1).
+- **No declared command takes a directory as an argument.** No `git -C`. Every command and pane
+  template is bound to one root and runs in a directory the host validates to be inside it. Every
+  placeholder has a declared kind (§5.1).
+- **A driver is single-threaded.** It executes effects and feeds inputs strictly in order; a pane
+  snapshot is taken only after every earlier effect has been carried out. (A snapshot taken before
+  `pane-open` returned but fed after it would make a brand-new agent look gone.)
 - **Host limits:** 64 KiB per host call (`maxHostCallBytes`); hints coalesce, one slot per kind.
 - **The orchestrator imports no control verbs.** Not `pane-send`, not `pane-capture`, not any.
 - **The agent pane template contains no permission flag and no `--settings`.**
@@ -83,6 +87,16 @@ Do not start a phase whose predecessor's gate has not been met.
 | `PostToolUse` hooks can add model context with `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"…"}}`; hooks inherit the launching environment | Claude Code hooks documentation |
 | `tab.create` takes `{workspace, placement, cwd, command: [..], label, focus}`, has no environment field, labels the tab, and defaults to taking focus | `src/vtcontrol/Api.hpp:413-422` |
 | `pane.reportStatus` is `Method<ReportStatusRequest, EmptyReply>`; `runAgentReport` discards the reply | `src/vtcontrol/Catalog.hpp:372`, `src/contour/cli/AgentReport.cpp:199` |
+| `git worktree add -b <b> <path> origin/master` makes `<b>` track `master`; with `push.default=upstream`, `git push --dry-run` then prints `<b> -> master`. With `--no-track` and `push.autoSetupRemote=true` it prints `[new branch] <b> -> <b>` | scratch repository (second review) |
+| A worktree whose `.git` file is rewritten to point at a directory with `core.fsmonitor="touch PWNED"` runs that command on `git status --porcelain` | same |
+| With `GIT_ALLOW_PROTOCOL=https:ssh:git`, a local-path or `file://` remote fails (`transport 'file' not allowed`); scp-style remotes count as ssh | same |
+| A FIFO named `STATUS.md` is not reported by `git status --porcelain` | same |
+| `git worktree add` creates missing parent directories | same |
+| A crate-root `pub mod core` shadows `core::` (`core::mem` → E0433) | rustc 1.99 |
+| Control JSON is read with unknown keys as errors; `pane.reportStatus` is `Exposure::Everywhere` and a WIT import (`wit/control/world.wit:456`) | `src/vtcontrol/Json.hpp:73-74` |
+| WAMR's native registry is process-wide; the code relies on every live runtime providing each host function alike; the world check accepts a whole import module by name | `wasm/wamr/WamrRuntime.hpp:103-105`, `wasm/WasmRuntime.hpp:48-56`, `CompiledExtension.cpp:74-80` |
+| When a pane's spawned program exits, the session ends and the pane closes | `SessionHost` `onClosed` → `closeSession` |
+| The daemon draws the indicator row only when `Terminal::indicatorStatusLineDependsOnHostState` is true, which needs `_extensions` to be non-null | `Terminal.cpp:868-878`, `NativeSession.cpp:1508` |
 | PDU tags 60–62 and capability number 30 are free (last used: 59 and 29) | `src/vthost/proto/Pdu.hpp`, `Negotiation.hpp` |
 | Adding `orchestrator-core` with the task-0.1 manifests builds and tests natively; the lock gains one `orchestrator-core` block and a `"serde_derive"` line under `serde`, and no version changes | dry run in a scratch copy of `extensions/` |
 | That dry run needed the network: `serde 1.0.229` is in the lock but was never downloaded, because no crate built so far enables it | `cargo test --offline` failed, online succeeded |
@@ -114,6 +128,7 @@ Do not start a phase whose predecessor's gate has not been met.
 4. **Nothing is ever forced.** No `--force` on `worktree remove`, `checkout` or `push` appears in any
    declared command. Pinned by a test over the command table (0.3).
 5. **Live upgrade keeps working with a served tab open** (C12). Pinned in phase 2.
+   **And no git command runs in a worktree whose `.git` file an agent changed** (0.7, 0.9 scenario 19).
 6. **Untrusted text never reaches a prompt, a path or the terminal unsanitised.** Pinned in phase 0.
 7. **The 50 ms budget** (R2). Measured in phase 1 before the guest's polling is trusted.
 
@@ -128,14 +143,14 @@ extensions/
       src/lib.rs                   module list and re-exports
       src/sanitize.rs              control-character stripping, truncation by character count
       src/model.rs                 ChangeRequest, Issue, CiState, ReviewState, ItemRef
-      src/commands.rs              the declared-command and argument-kind tables (single source of truth)
+      src/commands.rs              the declared command, pane and argument-kind tables (single source of truth)
       src/provider.rs              provider rows; src/provider/github.rs JSON mapping
       src/config.rs                the config JSON → Config, with validation
       src/naming.rs                branch, worktree and run names; Jira key check
       src/prompt.rs                prompt building
       src/run.rs                   Run, RunState, the per-run state machine
       src/reconcile.rs             stored runs × panes → decisions; orphan worktrees
-      src/core.rs                  Core::step(Input) -> Vec<Effect>
+      src/engine.rs                Core::step(Input) -> Vec<Effect>  (not `core`: that shadows `core::`)
       src/view.rs                  (phase 2) state → screen bytes
       tests/fixtures/              recorded CLI output, one directory per provider
     proto/                         crate orchestrator-proto (native bin) — phase 0 driver, never shipped
@@ -210,7 +225,7 @@ serde_json.workspace = true
 
 ```rust
 //! The agent orchestrator's logic. Nothing in this crate performs I/O: a driver feeds
-//! [`core::Input`]s and carries out the [`core::Effect`]s that come back.
+//! `engine::Input`s and carries out the `engine::Effect`s that come back.
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
@@ -222,9 +237,6 @@ mod tests {
     }
 }
 ```
-
-  (The `[`core::Input`]` doc links dangle until task 0.9; if rustdoc lints complain, write them as
-  plain text until then.)
 
 - [ ] **Step 3: Let cargo extend the lock** (needs the network once; see "Verified facts").
   Run: `cargo test --manifest-path extensions/Cargo.toml -p orchestrator-core` — without `--locked`.
@@ -345,43 +357,58 @@ pub struct Issue { pub item: ItemRef, pub title: String, pub url: String }
 ```
 
   `title` and `failing_checks` hold text already passed through `sanitize::display_text(_, 200)`.
-  `head` and `base` are kept only if they pass `check_arg(ArgKind::Ref, _)`; a PR whose `base` does not
-  is dropped from the list with a problem line (a hostile branch name must not reach a command).
+  `head` is display text (sanitised; it never reaches a command). `base` must pass
+  `check_arg(ArgKind::Ref, _)`; a PR whose `base` does not is dropped from the list and counted in
+  `skipped`, and the problem line says it was skipped because of its branch name.
 
 - Produces (`commands.rs`):
 
 ```rust
 pub enum Timeout { Short, Long }                 // 30 s, 10 min
-pub enum Cwd { Root, Repo, Worktree }            // the worktree root, a configured repository, a run's worktree
+pub enum Cwd { Repo, Worktree }                  // manifest roots `repos` and `worktrees`
 pub enum ArgKind { Number, Uuid, Name, Ref, Path, Text }
 pub struct CommandDecl {
     pub name: &'static str, pub timeout: Timeout, pub cwd: Cwd, pub argv: &'static [&'static str],
 }
+pub struct PaneDecl {
+    pub name: &'static str, pub cwd: Cwd, pub argv: &'static [&'static str],
+    pub env: &'static [(&'static str, &'static str)],
+}
 pub const ARGS: &[(&str, ArgKind)];
+pub const COMMAND_ENV: &[(&str, &str)];
 pub const COMMANDS: &[CommandDecl];
+pub const PANES: &[PaneDecl];
 pub fn command(name: &str) -> Option<&'static CommandDecl>;
+pub fn pane(name: &str) -> Option<&'static PaneDecl>;
 pub fn arg_kind(name: &str) -> Option<ArgKind>;
 pub fn check_arg(kind: ArgKind, value: &str) -> bool;   // the host's rule, mirrored; Path is checked
                                                         // syntactically (absolute, no `.`/`..` component)
-pub fn manifest_lines() -> Vec<String>;                 // every `arg …` and `command …` line, in table order
+pub fn manifest_lines() -> Vec<String>;                 // every `arg`, `command-env`, `command`, `pane` and
+                                                        // `pane-env` line of §5.1, in table order
 ```
 
   Argument kinds (§5.1): `number`, `page` → Number; `session` → Uuid; `remote`, `model` → Name;
-  `branch`, `base` → Ref; `path` → Path; `query`, `prompt` → Text.
+  `branch`, `base` → Ref; `path` → Path (root `worktrees`); `query`, `prompt` → Text.
+
+  `COMMAND_ENV` is exactly the `command-env` lines of §5.1 (`GIT_TERMINAL_PROMPT`,
+  `GIT_ALLOW_PROTOCOL=https:ssh:git:file`, and the two `GIT_CONFIG_*` pairs forcing
+  `core.fsmonitor=false` and `core.hooksPath=/dev/null`). `PANES` has one row: `agent`,
+  `Cwd::Worktree`, `claude --model {model} --session-id {session} {prompt}`, with the `pane-env` lines
+  of §5.1 (`push.default=upstream`, `push.autoSetupRemote=true`).
 
   Command rows for phase 0 (GitHub and git only). **No row contains `-C`.**
 
 | name | timeout | cwd | argv |
 | --- | --- | --- | --- |
-| `gh-auth` | Short | Root | `gh auth status` |
-| `agent-hooks` | Short | Root | `contour agent setup --dry-run --json` |
+| `gh-auth` | Short | Repo | `gh auth status` |
+| `agent-hooks` | Short | Repo | `contour agent setup --dry-run --json` |
 | `gh-default-branch` | Short | Repo | `gh repo view --json defaultBranchRef` |
 | `gh-prs` | Long | Repo | `gh pr list --author @me --state open --limit 100 --json number,title,url,headRefName,baseRefName,isDraft,isCrossRepository,reviewDecision,statusCheckRollup,closingIssuesReferences` |
 | `gh-issues` | Long | Repo | `gh issue list --state open --limit 100 --search {query} --json number,title,url` |
 | `gh-checkout` | Long | Worktree | `gh pr checkout {number} --branch {branch}` |
 | `git-fetch` | Long | Repo | `git fetch --quiet {remote}` |
 | `git-worktree-add` | Long | Repo | `git worktree add --detach {path} {base}` |
-| `git-worktree-add-branch` | Long | Repo | `git worktree add -b {branch} {path} {base}` |
+| `git-worktree-add-branch` | Long | Repo | `git worktree add --no-track -b {branch} {path} {base}` |
 | `git-worktree-list` | Short | Repo | `git worktree list --porcelain` |
 | `git-status` | Short | Worktree | `git status --porcelain` |
 | `git-clean-status-board` | Short | Worktree | `git clean -f -- STATUS.md` |
@@ -421,7 +448,7 @@ fn no_command_names_a_directory_or_forces_anything() {
     for decl in COMMANDS {
         if decl.name == "git-clean-status-board" {
             // The one exception: git refuses `clean` without -f. Pinned to one fixed path.
-            assert_eq!(decl.argv, ["git", "clean", "-f", "--", "STATUS.md"]);
+            assert_eq!(decl.argv, &["git", "clean", "-f", "--", "STATUS.md"][..]);
             continue;
         }
         for word in decl.argv {
@@ -444,6 +471,9 @@ fn argument_kinds_refuse_what_they_must() {
         (ArgKind::Ref, "origin/master", true), (ArgKind::Ref, "agent/pr-1-20261113-141207", true),
         (ArgKind::Ref, "a..b", false), (ArgKind::Ref, "a//b", false), (ArgKind::Ref, "-a", false),
         (ArgKind::Ref, "a b", false), (ArgKind::Ref, "a:b", false), (ArgKind::Ref, "a~1", false),
+        (ArgKind::Ref, "user@branch", true), (ArgKind::Ref, "fix#12", true), (ArgKind::Ref, "c++", true),
+        (ArgKind::Ref, "dependabot/npm_and_yarn/x-1.2.3", true), (ArgKind::Ref, "a@{1}", false),
+        (ArgKind::Ref, "/a", false),
         (ArgKind::Path, "/home/u/worktrees/contour/pr-1", true),
         (ArgKind::Path, "relative/x", false), (ArgKind::Path, "/a/../b", false),
         (ArgKind::Path, "/a/./b", false), (ArgKind::Path, "", false),
@@ -455,7 +485,20 @@ fn argument_kinds_refuse_what_they_must() {
     for (kind, value, ok) in rows { assert_eq!(check_arg(*kind, value), *ok, "{value:?}"); }
     assert!(!check_arg(ArgKind::Text, &"x".repeat(8193)));
 }
+
+#[test]
+fn the_issue_branch_never_tracks_the_default_branch() {
+    // Without --no-track, `git push` under push.default=upstream goes to the default branch.
+    let add = command("git-worktree-add-branch").unwrap();
+    assert!(add.argv.contains(&"--no-track"));
+    let agent = pane("agent").unwrap();
+    assert!(agent.env.contains(&("GIT_CONFIG_VALUE_0", "upstream")));
+    assert!(agent.env.contains(&("GIT_CONFIG_KEY_1", "push.autoSetupRemote")));
+    assert!(!agent.argv.iter().any(|w| w.starts_with("--settings") || w.contains("permission")));
+}
 ```
+
+  Extend `every_command_obeys_the_manifest_grammar` to run over `PANES` too.
 
 - [ ] **Step 2: Run.** Expected: FAIL to compile. **Step 3: Implement** the tables and functions
   (`Uuid` accepts lower-case canonical form only). **Step 4: Run.** Expected: PASS; clippy, fmt clean.
@@ -635,7 +678,7 @@ pub enum PromptError { StartsWithDash, UrlNotHttps, TooLong, Note(NoteError) }
 
 ```rust
 pub enum PrepareStep { Fetch, WorktreeAdd, Checkout, OpenPane }
-pub enum EndStep { Status, CleanStatusBoard, Remove }
+pub enum EndStep { Verify, Status, CleanStatusBoard, Remove }
 pub enum RunState {
     Preparing(PrepareStep), Running, Blocked, Done,
     Ending(EndStep), Kept { entries: Vec<String> }, Failed { step: PrepareStep, why: String },
@@ -648,37 +691,53 @@ pub struct Run {
     pub item: ItemRef, pub url: String, pub task: Task, pub model: String, pub prompt: String,
     pub session: String, pub branch: String, pub worktree: String,
     pub pane: Option<String>, pub state: RunState, pub last_status: AgentStatus,
-    pub failure: Option<(PrepareStep, String)>,   // set when preparation failed; carried through Ending
-    pub started_ms: u64, pub board_posts: u8, pub board_posted_ms: u64, pub board_seen: bool,
+    pub reported: bool,                  // has the agent ever reported a status?
+    pub failure: Option<(PrepareStep, String)>,   // why the run failed; carried through Ending
+    pub board_posts: u8, pub board_seen: bool,
+    pub running_since_ms: u64, pub board_posted_ms: u64,   // monotonic; NOT persisted (see below)
 }
 pub enum RunInput<'a> {
     CommandOk { stdout: &'a str },
     CommandFailed { why: &'a str },      // non-zero exit, timed out, truncated output, refused start
     CwdMissing,                          // the command could not start: its directory is gone
     Lost,                                // the guest restarted and this step's command or pane is unknown
-    PaneOpened { pane: &'a str }, PaneOpenFailed { why: &'a str },
+    GitFile(Option<&'a str>),            // the content of <worktree>/.git, or None if it cannot be read
+    PaneOpened { pane: &'a str, mono_ms: u64 }, PaneOpenFailed { why: &'a str },
     Status(AgentStatus), PaneGone, RetryRemoval, Dismiss,
 }
 pub enum RunEffect {
     Command { name: &'static str, args: Vec<(&'static str, String)> },   // cwd comes from the table
+    ReadGitFile,                         // read <worktree>/.git
     OpenPane, ClosePane, Persist, Forget,
 }
+pub const RUN_SCHEMA: u32 = 1;
 impl Run {
-    pub fn advance(&mut self, input: RunInput<'_>) -> Vec<RunEffect>;
-    pub fn step_tag(&self) -> Option<String>;   // "<id>/fetch", "<id>/status", …; None when no command is expected
+    pub fn advance(&mut self, input: RunInput<'_>, main_checkout: Option<&str>) -> Vec<RunEffect>;
+    pub fn step_tag(&self) -> Option<String>;   // "<id>/fetch", "<id>/verify", …; None when nothing is awaited
     pub fn occupies_a_slot(&self) -> bool;      // Preparing, Running, Blocked, Done, Ending
     pub fn to_json(&self) -> String;  pub fn from_json(text: &str) -> Option<Run>;
 }
 pub fn state_for(status: AgentStatus) -> RunState;   // Idle|Working → Running, Blocked|Error → Blocked, Done → Done
+pub fn git_file_is_intact(content: &str, main_checkout: &str, worktree: &str) -> bool;
 ```
 
-  There is no `Removed` state: a run whose worktree was removed cleanly is forgotten (`Forget`).
-  A failed preparation always passes through `Ending`, so nothing is left behind unnoticed; it ends in
-  `Failed` (worktree gone) or `Kept` (worktree still there, `failure` shown beside its entries).
+  - There is no `Removed` state: a run whose worktree was removed cleanly is forgotten (`Forget`).
+  - **Once a worktree may exist, a failure always passes through `Ending`**, so nothing is left behind
+    unnoticed; it finishes as `Failed` (worktree gone) or `Kept` (still there, `failure` shown beside
+    its entries). A failure *before* any worktree can exist (`Fetch`, or `WorktreeAdd` that could not
+    start) goes straight to `Failed`.
+  - `main_checkout` is the repository's resolved main-worktree path, learned by the engine from the
+    first entry of `git worktree list`. `git_file_is_intact` is true only when the content, trimmed, is
+    exactly `gitdir: <main_checkout>/.git/worktrees/<last component of worktree>`. With
+    `main_checkout == None` the file cannot be judged and counts as altered.
+  - `to_json` writes `"v": RUN_SCHEMA` and omits the two monotonic fields: a monotonic clock restarts
+    with the machine, so a persisted value would be meaningless (or underflow). `from_json` rejects any
+    other `v` and sets both to 0; the engine re-bases them on `Started`.
 
 - [ ] **Step 1: Write the failing transition table.** One test drives rows of
   `(start state, failure before, input, expected state, expected effects)`. "fail(X)" means
-  `failure = Some((X, why))`. `CommandFailed` and `Lost` behave alike unless a row says otherwise.
+  `failure = Some((X, why))`. "→ Verify" abbreviates: state `Ending(Verify)`, effects `ReadGitFile`,
+  `Persist`.
 
 | From | Input | To | Effects |
 | --- | --- | --- | --- |
@@ -686,18 +745,24 @@ pub fn state_for(status: AgentStatus) -> RunState;   // Idle|Working → Running
 | `Preparing(Fetch)` | `CommandFailed` / `Lost` / `CwdMissing` | `Failed{Fetch}` | Persist (no worktree exists yet) |
 | `Preparing(WorktreeAdd)` | `CommandOk`, PR | `Preparing(Checkout)` | `gh-checkout {number, branch}`, Persist |
 | `Preparing(WorktreeAdd)` | `CommandOk`, issue | `Preparing(OpenPane)` | OpenPane, Persist |
-| `Preparing(WorktreeAdd)` | `CommandFailed` / `Lost` | `Ending(Status)`, fail(WorktreeAdd) | `git-status`, Persist |
+| `Preparing(WorktreeAdd)` | `CwdMissing` | `Failed{WorktreeAdd}` | Persist (the repository is gone; nothing was created) |
+| `Preparing(WorktreeAdd)` | `CommandFailed` / `Lost` | → Verify, fail(WorktreeAdd) | |
 | `Preparing(Checkout)` | `CommandOk` | `Preparing(OpenPane)` | OpenPane, Persist |
-| `Preparing(Checkout)` | `CommandFailed` / `Lost` / `CwdMissing` | `Ending(Status)`, fail(Checkout) | `git-status`, Persist |
-| `Preparing(OpenPane)` | `PaneOpened` | `Running`, `pane` set | Persist |
-| `Preparing(OpenPane)` | `PaneOpenFailed` / `Lost` | `Ending(Status)`, fail(OpenPane) | `git-status`, Persist |
-| `Running`/`Blocked`/`Done` | `Status(s)`, `s != last_status` | `state_for(s)`, `last_status = s` | Persist |
-| `Running`/`Blocked`/`Done` | `Status(s)`, `s == last_status` | unchanged | none |
-| `Running`/`Blocked`/`Done` | `PaneGone` | `Ending(Status)`, `pane` cleared | `git-status`, Persist |
+| `Preparing(Checkout)` | `CommandFailed` / `Lost` / `CwdMissing` | → Verify, fail(Checkout) | |
+| `Preparing(OpenPane)` | `PaneOpened` | `Running`, `pane` set, `running_since_ms` set | Persist |
+| `Preparing(OpenPane)` | `PaneOpenFailed` / `Lost` | → Verify, fail(OpenPane) | |
+| `Running`/`Blocked`/`Done` | `Status(s)`, `s != last_status` | `state_for(s)`, `last_status = s`, `reported = true` | Persist |
+| `Running`/`Blocked`/`Done` | `Status(s)`, `s == last_status` | unchanged (`reported = true`) | none, or Persist if `reported` changed |
+| `Running`/`Blocked`/`Done` | `PaneGone`, `reported` | → Verify, `pane` cleared | |
+| `Running`/`Blocked`/`Done` | `PaneGone`, not `reported` | → Verify, `pane` cleared, fail(OpenPane, "the agent exited before reporting") | |
+| `Ending(Verify)` | `GitFile(Some(intact))` | `Ending(Status)` | `git-status`, Persist |
+| `Ending(Verify)` | `GitFile(Some(altered))` | `Kept{["the worktree's .git file was changed; nothing was run there"]}` | Persist |
+| `Ending(Verify)` | `GitFile(None)`, no failure | — | Forget (the user removed the worktree by hand) |
+| `Ending(Verify)` | `GitFile(None)`, fail(X) | `Failed{X}` | Persist |
 | `Ending(Status)` | `CommandOk{""}` | `Ending(Remove)` | `git-worktree-remove {path}`, Persist |
 | `Ending(Status)` | `CommandOk{"?? STATUS.md\n"}` | `Ending(CleanStatusBoard)` | `git-clean-status-board`, Persist |
 | `Ending(Status)` | `CommandOk{" M src/a.cpp\n?? STATUS.md\n"}` | `Kept{[" M src/a.cpp","?? STATUS.md"]}` | Persist |
-| `Ending(Status)` | `CwdMissing`, no failure | — | Forget (the user removed the worktree by hand) |
+| `Ending(Status)` | `CwdMissing`, no failure | — | Forget |
 | `Ending(Status)` | `CwdMissing`, fail(X) | `Failed{X}` | Persist |
 | `Ending(Status)` | `CommandFailed` | `Kept{["status failed: …"]}` | Persist |
 | `Ending(CleanStatusBoard)` | `CommandOk` | `Ending(Remove)` | `git-worktree-remove {path}`, Persist |
@@ -705,18 +770,28 @@ pub fn state_for(status: AgentStatus) -> RunState;   // Idle|Working → Running
 | `Ending(Remove)` | `CommandOk`, no failure | — | Forget |
 | `Ending(Remove)` | `CommandOk`, fail(X) | `Failed{X}` | Persist |
 | `Ending(Remove)` | `CommandFailed` / `CwdMissing` | `Kept{["remove failed: …"]}` | Persist |
-| `Ending(any)` | `Lost` | `Ending(Status)` | `git-status`, Persist |
-| `Kept` | `RetryRemoval` | `Ending(Status)` | `git-status`, Persist |
+| `Ending(any)` | `Lost` | → Verify | |
+| `Kept` | `RetryRemoval` | → Verify | |
 | `Failed` | `Dismiss` | — | Forget |
 | any state | any input not listed for it | unchanged | none |
 
   The last row is tested explicitly for: `Status` and `PaneGone` while `Preparing` or `Ending`;
   `Dismiss` on `Kept` (a kept worktree can only be removed, never dismissed); `RetryRemoval` on
   `Running`. Entries in `Kept`, and every `why`, pass through `sanitize::display_text(_, 200)` (file
-  names and error text are not ours). Also test: `Run::from_json(run.to_json())` round-trips every
-  state with and without `failure`; `from_json` of garbage is `None`; `step_tag` per state;
-  `occupies_a_slot` per state; `state_for` for all five statuses; every `Command` effect's argument
-  names equal the placeholders of that command's argv, and every value passes its `check_arg`.
+  names and error text are not ours).
+
+  **A property test guards against a run that holds a slot forever:** for every state in which
+  `step_tag()` is `Some`, each of `CommandOk{""}`, `CommandFailed`, `CwdMissing` and `Lost` (and for
+  `Ending(Verify)`, each `GitFile` case) either changes the state or emits an effect. No awaited step
+  may swallow its own result.
+
+  Also test: `git_file_is_intact` — exact match true; trailing newline true; a different prefix
+  (`gitdir: /tmp/evil/.git/worktrees/<name>`) false; a different name false; extra lines false;
+  `Run::from_json(run.to_json())` round-trips every state with and without `failure`, with the two
+  monotonic fields zeroed; `from_json` of garbage, and of a document with `"v": 2`, is `None`;
+  `step_tag` per state; `occupies_a_slot` per state; `state_for` for all five statuses; every `Command`
+  effect's argument names equal the placeholders of that command's argv, and every value passes its
+  `check_arg`.
 
 - [ ] **Step 2: Run** (FAIL). **Step 3: Implement** as one `match (&self.state, input)`.
   **Step 4: Run** (PASS); clippy, fmt.
@@ -738,7 +813,8 @@ pub fn reconcile(runs: &[Run], panes: &[PaneFact]) -> Vec<Decision>;
 
 pub struct WorktreeEntry { pub path: String, pub branch: Option<String> }   // branch without "refs/heads/"
 pub fn worktree_entries(porcelain: &str) -> Vec<WorktreeEntry>;
-pub fn orphans(runs: &[Run], repo: &str, entries: &[WorktreeEntry]) -> Vec<WorktreeEntry>;
+pub fn orphans(runs: &[Run], repo: &str, worktree_root: &str, entries: &[WorktreeEntry]) -> Vec<WorktreeEntry>;
+pub fn main_checkout(entries: &[WorktreeEntry]) -> Option<&str>;   // the first entry: git lists the main worktree first
 ```
 
   `reconcile` never compares paths and never forgets a run (Review Focus 3).
@@ -755,18 +831,21 @@ pub fn orphans(runs: &[Run], repo: &str, entries: &[WorktreeEntry]) -> Vec<Workt
   6. A run in `Preparing(Fetch|WorktreeAdd|Checkout)`, `Ending`, `Kept` or `Failed` → no decision.
   7. **Idempotence:** apply the decisions (`Status` → `advance(Status)`, `PaneGone` →
      `advance(PaneGone)`, `Adopt` → `advance(PaneOpened)`), remove closed panes, reconcile again → empty.
+     Include a pane reporting `Idle` for a run that never reported: one `Status`, then nothing.
   8. `worktree_entries` on the real shape (`worktree <path>\nHEAD <sha>\nbranch refs/heads/<name>\n\n`,
      a `detached` entry, a path containing a space) returns paths and branches in order.
-  9. `orphans` returns exactly the entries whose branch starts with `agent/` and equals no run's
-     `branch` in that repository; the main checkout and the user's own worktrees are never orphans; a
-     run whose stored `worktree` differs textually from the listed path (symlinked root) is **not**
-     reported, because the match is by branch.
+  9. `orphans` returns the entries that no run of that repository accounts for and that are either
+     on an `agent/…` branch or located under `worktree_root` (which catches a detached worktree whose
+     run was lost before its branch existed). An entry is accounted for when a run has its branch, or
+     its path. The first entry (the main checkout) and the user's own worktrees elsewhere are never
+     orphans; a run whose stored `worktree` differs textually from the listed path (symlinked root) is
+     **not** reported when its branch matches.
 - [ ] **Step 2: Run** (FAIL). **Step 3: Implement.** **Step 4: Run** (PASS); clippy, fmt.
 - [ ] **Step 5: Commit.** `git commit -m "orchestrator-core: reconcile runs with panes, and find orphan worktrees"`
 
 ### Task 0.9: `Core::step`
 
-**Files:** Create `src/core.rs`.
+**Files:** Create `src/engine.rs` (`pub mod engine;` — not `core`, which would shadow `core::`).
 
 **Interfaces:**
 - Consumes: everything above.
@@ -774,7 +853,7 @@ pub fn orphans(runs: &[Run], repo: &str, entries: &[WorktreeEntry]) -> Vec<Workt
 
 ```rust
 pub const MAX_IN_FLIGHT: usize = 4;                      // commands running at once; the rest queue
-pub const BOARD_REPOST_MS: u64 = 300_000;  pub const BOARD_MAX_POSTS: u8 = 3;
+pub const BOARD_REPOST_MS: u64 = 300_000;  pub const BOARD_MAX_POSTS: u8 = 3;   // three posts in total
 pub const RECONCILE_EVERY_MS: u64 = 30_000;  pub const MAX_BACKOFF_MS: u64 = 1_800_000;
 
 pub enum StartResult { Started, CwdMissing, Refused(String) }
@@ -787,16 +866,17 @@ pub enum Input {
     Recovered,                                            // the driver has fed every finished result and one Panes
     Wake { mono_ms: u64 },
     ProcFinished { tag: String, outcome: ProcOutcome },
+    FileRead { tag: String, content: Option<String> },    // None: missing, unreadable or not a regular file
     Panes { panes: Vec<PaneFact> },
     PaneOpened { run: String, pane: String }, PaneOpenFailed { run: String, why: String },
     Dispatch { repo: String, item: ItemRef, url: String, task: Task, model: String,
                note: Option<String>, custom_prompt: Option<String>, session: String,
-               mono_ms: u64, wall_ms: u64, utc_offset_minutes: i32 },
-    BoardSeen { run: String },
+               wall_ms: u64, utc_offset_minutes: i32 },
     RetryRemoval { run: String }, Dismiss { run: String }, RefreshNow,
 }
 pub enum Effect {
     Run { tag: String, command: &'static str, args: Vec<(&'static str, String)>, cwd: String },
+    ReadFile { tag: String, path: String },               // always inside the `worktrees` root
     OpenPane { run: String, template: &'static str, args: Vec<(&'static str, String)>, cwd: String, title: String },
     ClosePane { pane: String },
     StoreSet { key: String, value: String }, StoreRemove { key: String },
@@ -819,28 +899,44 @@ impl Core {
 ```
 
   Conventions the tests pin:
-  - **Clocks.** `mono_ms` is monotonic and drives every interval. `wall_ms` appears only in `Dispatch`,
-    for the names. The core has no randomness: the driver supplies the session UUID.
-  - **Tags.** A run's command is tagged `Run::step_tag()`; polls are tagged `poll/<repo>/prs`,
-    `poll/<repo>/issues/<n>`, `poll/<repo>/default-branch`, `poll/<repo>/worktrees`, `poll/auth`,
-    `poll/hooks`. A `ProcFinished` whose tag is unknown or stale is ignored.
-  - **`cwd`** comes from the command's `Cwd` row: `Root` → `worktree_root`, `Repo` → the repository's
-    path, `Worktree` → the run's worktree.
+  - **Clocks.** `mono_ms` is monotonic and drives every interval; the engine's "now" is the latest one
+    it was given (`Started` or `Wake`), and that is what it passes as `RunInput::PaneOpened.mono_ms`.
+    Every difference is a `saturating_sub`. `wall_ms` and `utc_offset_minutes` appear only in
+    `Dispatch`, for the names; the driver supplies them (the prototype from the system clock and
+    `date +%z`; the guest from the host's `host-info`). The engine has no randomness: the driver
+    supplies the session UUID.
+  - **Tags.** A run's command or file read is tagged `Run::step_tag()`; its board check
+    `<id>/board`; polls are tagged `poll/<repo>/prs`, `poll/<repo>/issues/<n>`,
+    `poll/<repo>/default-branch`, `poll/<repo>/worktrees`, `poll/auth`, `poll/hooks`. A result whose
+    tag is unknown or stale is ignored.
+  - **`cwd`** comes from the command's `Cwd` row: `Repo` → the repository's path (for `gh-auth` and
+    `agent-hooks`, which concern no repository in particular, the first configured one), `Worktree` →
+    the run's worktree. Nothing ever runs in `worktree_root` itself, which may not exist yet.
   - **Outcome → `RunInput`:** `start == CwdMissing` → `CwdMissing`; `Refused`, a timeout, a non-zero or
-    missing exit, or `truncated` → `CommandFailed`; otherwise `CommandOk`.
+    missing exit, or `truncated` → `CommandFailed`; otherwise `CommandOk`. For a poll, `CwdMissing`
+    produces its own problem line ("<path> does not exist"), never a "gh" one.
+  - **`RunEffect::ReadGitFile`** → `Effect::ReadFile { path: "<worktree>/.git" }`; the answer becomes
+    `RunInput::GitFile`, judged against `reconcile::main_checkout` of that repository's last listing.
   - **Store.** `run/<id>` holds `Run::to_json()`. `Persist` → `StoreSet`, `Forget` → `StoreRemove`.
+    A stored value `Run::from_json` rejects becomes a problem line naming the key; the key is **kept**
+    (never `StoreRemove`d) so nothing is silently lost.
   - **Summary.** `⬢ agents <slots used>/<max> · ✗<failing PRs> · ●<blocked> waiting`, omitting a part
     whose count is 0.
-  - **Driver contract.** After every `Wake`, the driver pulls panes and feeds `Panes`. After `Started`,
-    it feeds every already-finished result, one `Panes`, then `Recovered`.
+  - **Driver contract.** The driver is single-threaded: it carries out every effect of a step before
+    feeding the next input, and takes a pane snapshot only then. After every `Wake` it pulls panes and
+    feeds `Panes`. After `Started` it feeds every already-finished result, one `Panes`, then
+    `Recovered`.
 
 - [ ] **Step 1: Write failing scenario tests.** A helper
   `fn finish(core, effects, command, outcome) -> Vec<Effect>` finds the `Effect::Run` with that command
-  name and feeds `ProcFinished` with its tag. Scenarios:
-  1. **Start.** `Started` with a one-repo config → `poll/auth` and `poll/hooks` are issued first, plus
-     a `WakeAt`. No list command is issued until `gh-auth` succeeds; then `gh-default-branch`,
-     `gh-prs`, one `gh-issues` per source and `git-worktree-list`. Feeding the `prs-open.json` fixture
-     fills `change_requests("contour")` and emits `Summary` and `Redraw`.
+  name and feeds `ProcFinished` with its tag; `fn read(core, effects, suffix, content)` does the same
+  for an `Effect::ReadFile` whose path ends with `suffix`. "The ending" below means: `ReadFile .git` →
+  intact → `git-status` → … as the 0.7 table says. Scenarios:
+  1. **Start.** `Started` with a one-repo config → `gh-auth` and `agent-hooks` are issued first, both
+     with `cwd` = that repository, plus a `WakeAt`. No list command is issued until `gh-auth`
+     succeeds; then `gh-default-branch`, `gh-prs`, one `gh-issues` per source and `git-worktree-list`.
+     Feeding the `prs-open.json` fixture fills `change_requests("contour")` and emits `Summary` and
+     `Redraw`. With `worktree_root` not existing anywhere, all of this still happens.
   2. **A full PR dispatch:** `Dispatch` → `StoreSet run/…` + `git-fetch {remote: origin}` with
      `cwd == "/home/u/repo/contour"`; then `git-worktree-add` with `path` under
      `/home/u/worktrees/contour/` and `base == "origin/master"`; then `gh-checkout` with
@@ -855,50 +951,67 @@ impl Core {
      `last_refusal() == Some(AgentLimit)`; with `max_agents_per_repo: 1` and two repos, the second
      dispatch in the same repo is `RepoLimit` and one in the other repo proceeds; a second dispatch of
      the same item while the first occupies a slot, or is `Kept`, is `AlreadyRunning`.
-  5. **Clean ending.** `Panes` without the run's pane → `git-status`; empty → `git-worktree-remove`;
-     ok → `StoreRemove run/…`, and the slot is free again.
+  5. **Clean ending.** After the agent reported `Working` then `Done`: `Panes` without the run's pane →
+     `ReadFile …/.git`; intact → `git-status`; empty → `git-worktree-remove`; ok → `StoreRemove run/…`,
+     and the slot is free again.
   6. **Kept, then cleaned by hand.** Status ` M f` → `Kept`, and no remove command is ever emitted. On
-     the next poll the core re-issues `git-status` for the kept run; empty this time → removed.
+     the next poll the engine starts the ending again for the kept run; clean this time → removed.
      `RetryRemoval` does the same without waiting for the poll.
-  7. **Removed by hand.** A `Kept` run whose `git-status` comes back `start: CwdMissing` → forgotten.
-     A `Running` run is never forgotten while its pane is listed, whatever `git-worktree-list` says.
+  7. **Removed by hand.** A `Kept` run whose `.git` read comes back `None` → forgotten. A `Running` run
+     is never forgotten while its pane is listed, whatever `git-worktree-list` says.
   8. **Lost hints.** As scenario 5 but the pane's disappearance is only ever seen in the `Panes` that
      follows a later `Wake`: the ending still proceeds. `WakeAt` never lies further ahead than
      `RECONCILE_EVERY_MS` while any run occupies a slot.
   9. **Cold restart.** A new `Core` given `Started { stored: [("run/…", <Running run JSON>)] }`, then
      `Panes` with that pane `program: Gone` → `ClosePane`, then the ending.
   10. **Guest restart mid-dispatch.** For a stored run in each of `Preparing(Fetch)`,
-      `Preparing(WorktreeAdd)`, `Preparing(Checkout)`, `Ending(Status)`, `Ending(Remove)`:
-      (a) its tag is in `in_flight` → nothing happens until its `ProcFinished` arrives, then it
-      continues normally; (b) its result arrives before `Recovered` → continues normally; (c) neither,
-      at `Recovered` → `Lost` per the 0.7 table (so a possibly-created worktree is always checked).
-      For `Preparing(OpenPane)`: a pane with the run's tag in `Panes` → adopted, `Running`; none at
-      `Recovered` → `Lost` → ending. **No path removes a worktree while a pane with the run's tag is
-      listed.**
+      `Preparing(WorktreeAdd)`, `Preparing(Checkout)`, `Ending(Verify)`, `Ending(Status)`,
+      `Ending(Remove)`: (a) its tag is in `in_flight` → nothing happens until its `ProcFinished`
+      arrives, then it continues normally; (b) its result arrives before `Recovered` → continues
+      normally; (c) neither, at `Recovered` → `Lost` per the 0.7 table (so a possibly-created worktree
+      is always checked). File reads are never in flight across a restart: a stored `Ending(Verify)`
+      is always case (c). For `Preparing(OpenPane)`: a pane with the run's tag in `Panes` → adopted,
+      `Running`; none at `Recovered` → `Lost` → the ending. **No path issues `git-worktree-remove`
+      while a pane with the run's tag is listed.**
   11. **Status board.** A run `Running` for longer than `status_board_after` gets
-      `PostInbox { message: "status-board" }` on the first `Wake` past the threshold; again every
-      `BOARD_REPOST_MS` while still `Running`, at most `BOARD_MAX_POSTS` times; never after
-      `BoardSeen`; never while `Blocked`/`Done`; never when the setting is `0`. The counters survive
-      `to_json`/`from_json`.
+      `PostInbox { message: "status-board" }` on the first `Wake` past the threshold, and from then on
+      each `Wake` issues `ReadFile <worktree>/STATUS.md` (tag `<id>/board`) until one comes back
+      `Some`. It is posted again every `BOARD_REPOST_MS` while still `Running` and unseen, three posts
+      in total; never while `Blocked`/`Done`; never when the setting is `0`. `board_posts` and
+      `board_seen` survive `to_json`/`from_json`.
   12. **Problems and back-off.** `gh-auth` exiting 1 → `problems()` has a `gh` line, no list command
       is issued, and the next poll is `2 × poll_every` away, doubling to at most `MAX_BACKOFF_MS`;
-      a success resets it and `gh-auth` is not run again until a list command fails.
+      a success resets it and `gh-auth` is not run again until a list command fails. `gh-auth` with
+      `start: CwdMissing` → a "does not exist" line, not a `gh` one.
       `agent-hooks` reporting hooks not installed → a second problem line. (Run
       `contour agent setup --dry-run --json` first and record its real output as a fixture in
       `tests/fixtures/contour/`; write the parser against that fixture.)
   13. **Bad lists.** `gh-prs` with `truncated: true`, with non-JSON, or with a non-zero exit → the
       previous list is kept, a problem line is added, nothing panics. A list `at_limit` or with
-      `skipped > 0` → shown, plus a problem line saying it is incomplete.
+      `skipped > 0` → shown, plus a problem line saying it is incomplete and why.
   14. **Concurrency.** `Started` with three repos never has more than `MAX_IN_FLIGHT` commands
       unanswered; the rest are issued as results arrive; a run's commands are queued ahead of polls.
-  15. **Orphans.** A `git-worktree-list` result naming an `agent/…` branch no run owns →
-      `orphans("contour")` has it and `problems()` mentions it.
+  15. **Orphans.** A `git-worktree-list` result naming an `agent/…` branch no run owns, or a detached
+      worktree under `worktree_root` no run owns → `orphans("contour")` has it and `problems()`
+      mentions it.
   16. **Every effect is well-formed:** a helper asserts, for every `Effect::Run` and `Effect::OpenPane`
-      produced across all scenarios, that the command or template is declared, that the argument names
-      equal its placeholders, that every value passes `check_arg` for its kind, and that `cwd` passes
-      `check_arg(Path, _)`.
+      produced across all scenarios, that the command or pane template is declared in
+      `commands::COMMANDS` / `commands::PANES`, that the argument names equal its placeholders, that
+      every value passes `check_arg` for its kind, and that `cwd` passes `check_arg(Path, _)`; and for
+      every `Effect::ReadFile`, that `path` lies under `worktree_root`.
   17. **A bad configuration** (`Started` with JSON that fails `Config::parse`) → one problem line, no
       commands, and every `Dispatch` is refused with `NotConfigured`.
+  18. **An agent that never started.** `PaneOpened`, then `Panes` without the pane and no status ever
+      reported → the ending; once the worktree is removed the run is `Failed{OpenPane}` with "the agent
+      exited before reporting", not forgotten. `Dismiss` forgets it.
+  19. **A tampered worktree.** At the ending, `.git` read as `gitdir: /tmp/evil/.git/worktrees/x` →
+      `Kept`, and **no `Effect::Run` with `cwd` = that worktree is ever issued** afterwards except
+      through a later `.git` read that is intact. Before any `git-worktree-list` answered
+      (`main_checkout` unknown) the result is also `Kept`.
+  20. **A stored run that cannot be read** (`("run/x", "garbage")`, or `"v": 2`) → a problem line
+      naming `run/x`; no `StoreRemove`; the other runs load.
+  21. **A reboot.** `Started { mono_ms: 5 }` with a stored `Running` run → no panic; the status-board
+      threshold counts from this `Started`, not from a stale timestamp.
 - [ ] **Step 2: Run** (FAIL). **Step 3: Implement.** **Step 4: Run** (PASS); clippy, fmt.
 - [ ] **Step 5: Commit.** `git commit -m "orchestrator-core: step inputs into effects"`
 
@@ -908,20 +1021,25 @@ impl Core {
 modify `extensions/Cargo.toml` (member `"orchestrator/proto"`).
 
 **Interfaces:**
-- Consumes: `orchestrator_core::core::{Core, Input, Effect}`, `commands::{command, check_arg, arg_kind}`.
+- Consumes: `orchestrator_core::engine::{Core, Input, Effect}`,
+  `commands::{command, pane, check_arg, arg_kind, COMMAND_ENV}`.
 - Produces: a native binary, run by hand with
   `cargo run --manifest-path extensions/Cargo.toml -p orchestrator-proto -- <config.json>`. It is not
   built by CMake, not installed, and not part of any package.
 
-  The driver is deliberately dumb — it is the model for the wasm guest's effect loop:
+  The driver is deliberately dumb — it is the model for the wasm guest's effect loop — and
+  **single-threaded**: one loop that waits up to a second for a line on stdin or a child to exit,
+  carries out every effect of a step before feeding the next input, and only then takes a pane
+  snapshot. No background thread feeds inputs.
   - `Effect::Run` → check every argument with `check_arg`, then `std::process::Command` with the
-    declared argv, placeholders substituted as whole arguments, `current_dir(cwd)`, the environment
-    `GIT_TERMINAL_PROMPT=0` and `GIT_ALLOW_PROTOCOL=https:ssh:git` added, stdout and stderr captured
-    (cap 1 MiB each, set `truncated`), a timeout thread that kills on expiry. A `cwd` that does not
-    exist → `StartResult::CwdMissing` without spawning. The result is fed back as `ProcFinished`.
+    declared argv, placeholders substituted as whole arguments, `current_dir(cwd)`, `COMMAND_ENV`
+    added, stdout and stderr captured (cap 1 MiB each, set `truncated`), killed at its timeout.
+    A `cwd` that does not exist → `StartResult::CwdMissing` without spawning. Children run
+    concurrently; each result is fed as `ProcFinished` when the loop sees the exit.
+  - `Effect::ReadFile` → refuse a path outside `worktree_root`; read at most 64 KiB if it is a regular
+    file (`symlink_metadata`, so neither a symlink nor a FIFO is opened); feed `FileRead`.
   - `Effect::OpenPane` → `contour api call tab.create` with `cwd`, `label: <title>`, the focus value
-    that keeps focus where it is, and
-    `"command": ["env","GIT_CONFIG_COUNT=1","GIT_CONFIG_KEY_0=push.default","GIT_CONFIG_VALUE_0=upstream","claude","--model",<model>,"--session-id",<session>,<prompt>]`;
+    that keeps focus where it is, and `"command": ["env", <the pane's env as KEY=value…>, <its argv>]`;
     the reply's `pane` is fed back as `PaneOpened`. (`env` stands in for the host's `pane-env`, which
     does not exist yet. Run `contour api describe tab.create` first for the exact request and the
     spelling of the focus values.)
@@ -930,23 +1048,25 @@ modify `extensions/Cargo.toml` (member `"orchestrator/proto"`).
     opened (it keeps its own pane → tag map in the store directory); `program` is `Alive` while the
     pane is listed. A cold restart is out of the prototype's reach — say so in `--help`.
   - Store → one file per key under `$XDG_STATE_HOME/contour/orchestrator-proto/`.
-  - `PostInbox` → printed as "would post"; `BoardSeen` when `<worktree>/STATUS.md` exists;
-    `Summary`/`Redraw` → reprint a plain list.
+  - `PostInbox` → printed as "would post"; `Summary`/`Redraw` → reprint a plain list.
   - A line-mode prompt: `list`, `dispatch <index> <fix-ci|review|issue> [model] [note…]`, `runs`,
-    `retry <run>`, `dismiss <run>`, `refresh`, `quit`. A background thread sends `Wake` every second
-    and `Panes` after it. `Started` is followed by one `Panes` and `Recovered` (`in_flight` is empty:
-    the prototype's processes die with it).
-  - Session UUIDs from `/proc/sys/kernel/random/uuid`, falling back to `uuidgen`.
+    `retry <run>`, `dismiss <run>`, `refresh`, `quit`. Each loop turn feeds `Wake` then `Panes`.
+    `Started` is followed by one `Panes` and `Recovered` (`in_flight` is empty: the prototype's
+    processes die with it).
+  - Session UUIDs from `/proc/sys/kernel/random/uuid`, falling back to `uuidgen`; the UTC offset from
+    `date +%z`.
 
-- [ ] **Step 1: Write the driver** (≈300 lines; no tests of its own — it has no logic the core does not
+- [ ] **Step 1: Write the driver** (≈350 lines; no tests of its own — it has no logic the core does not
   own, and anything that turns out to need a test is moved into the core).
 - [ ] **Step 2: Check it does not disturb the wasm build:** the bundled-extensions build command (on a
   tree that builds guests). Expected: succeeds; `orchestrator-proto` is not compiled (CMake builds per
   package with `-p`).
-- [ ] **Step 3: Try it against a real daemon** with a config naming one repository. Expected: `list`
-  shows the user's open PRs; `dispatch` on a PR with failing CI opens a tab running `claude` in a new
-  worktree under `worktree_root` without stealing focus; closing that tab leads to `runs` no longer
-  showing it, and `git worktree list` no longer naming it.
+- [ ] **Step 3: Try it against a real daemon** with a config naming one repository and a
+  `worktree_root` that does not exist yet. Expected: `list` shows the user's open PRs; `dispatch` on a
+  PR with failing CI opens a tab running `claude` in a new worktree under `worktree_root` without
+  stealing focus; closing that tab leads to `runs` no longer showing it, and `git worktree list` no
+  longer naming it. Dispatch an issue too and check, in its tab, that `git push --dry-run` names a new
+  remote branch `agent/…` and **not** the default branch.
 - [ ] **Step 4: Commit.** `git commit -m "extensions: a prototype driver for the orchestrator core"`
 
 ### Task 0.11: Spikes
@@ -1013,7 +1133,8 @@ first, and have the result reviewed before coding.
   `docs/extensions.md`.
 - **Produces:** `SupportedVersions = {1, 2}`; `Manifest` gains
   `enum class ManifestPlacement : uint8_t { StatusLine, Daemon }`, `std::vector<DeclaredRoot> roots`
-  (label + config pointer), `std::vector<DeclaredArgument> arguments` (name +
+  (label + config pointer), the readable roots, a root label on every command and pane, a root on
+  every `path` argument, `std::vector<DeclaredArgument> arguments` (name +
   `enum class ArgumentKind : uint8_t { Number, Uuid, Name, Ref, Path, Text }`), command environment,
   `std::vector<DeclaredPane> panes` (argv template + environment),
   `std::vector<DeclaredInboxMessage> inbox`, `std::vector<std::string> servedSchemes`,
@@ -1023,7 +1144,8 @@ first, and have the result reviewed before coding.
   `check_arg`.
 - **Tests (table):** every §5.1 line kind parses; each is rejected under `version = 1`; a version-1
   manifest parses byte-for-byte as before and keeps its digest; duplicates, a placeholder with no
-  `arg` line, a `pane-env` for an undeclared pane, a `root` whose pointer is malformed, an `inbox`
+  `arg` line, a version-2 command or pane without `@<root>` or naming an undeclared root, `read` or
+  `path:` naming an undeclared root, a `pane-env` for an undeclared pane, a `root` whose pointer is malformed, an `inbox`
   text with a control character, an `action` id outside `[a-z0-9-]`, a `command-env` key outside
   `[A-Z0-9_]`, and `placement daemon` together with a `control` line are each `ManifestInvalid`.
   **`argumentAccepts` runs the same rows as `argument_kinds_refuse_what_they_must` in task 0.3** — copy
@@ -1041,14 +1163,25 @@ first, and have the result reviewed before coding.
   world gets **its own `Engine`** built with its own table and `ExtensionLimits`. `DaemonInstance` is
   the daemon-world sibling of `Instance` with its own handler table (the status-line one is at
   `Instance.cpp:229`).
+- **The invariant this breaks, and the three steps that restore it (C22).** WAMR runtimes are
+  reference-counted and do coexist, but the native registry is process-wide, and today's code is only
+  correct because every live runtime registers the same functions
+  (`wasm/WasmRuntime.hpp:48-56,333-334`, `wamr/WamrRuntime.hpp:103-105`); the trampoline's attachment
+  is just a table index (`WamrInstance.cpp:304-314`), so a module linked against the other world's
+  registration would call the wrong handler. Therefore: (1) the daemon world's imports live under
+  their own module name, `terminal-extensions:daemon/host@0.1.0`, which no status-line table
+  registers; (2) the import check (`isProvided`, `CompiledExtension.cpp:74-80`) stops accepting a
+  whole import module by name and becomes an exact per-world `(module, name)` table, so a module that
+  imports anything from the other world fails to load; (3) the `createRuntime` contract comment is
+  rewritten to say what now holds.
 - **Tests:** the existing suite unchanged; a daemon test guest loads on the daemon engine; the two
-  mismatches are refused; a daemon module is refused by the status-line engine and the reverse; the WIT
-  file matches the codec rows (model: the existing `Wit_test.cpp`); the backend contract suite passes
-  for a second runtime in one process.
+  export mismatches are refused; a daemon module is refused by the status-line engine and the reverse;
+  a module importing one function from each world is refused by both; with both engines alive, a call
+  from each world reaches its own handler (the regression test for the cross-link); the WIT file
+  matches the codec rows (model: the existing `Wit_test.cpp`); the backend contract suite passes for a
+  second runtime in one process.
 - **Watch:** the `static_assert(StatuslineHostFunctions.size() == 4)`; the stale "five" in
-  `WasmRuntime.hpp:120` (the code says 17) — fix the comment while there; whether two WAMR runtimes can
-  coexist in one process (if not, this task instead makes the one table a union and the limits
-  per-instance — decide in 1.0 by reading `wamr/WamrBackend.cpp`).
+  `WasmRuntime.hpp:120` (the code says 17) — fix the comment while there.
 
 ### Task 1.3: `DaemonExtensionRunner`
 
@@ -1092,17 +1225,20 @@ class IProcessRunner {
 - **Produces, policy layer (`vtextension`):** `DeclaredProcesses` implements `IProcessService`
   (`start(command, args, cwd, tag)`, `list()`, `take(handle, stream, offset)`) over an injected
   `IProcessRunner`: looks the command up, checks consent through `IGrantStore`, checks every argument
-  with `argumentAccepts`, resolves the working directory and refuses one outside every root (after
-  normalisation **and** symlink resolution, through an injected filesystem interface), applies the
-  class timeout from a constructor-supplied `ProcessTimeouts { short, long }`, adds the manifest's
+  with `argumentAccepts` (a `path` argument against *its* root), resolves the working directory and
+  refuses one outside **the command's own root** (after normalisation and symlink resolution, through
+  an injected filesystem interface that hands back a directory handle — the child is started from
+  that handle, `open(O_DIRECTORY)` + `fchdir`, not by re-resolving the name), applies the class
+  timeout from a constructor-supplied `ProcessTimeouts { shortClass, longClass }`, adds the manifest's
   command environment, enforces at most 8 running and 32 untaken results, drops a result once its last
   chunk is taken, and posts the `Procs` hint.
   `enum class ProcessError : uint8_t { NotDeclared, Pending, Denied, ArgumentRejected, CwdOutsideRoots, CwdMissing, TooMany, Unsupported }`.
 - **Tests:** raw — exit codes 0 and 3; stderr captured; a 2 MiB writer is truncated at the cap and
   reaped; a sleeper is killed when the manual clock passes the timeout; a child that ignores SIGTERM is
   killed after the grace period; destruction with a child running kills and reaps it. Policy (against a
-  fake runner) — an argument failing its kind, a `cwd` outside every root, a `cwd` that is a symlink
-  leaving a root, an undeclared command, a ninth concurrent start; paging returns contiguous 64 KiB
+  fake runner) — an argument failing its kind, a `cwd` outside every root, a `cwd` inside a root that
+  is not the command's (a worktree command aimed at a repository), a `path` argument inside the wrong
+  root, a `cwd` that is a symlink leaving a root, an undeclared command, a ninth concurrent start; paging returns contiguous 64 KiB
   chunks; tags come back in `list()`.
 
 ### Task 1.5: The store
@@ -1161,9 +1297,10 @@ class IProcessRunner {
   PDU: windows mirror the row the daemon draws. A summary change marks each session's status row dirty,
   rate-limited to the existing frame interval.
 - **Tests:** the item parses and renders the provider's text; renders nothing when the extension is
-  absent; a daemon whose only extension is daemon-scoped still draws the indicator row (the mirror
-  shows the host's row only "when the host has status-line extensions" — make that condition include
-  this case, and pin it); `vtbackend`'s layering holds (the provider is an interface in `screen/`).
+  absent; a daemon whose only extension is daemon-scoped still draws the indicator row — the condition
+  is `Terminal::indicatorStatusLineDependsOnHostState` (`Terminal.cpp:868-878`, used at
+  `NativeSession.cpp:1508`), which is false while `_extensions` is null, so it needs a branch for the
+  provider, and the item must be in the daemon's own template; pin both; `vtbackend`'s layering holds (the provider is an interface in `screen/`).
 - **Watch:** in a GUI-hosted (non-daemon) session the item resolves to nothing; say so in the docs.
 
 ### Task 1.10: The guest
@@ -1174,8 +1311,8 @@ class IProcessRunner {
   running tags from `procs()`, then every finished result, one `Panes`, and `Recovered`; `update` maps
   hints to pulls and inputs; effects map to host calls exactly as the prototype maps them to
   processes. Timers are a guest-side list over the single `wake`.
-- **Tests:** a Rust test asserts the declared manifest's `arg` and `command` lines equal
-  `commands::manifest_lines()`; `Bundled_test.cpp` loads the real module against fakes, answers
+- **Tests:** a Rust test asserts the declared manifest's `arg`, `command-env`, `command`, `pane` and
+  `pane-env` lines equal `commands::manifest_lines()`; `Bundled_test.cpp` loads the real module against fakes, answers
   `gh-auth` and `gh-prs` with the phase-0 fixtures and expects the summary; a fault injected after
   `proc-start` proves the restarted guest picks the result up by tag.
 
@@ -1217,7 +1354,7 @@ phase-2 code. Otherwise expand tasks 2.1–2.7 to step level.
 - **Produces:** a way for `SessionSpawnRequest` to ask for a served scheme; the session's device is a
   host-owned `ChannelPty`; input from clients is buffered per tab (64 KiB; overflow sets a flag and
   drops) and posts the `Tabs` hint; `tab-open(scheme, origin)`, `tab-close`, `tabs()`, `tab-read`,
-  `tab-write` (≤ 64 KiB per call); `servedBy` on the session; **restricted terminal settings** for a
+  `tab-write` (≤ 64 KiB per call); `tab-reveal(tab, origin)` is declared here and wired in 3.4; `servedBy` on the session; **restricted terminal settings** for a
   served session: no OSC 52 clipboard, no notifications, no hyperlinks, host-fixed title.
 - **Tests:** bytes written by the guest reach the session's terminal; client input reaches `tab-read`
   in order; resize appears in `tabs()`; closing the tab removes it; `tab-open` places the tab in the
@@ -1282,8 +1419,8 @@ phase-2 code. Otherwise expand tasks 2.1–2.7 to step level.
 
 ### Task 2.7: Opening the tab
 
-- The `open` action calls `tab-open` with the action's origin, or `pane-reveal` if the tab exists
-  (reveal arrives in 3.4; until then a second invocation is a no-op). `vthost_test` end to end with the
+- The `open` action calls `tab-open` with the action's origin, or `tab-reveal` if the tab exists
+  (reveal is wired in 3.4; until then a second invocation is a no-op). `vthost_test` end to end with the
   real guest.
 
 ### Phase 2 gate
@@ -1307,9 +1444,10 @@ Read `src/vthost/RerunPolicy.hpp:79-104` and how the handover carries a session'
 - **Files:** new `src/vtextension/IPaneService.hpp`; new `src/vthost/{PaneOwnership,OwnedPanes}.{hpp,cpp}`
   (`vthost`-owned interface plus implementation); the adapter in `DaemonExtensions`;
   `src/vthost/RerunPolicy.*`; `src/vthost/handover/*`; tests.
-- **Produces:** `pane-open(template, args, cwd, title, tag)` → `SessionHost::createTab` with a
+- **Produces:** `pane-open(template, args, cwd, title, tag, near)` → `SessionHost::createTab` with a
   `commandOverride` built from the declared template, its arguments checked by kind, its declared
-  environment, a `cwd` inside a root, **without taking focus**; the tab is labelled with the sanitised
+  environment, a `cwd` inside the template's root, in the workspace of the served tab `near`,
+  **without taking focus**; the tab is labelled with the sanitised
   title. An ownership registry `pane UUID → {extension, tag}` persisted beside the store, pruned when a
   pane closes, carried across the handover. `panes()` returns owned panes with tag, the integration
   program status and
@@ -1323,6 +1461,18 @@ Read `src/vthost/RerunPolicy.hpp:79-104` and how the handover carries a session'
   restart reports `Gone` and does not re-type the program even when `rerun_programs` lists it; the
   registry file is rewritten atomically.
 
+### Task 3.1b: `file-read`
+
+- **Files:** new `src/vtextension/IFileReader.hpp` and implementation, the import in `DaemonWorld.hpp`,
+  tests. Needed here, not in phase 4: the removal checks read the worktree's `.git` file (§6.3).
+- **Produces:** `file-read(root, path)` — only for a root the manifest declares readable; opened
+  beneath the root with no symlink followed out of it (`openat2(RESOLVE_BENEATH)` on Linux, a
+  component-wise `O_NOFOLLOW` walk elsewhere), with `O_NONBLOCK` and an `fstat` check that it is a
+  regular file, ≤ 64 KiB. The filesystem is reached through an injected interface.
+- **Tests:** `..`, an absolute path, a symlinked file, a symlinked directory component, a FIFO (must
+  return at once, not block the daemon) and a root not declared readable are refused; a regular file
+  is read; an oversized file is cut at the cap with a flag.
+
 ### Task 3.2: Pane hints
 
 - **Produces:** the `Panes` hint when an owned pane closes or its `ProgramStatusChangedSignal` fires
@@ -1331,10 +1481,10 @@ Read `src/vthost/RerunPolicy.hpp:79-104` and how the handover carries a session'
 
 ### Task 3.3: The dispatch form and run views
 
-- **Files:** `view.rs`, `core.rs`, the guest.
+- **Files:** `view.rs`, `engine.rs`, the guest.
 - **Produces:** the form of screen 3 (task, model, note or custom prompt, and the exact prompt,
-  checkout and command it will run), the agents list, the kept-worktree and orphan resolution views,
-  the failed-run view with dismiss; session UUIDs from WASI `random_get`.
+  checkout and command it will run), the agents list, the kept-worktree and orphan views (path, entries,
+  "try removal again" — no shell action, §6.3), the failed-run view with dismiss; session UUIDs from WASI `random_get`.
 - **Tests:** goldens; the form refuses at the agent limits and shows why; `enter` produces
   `Input::Dispatch` with the values shown.
 
@@ -1342,16 +1492,17 @@ Read `src/vthost/RerunPolicy.hpp:79-104` and how the handover carries a session'
 
 - **Files:** `proto/*` (PDU `RevealPane`, tag 62, server→client), `NativeSession` (which connection
   sent the input that led to the request — the `origin`), `NativeController`/window controller,
-  `pane-reveal(pane, origin)`.
-- **Tests:** the reveal reaches only the origin connection; revealing a foreign pane is refused; the
-  GUI activates the tab.
+  `pane-reveal(pane, origin)` for owned panes and `tab-reveal(tab, origin)` for served tabs.
+- **Tests:** the reveal reaches only the origin connection; revealing a foreign pane or a tab the
+  extension does not serve is refused; the GUI activates the tab.
 
 ### Task 3.5: End to end
 
 - A `vthost_test` with the real guest, a fake `IProcessRunner` scripted as `gh`/`git`, and a real
   `SessionHost`: dispatch → pane with the right argv, environment and directory → status changes →
   pane closed → removal. One more each for: the cold-restart path; a guest fault between
-  `git worktree add` and `pane-open` (the worktree is checked, not leaked, and no agent is orphaned).
+  `git worktree add` and `pane-open` (the worktree is checked, not leaked, and no agent is orphaned);
+  a template program that exits at once (the run shows as failed, not as vanished).
 
 ### Phase 3 gate
 
@@ -1367,40 +1518,41 @@ user's action; `max_agents` holds under two quick dispatches; all suites and tsa
 ### Task 4.1: The inbox
 
 - **Files:** new `src/vtextension/IInbox.hpp`; `src/vthost/` (a `vthost`-owned queue per owned pane,
-  ≤ 8 messages, plus adapter); `src/vtcontrol/{Api.hpp,Catalog.hpp}` — `ReportStatusRequest`
-  (`Api.hpp:648`) gains `event`, and `pane.reportStatus` (`Catalog.hpp:372`) changes from `EmptyReply`
-  to a new `ReportStatusReply { std::optional<std::string> inbox; }`; regenerate
-  `wit/control/world.wit` with `contour api wit`; `Wit_test`; `Catalog_test`;
-  `src/vthost/control/ControlService.cpp:810-838`;
-  `src/contour/cli/{AgentReport,AgentIntegrations}.{hpp,cpp}`.
-- **Produces:** `inbox-post(pane, name)` for owned panes and declared names only. The agent report
-  forwards the hook's event name (`StatusReport` drops `hook_event_name` today, and `PostToolUse`,
-  `PostToolUseFailure` and `UserPromptSubmit` all map through one function —
-  `AgentIntegrations.cpp:186-191`). The daemon hands out the oldest message only when
-  `event == "PostToolUse"`. `runAgentReport` gains an injected output sink and, per integration, a row
-  saying how an inbox message is printed: Claude Code →
+  ≤ 8 messages, plus adapter); `src/vtcontrol/{Api.hpp,Catalog.hpp}` — a **new** method
+  `pane.takeInbox`, `Method<TakeInboxRequest, TakeInboxReply>`, `Exposure::SocketOnly`, with
+  `TakeInboxRequest { pane, event }` and `TakeInboxReply { std::optional<std::string> message; }`;
+  `Catalog_test`; `src/vthost/control/ControlService.{hpp,cpp}`;
+  `src/contour/cli/{AgentReport,AgentIntegrations}.{hpp,cpp}`; `docs/control-api.md`.
+- **`pane.reportStatus` is not modified** (C20): its reply is a WIT import of shipped extensions, and a
+  new request field would make a daemon that has not restarted yet reject every report — silently,
+  since `runAgentReport` swallows errors (`AgentReport.cpp:198-199`). Being socket-only, the new verb
+  does not enter `wit/control/world.wit`; assert that with `Wit_test`.
+- **Produces:** `inbox-post(pane, name)` for owned panes and declared names only. `runAgentReport`,
+  after `pane.reportStatus` and within the same 2 s budget, calls `pane.takeInbox` when the hook's
+  event is `PostToolUse` (the event name must be carried out of `AgentIntegration::map`, which today
+  funnels `PostToolUse`, `PostToolUseFailure` and `UserPromptSubmit` through one function —
+  `AgentIntegrations.cpp:186-191`). It gains an injected output sink and, per integration, a row saying
+  how a message is printed: Claude Code →
   `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":<text>}}`; Codex → nothing.
   It still exits 0 on every path.
 - **Tests:** posting to a foreign pane or an undeclared name is refused; the message is delivered once;
-  a non-`PostToolUse` report does not consume it; `agent report` writes nothing to the sink when the
-  reply has no inbox, valid JSON (text escaped) when it has, and nothing for Codex; an older client
-  that sends no `event` and ignores the reply still works (append-only compatibility).
+  a request with another event does not consume it; `agent report` writes nothing to the sink when
+  there is no message, valid JSON (text escaped) when there is, and nothing for Codex; against a daemon
+  that answers "unknown method" the status report still lands and the command exits 0.
 - **Accepted, and documented:** delivery is at most once (the core re-posts, §6.4); the reporting pane
   is self-declared, so a local process can take another pane's message (§7).
 
-### Task 4.2: `file-read` and the status-board view
+### Task 4.2: The status-board view
 
-- **Produces:** `file-read(root, path)` — opened beneath the root with no symlink followed out of it
-  (`openat2(RESOLVE_BENEATH)` on Linux, a component-wise `O_NOFOLLOW` walk elsewhere), ≤ 64 KiB; the
-  guest feeds `BoardSeen` when `STATUS.md` reads; the view of screen 4, sanitised.
-- **Tests:** `..`, an absolute path, a symlinked file and a symlinked directory component are refused;
-  a regular file is read; golden screen.
+- **Produces:** the view of screen 4, sanitised, fed by the `STATUS.md` reads the engine already
+  issues. (`file-read` itself is built in 3.1b, because cleanup needs it.)
+- **Tests:** golden screen; a board containing escape sequences appears inert.
 
 ### Task 4.3: `contour agent transcript`
 
 - **Files:** `src/contour/cli/AgentTranscript.{hpp,cpp}`, tests, fixtures recorded from real sessions
   with the Claude Code version in a `VERSION` file beside them; the command row `agent-transcript`
-  (`contour agent transcript --session {session} --page {page} --json`, `Cwd::Root`).
+  (`contour agent transcript --session {session} --page {page} --json`, `Cwd::Repo`).
 - **Produces:** `contour agent transcript --session <uuid> --page <n> [--json]`; finds
   `<session>.jsonl` under `$CLAUDE_CONFIG_DIR` or `~/.claude` in `projects/*/`; emits user and
   assistant text and one line per tool call, sanitised, 200 entries per page, with a count of entries
@@ -1432,7 +1584,7 @@ all exist and pass; the change summary reports performance, risk and coverage.
 | --- | --- |
 | §2 D1–D6 | 0.1 (D1, D6), 2.4 (D2), 4.1 (D3, D4), phase order (D5) |
 | §5.1 manifest v2, typed arguments, roots | 0.3, 1.1, 1.4, 1.7 |
-| §5.2 daemon world | 1.2, 1.4–1.6, 2.1, 2.4, 3.1, 3.4, 4.1, 4.2 |
+| §5.2 daemon world | 1.2, 1.4–1.6, 2.1, 2.4, 3.1, 3.1b, 3.4, 4.1 |
 | §5.3 engine, runner, limits, lifecycle, consent, where interfaces live | 1.2, 1.3, 1.7, 1.8, phase-1 gate; Global Constraints |
 | §5.4 panes, ownership, liveness, inbox | 3.1, 3.2, 4.1 |
 | §5.5 served tabs and their restricted settings | 2.0–2.3, 2.5 |
@@ -1443,7 +1595,7 @@ all exist and pass; the change summary reports performance, risk and coverage.
 | §6.3 lifecycle, removal, orphans, restarts | 0.7, 0.8, 0.9 (5–10, 15), 3.5 |
 | §6.4 boards and transcripts | 0.9 (11), 4.1–4.4 |
 | §6.5 configuration | 0.5, 1.7 |
-| §7 safety | Review Focus; 0.2, 0.3, 0.4, 0.6, 1.4, 2.1, 2.2, 3.1, 4.1, 4.2 |
+| §7 safety | Review Focus; 0.2, 0.3, 0.4, 0.6, 0.7 and 0.9 (the `.git` check), 1.1, 1.2, 1.4, 2.1, 2.2, 3.1, 3.1b, 4.1 |
 | §9 risks | R1: 2.0 · R2: phase-1 gate · R3: 0.11 · R4: 4.3 · R5: 4.5 · R6: 0.9 (12) |
 | §10 testing | each task; `bench-headless` at the phase-1 gate |
 
@@ -1452,6 +1604,9 @@ Known limits of this plan, stated rather than hidden:
 - Phases 1–4 are not at step level (see "How this plan is layered").
 - Phase 0's Rust is specified by interfaces and test tables, not by implementation; nothing in it has
   been compiled except the task-0.1 scaffold.
-- Task 1.2 assumes two WAMR runtimes can coexist in one process; 1.0 must confirm it.
 - The GitLab and Jira command lines have never been run.
+- `gh pr checkout --branch` inside a detached linked worktree has not been run (it needs a real PR);
+  spike C is where it is first exercised. If it fails, steps 3–4 of §6.2 change before phase 3.
+- This plan was reviewed twice by an independent pass; the fixes from the second pass have had only
+  the author's own consistency check.
 - The wasm guest build could not be exercised on the machine this plan was written on (Prerequisites).

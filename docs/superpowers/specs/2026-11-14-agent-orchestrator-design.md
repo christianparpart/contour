@@ -2,8 +2,8 @@
 
 Date: 2026-11-14
 Status: revision 3, awaiting approval. Supersedes revision 2 (the artifact of 2026-11-13).
-Reviewed: audited against the code, dry-run for phase 0, and reviewed independently; §12 lists what
-that review changed.
+Reviewed: audited against the code, dry-run for phase 0, and reviewed independently twice; §12 lists
+what each review changed.
 Plan: `docs/superpowers/plans/2026-11-14-agent-orchestrator.md`
 
 ## Intent
@@ -53,9 +53,10 @@ Each is a judgment call that departs from revision 2. The plan assumes the recom
   `claude --settings <inbox hook>` and added a `contour agent inbox` verb. That lets the *extension*
   choose Claude's settings — including permission mode and hooks that run commands — which defeats the
   "no permission-skipping" rule. Instead: `contour agent setup` already installs a `PostToolUse` hook
-  running `contour agent report`; the daemon's reply to `pane.reportStatus` gains an optional inbox
-  message, and `agent report` prints it as `PostToolUse` `additionalContext`. No `--settings`, no new
-  verb, no second process per tool call, and no dependence on undocumented hook-merging behaviour.
+  running `contour agent report`. After reporting status, that command asks the daemon — through one
+  new control verb — whether the pane has an inbox message, and prints it as `PostToolUse`
+  `additionalContext`. No `--settings`, no new hook, no second process per tool call, and no dependence
+  on undocumented hook-merging behaviour.
 - **D4 — Inbox messages are declared in the manifest**, like commands. The extension posts a message by
   *name*; it cannot put free text into an agent's context through the inbox. The user sees the texts in
   the grant dialog.
@@ -92,8 +93,9 @@ Each is a judgment call that departs from revision 2. The plan assumes the recom
 | C17 | `contour agent transcript` reads a stable log | Claude Code documents the session JSONL as internal and changing between versions. | The reader is tolerant, counts what it skipped, and is tested against fixtures tagged with the Claude Code version that wrote them. |
 | C18 | Config nests under `daemon.extensions` | Extensions are configured per profile; `config` is a flat string map. `DaemonSettings` has no `extensions`. | `daemon.extensions` is new; its `config` subtree is handed to the guest as JSON. |
 | C19 | `contour extension grant` exists | No `contour extension …` verb exists. Grants are revoked by editing a file. | `contour extension list|grant|revoke` are new. |
-| C20 | The pane's reply to a status report can carry an inbox message (D3) | `pane.reportStatus` is `Method<ReportStatusRequest, EmptyReply>`; the request does not carry the hook's event name; `runAgentReport` discards the reply and has no output sink. | A reply type, an `event` request field, and an injected output sink are new (§5.4). |
-| C21 | A cold restart leaves a plain shell in an agent's pane | True unless the user lists `claude` in `daemon.restore.rerun_programs`, in which case the daemon re-types it. No daemon "boot epoch" exists. | Liveness comes from the session's spawned program, and owned panes are exempt from re-run (§5.4). |
+| C20 | The reply to a status report can carry an inbox message (D3) | `pane.reportStatus` is `Method<ReportStatusRequest, EmptyReply>` and is also a WIT import of shipped extensions, so its reply cannot change. Control JSON is read with unknown keys as errors, so a new request field would make an older daemon reject every report — silently, because `runAgentReport` swallows errors. `runAgentReport` has no output sink. | `pane.reportStatus` is left untouched. A new socket-only verb, `pane.takeInbox`, and an injected output sink (§5.4). |
+| C21 | A cold restart leaves a plain shell in an agent's pane | True unless the user lists `claude` in `daemon.restore.rerun_programs`, in which case the daemon re-types it. No daemon "boot epoch" exists. When the spawned program exits, the session ends and the pane closes — so a `claude` that fails to start looks exactly like one that finished. | Liveness comes from the session's spawned program; owned panes are exempt from re-run (§5.4); a run that ends before its agent ever reported is shown as failed (§6.3). |
+| C22 | A second world is a second host-function table | WAMR's native registry is process-wide, and the code relies on every live runtime providing each host function alike; the world check accepts a whole import module by name. | The daemon world uses its own import-module name, and the world check becomes an exact per-world table (§5.2). |
 
 Facts about Claude Code that are **documented** and relied on: `--session-id <uuid>`, `--model <alias>`
 (`opus`, `sonnet`, `haiku`, `fable`), a positional initial prompt, `PostToolUse` `additionalContext`,
@@ -149,25 +151,36 @@ version = 2
 placement daemon
 root worktrees = config:worktree_root
 root repos = config:repos/*/path
+read worktrees
 arg remote = name
-arg path = path
+arg path = path:worktrees
 arg prompt = text
 command-env GIT_TERMINAL_PROMPT = 0
-command-env GIT_ALLOW_PROTOCOL = https:ssh:git
-command gh-prs long = gh pr list --author @me --state open --limit 100 --json number,title,…
-command git-fetch long = git fetch --quiet {remote}
-pane agent = claude --model {model} --session-id {session} {prompt}
-pane-env agent GIT_CONFIG_COUNT = 1
+command-env GIT_ALLOW_PROTOCOL = https:ssh:git:file
+command-env GIT_CONFIG_COUNT = 2
+command-env GIT_CONFIG_KEY_0 = core.fsmonitor
+command-env GIT_CONFIG_VALUE_0 = false
+command-env GIT_CONFIG_KEY_1 = core.hooksPath
+command-env GIT_CONFIG_VALUE_1 = /dev/null
+command gh-prs long @repos = gh pr list --author @me --state open --limit 100 --json number,title,…
+command git-fetch long @repos = git fetch --quiet {remote}
+command git-status short @worktrees = git status --porcelain
+pane agent @worktrees = claude --model {model} --session-id {session} {prompt}
+pane-env agent GIT_CONFIG_COUNT = 2
 pane-env agent GIT_CONFIG_KEY_0 = push.default
 pane-env agent GIT_CONFIG_VALUE_0 = upstream
+pane-env agent GIT_CONFIG_KEY_1 = push.autoSetupRemote
+pane-env agent GIT_CONFIG_VALUE_1 = true
 inbox status-board = <one line of factual text>
 serve orchestrator
 action open = Open Agents
 ```
 
-- `command <name> <short|long> = argv…` — timeout class: short 30 s, long 10 min. Executed directly,
-  never through a shell. **No command takes a directory as an argument**: every process runs in a
-  working directory the host has validated to lie inside a root, so `git -C {anything}` never appears.
+- `command <name> <short|long> @<root> = argv…` — timeout class: short 30 s, long 10 min. Executed
+  directly, never through a shell. **No command takes a directory as an argument**, so `git -C
+  {anything}` never appears, and **each command is bound to one root**: the host starts it only in a
+  working directory inside that root. Without the binding a guest could run the worktree-only
+  `gh pr checkout` in the user's main checkout and switch its branch.
 - `arg <name> = <kind>` — every placeholder is typed, and the host checks the value before it starts
   anything. An undeclared placeholder is a manifest error.
 
@@ -176,17 +189,20 @@ action open = Open Agents
   | `number` | 1–10 decimal digits |
   | `uuid` | a canonical UUID |
   | `name` | `[A-Za-z0-9][A-Za-z0-9._-]{0,63}` |
-  | `ref` | `[A-Za-z0-9][A-Za-z0-9._/-]{0,199}`, no `..`, no `//` |
-  | `path` | an absolute path that, once normalised, lies inside a root |
+  | `ref` | `[A-Za-z0-9][A-Za-z0-9._/@#+-]{0,199}`, no `..`, no `//`, no `@{` |
+  | `path:<root>` | an absolute path that, once normalised and resolved, lies inside that root |
   | `text` | up to 8 KiB, no NUL, not starting with `-` |
 
   This is what keeps a guest from passing `ext::sh -c …` as a git remote, or a path outside its roots.
 - `root <label> = config:<pointer>` — directories taken from the extension's own configuration. The
   pointer is slash-separated keys, with `*` for every element of a list. The grant dialog shows the
   resolved directories.
-- `command-env KEY = value` — a fixed environment added to every declared command.
-- `pane <name> = argv…` and `pane-env <name> KEY = value` — the only programs the extension can put in
-  a tab, with a fixed environment.
+- `read <root>` — the roots `file-read` may read from. Only `worktrees`: nothing under the user's
+  repositories is readable.
+- `command-env KEY = value` — a fixed environment added to every declared command. The git entries
+  switch off the two configuration keys that would make a plain `git status` run a program (§7).
+- `pane <name> @<root> = argv…` and `pane-env <name> KEY = value` — the only programs the extension
+  can put in a tab, each in a directory inside its root, with a fixed environment.
 - `inbox <name> = text` — D4.
 - `serve <scheme>` — the extension serves `<scheme>://` tabs.
 - `action <id> = title` — a palette row.
@@ -203,17 +219,18 @@ none blocking longer than a memory copy:
 | `proc-start(command, args, cwd, tag) -> handle` | Starts a declared command in a validated directory. `tag` is the guest's own label. |
 | `procs() -> list<proc-info>` · `proc-take(handle, stream, offset) -> chunk` | Running and finished processes with their tags. Results are pulled 64 KiB per call, 1 MiB per stream, with exit code, timed-out and truncated flags. |
 | `store-get/set/remove/keys` | Values up to 64 KiB. |
-| `pane-open(template, args, cwd, title, tag) -> pane` · `pane-close(pane)` · `panes() -> list<pane-info>` | Owned panes only. `pane-info` carries the tag, the program status and whether the spawned program is still the pane's program. |
+| `pane-open(template, args, cwd, title, tag, near) -> pane` · `pane-close(pane)` · `panes() -> list<pane-info>` | Owned panes only. `near` is a served tab: the new tab opens in its workspace. `pane-info` carries the tag, the program status and whether the spawned program is still the pane's program. |
 | `inbox-post(pane, message-name)` | Owned panes only. |
-| `tab-open(scheme, origin) -> tab` · `tab-close(tab)` · `tabs() -> list<tab-info>` · `tab-read(tab) -> bytes` · `tab-write(tab, bytes)` | Served tabs. `origin` places the tab in the workspace of the window that asked. |
+| `tab-open(scheme, origin) -> tab` · `tab-close(tab)` · `tab-reveal(tab, origin)` · `tabs() -> list<tab-info>` · `tab-read(tab) -> bytes` · `tab-write(tab, bytes)` | Served tabs. `origin` places or shows the tab in the window that asked. |
 | `actions-take() -> list<action>` · `summary-set(text)` · `pane-reveal(pane, origin)` | Presence. An action carries its id and its `origin` (the invoking connection), never arguments. |
-| `file-read(root, path) -> bytes` | Inside a root, no `..`, no symlink leaving the root. |
+| `file-read(root, path) -> bytes` | Inside a root declared readable; regular files only; no `..`, no symlink leaving the root; never blocks. |
 
 Tags are what make a guest restart safe: the host keeps running processes and panes while the guest is
 re-instantiated, and the new instance recognises them by tag instead of assuming they failed.
 
-The daemon world has its own `Engine` (C7): its own host-function table (23 imports) and its own
-limits, so it does not compete with the status-line world's table.
+The daemon world has its own `Engine` (C7): its own host-function table (24 imports) and its own
+limits. Its imports live under their own module name and each world is checked against an exact list
+of its imports (C22), so a module can never link against the other world's functions.
 
 ### 5.3 Runner, limits, lifecycle
 
@@ -248,14 +265,15 @@ child), not from a clock or counter. After a cold restart the pane comes back as
 panes are exempt from `daemon.restore.rerun_programs`, so the daemon never re-types `claude` into one
 (C21). The orchestrator closes that leftover pane before touching the worktree.
 
-Inbox: a bounded queue per owned pane. `pane.reportStatus` gains a request field naming the hook event
-and a reply type with an optional `inbox` text (C20). The daemon hands out the oldest message only for
-a `PostToolUse` report; `contour agent report` prints it, in the shape the reporting integration
-defines (Claude Code: `PostToolUse` `additionalContext`; Codex: nothing in v1), through an injected
-output sink. Delivery is at most once — a reply lost to the hook's 2 s budget loses the message — so
-the orchestrator re-posts until it sees the board (§6.4). The texts are factual ("A status board has
-been requested for this run: …"), because Claude Code's own guidance is that imperative injected text
-can trip its prompt-injection defences.
+Inbox: a bounded queue per owned pane, read through one new control verb, `pane.takeInbox {pane,
+event}`, reachable from the socket only. `pane.reportStatus` is not touched (C20). `contour agent
+report` calls it after reporting, only for a `PostToolUse` hook, and prints the message in the shape
+the reporting integration defines (Claude Code: `PostToolUse` `additionalContext`; Codex: nothing in
+v1) through an injected output sink. A daemon that predates the verb answers "unknown method", which
+the command ignores, as it ignores every error. Delivery is at most once — a reply lost to the hook's
+2 s budget loses the message — so the orchestrator re-posts until it sees the board (§6.4). The texts
+are factual ("A status board has been requested for this run: …"), because Claude Code's own guidance
+is that imperative injected text can trip its prompt-injection defences.
 
 ### 5.5 Served tabs
 
@@ -326,8 +344,12 @@ from revision 2 and have not been run.
 3. In the repository: `git worktree add --detach {path} {base}`, where `{path}` is
    `<worktree_root>/<repo>/<item>-<yyyymmdd>-<hhmmss>` and `{base}` is `<remote>/<base branch>`.
 4. In the worktree: `gh pr checkout {number} --branch agent/<item>-<yyyymmdd>-<hhmmss>` — or, for an
-   issue, step 3 is `worktree add -b {branch} {path} {base}` and this step is skipped.
-5. `pane-open(agent, {model, session, prompt}, cwd = worktree, tag = run id)`.
+   issue, step 3 is `worktree add --no-track -b {branch} {path} {base}` and this step is skipped.
+   `--no-track` matters: without it the new branch tracks the default branch, and with
+   `push.default=upstream` a plain `git push` would push the agent's work **to the default branch**
+   (measured). With `--no-track` and `push.autoSetupRemote=true`, `git push` creates a remote branch of
+   the same name (measured).
+5. `pane-open(agent, {model, session, prompt}, cwd = worktree, tag = run id, near = the dashboard)`.
 6. Store the run with its pane. State `Running`.
 
 A PR's base branch comes from the PR. For an issue it is the repository's default branch, read once
@@ -350,10 +372,18 @@ that fails also goes through `Ending` and finishes as `Failed` (nothing left beh
 
 - **Ending is decided by reconciliation**, not by one event: on the `panes` hint, on a slow timer and
   at start, the core compares stored runs with `panes()`.
-- **Removal:** `git status --porcelain` in the worktree. Empty → `git worktree remove` (no `--force`).
-  Exactly one entry `?? STATUS.md` → `git clean -f -- STATUS.md`, then remove. Anything else → `Kept`,
-  shown with its entries and the actions "open a shell there" and "try removal again"; a kept worktree
-  is also re-checked on every poll, so cleaning it up by hand is enough. The branch is always kept, so
+- **Removal:** first the worktree's `.git` file is read and must still say
+  `gitdir: <main checkout>/.git/worktrees/<directory name>`; if an agent rewrote it, no git command is
+  run there and the worktree is kept (§7). Then `git status --porcelain` in the worktree. Empty →
+  `git worktree remove` (no `--force`). Exactly one entry `?? STATUS.md` → `git clean -f -- STATUS.md`,
+  then remove. Anything else → `Kept`, shown with its path, its entries and the action "try removal
+  again"; a kept worktree is also re-checked on every poll, so cleaning it up by hand is enough.
+  (Revision 2 offered "open a shell there"; that would need a second pane template and grant, so v1
+  shows the path instead.)
+- **An agent that never started.** When the pane's program exits the pane closes, so a `claude` that
+  failed to start is indistinguishable from one that finished. A run whose pane goes away before its
+  agent ever reported a status is therefore shown as failed ("the agent exited before reporting")
+  after the usual removal checks, instead of vanishing silently. The branch is always kept, so
   commits the agent made are never lost. Ignored files (build output) are deleted with the worktree —
   git does this silently (measured).
 - **A worktree the user removed by hand** is noticed when a command cannot start there because the
@@ -361,7 +391,8 @@ that fails also goes through `Ending` and finishes as `Failed` (nothing left beh
   `git worktree list`: git prints resolved paths, so a symlinked `worktree_root` would make every run
   look removed (measured). A run whose pane is alive is never forgotten.
 - **Orphans.** `git worktree list --porcelain` is used for one thing: a worktree on an `agent/…` branch
-  that no run names is listed as an orphan, with the same two actions as a kept one. `agent/*`
+  that no run names, or any worktree under `worktree_root` that no run names (a run lost before its
+  branch existed), is listed as an orphan with its path. `agent/*`
   branches themselves accumulate; pruning them is the user's call and out of scope.
 - **Guest restart.** Processes and panes keep running in the host while a faulted guest restarts. The
   new instance reads its runs from the store and matches them to `procs()` and `panes()` by tag. A run
@@ -375,7 +406,7 @@ that fails also goes through `Ending` and finishes as `Failed` (nothing left beh
 ### 6.4 Status boards and transcripts
 
 At `status_board_after` (0 disables) the core posts the `status-board` inbox message, and posts it
-again every five minutes, at most three times, until `STATUS.md` exists — inbox delivery is at most
+again every five minutes, at most three posts in total, until `STATUS.md` exists — inbox delivery is at most
 once (§5.4). A `Blocked` or `Done` agent makes no tool calls, so it receives it only if it resumes;
 that is fine, since a blocked agent already shows what it waits for. The board is `STATUS.md` in the worktree root,
 read through `file-read`. The dashboard strips control characters before drawing it.
@@ -414,7 +445,8 @@ daemon:
 
 The `config` subtree is converted to JSON by the host and passed to `load`. A leading `~/` is expanded
 by the core using the home directory the host supplies. Commands run with the daemon's environment, so
-the daemon must see the user's `PATH` and CLI logins; the dashboard's first line reports a failing
+the daemon must see the user's `PATH` and CLI logins. Model names must be plain aliases or ids
+(`opus`, `claude-opus-5-5`); bracketed variants are not accepted in v1. Also: the dashboard's first line reports a failing
 `gh auth status` and missing agent hooks (`contour agent setup --dry-run --json`). An issue query may
 not start with `-` (the argument rule); write `assignee:@me -label:x`, not `-label:x assignee:@me`.
 
@@ -425,7 +457,8 @@ not start with `-` (the argument rule); write `assignee:@me -label:x`, not `-lab
 | Declared commands (`gh`, `git`, `contour agent …`) | List work, manage worktrees, read transcripts. The dialog says these reach the network as the user. |
 | Pane template `agent` | Start `claude` in new tabs with prompts the extension writes. |
 | Inbox message `status-board` | Ask a running agent for a status board. |
-| Root `worktrees` | Start processes in, and read files from, the worktree root. |
+| Root `worktrees` | Run the worktree commands in, start agents in, and read files from, the worktree root. |
+| Root `repos` | Run the repository commands (`gh` lists, `git fetch`, `git worktree …`) in the configured repositories. Nothing there is readable through `file-read`. |
 | Serve `orchestrator://` | Draw its own tab. |
 
 - **No typing, no screen reading.** The extension imports no control verbs at all (C9).
@@ -435,8 +468,19 @@ not start with `-` (the argument rule); write `assignee:@me -label:x`, not `-lab
   name or a path. A custom prompt or note that starts with `-` is refused.
 - **Agents read untrusted PR and issue text with the user's credentials.** That risk is inherent to the
   feature; it is why dispatch is always a confirmed act and `max_agents` bounds the cost.
-- **Every argument is typed and every directory validated** (§5.1). A guest cannot name a path outside
-  its roots or pass a git transport that runs a program.
+- **Every argument is typed, every command bound to a root, every directory validated** (§5.1). A
+  guest cannot name a path outside its roots, pass a git transport that runs a program, or run a
+  worktree command in the user's own checkout.
+- **Cleanup runs git in a directory an agent controlled.** An agent that can only edit files could
+  otherwise get a program run by the orchestrator's own `git status`: by pointing the worktree's
+  `.git` file at a directory with a hostile config (measured: `core.fsmonitor` ran a command). Three
+  defences: the `.git` file is verified before any git command runs there; the command environment
+  forces `core.fsmonitor=false` and `core.hooksPath=/dev/null`, which outrank any config file; and
+  the host enters the validated directory by handle, not by re-resolving its name. **Residual risk:**
+  git has other configuration that runs programs (clean filters, for one), and the main repository's
+  `.git/config` is a file an agent with broad edit rights can reach. An agent that can run shell
+  commands needs none of this. The orchestrator does not make an agent safer than Claude Code's own
+  permission mode makes it.
 - **The served tab cannot be faked**: the marker is chrome, outside the grid (§5.5). **It can be driven
   only by something that speaks the daemon's native protocol.** `pane.send`, `pane.capture`, MCP's
   `pane_type` and `InvokeExtensionAction` (which carries no arguments) cannot dispatch. But the
@@ -454,11 +498,11 @@ not start with `-` (the argument rule); write `assignee:@me -label:x`, not `-lab
 
 | Phase | Builds | Usable result |
 | --- | --- | --- |
-| 0 | `orchestrator-core` (sans-IO) with fixtures; a native prototype driver over today's control socket; three spikes | Try the workflow from a shell. Not shipped. |
+| 0 | `orchestrator-core` (sans-IO) with fixtures; a native prototype driver over today's control socket; four spikes | Try the workflow from a shell. Not shipped. |
 | 1 | Manifest v2, the daemon world and its engine, runner, process service, store, `daemon.extensions`, grant verbs, the summary status-line item, the guest | A "my PRs" status-line segment that polls with no window attached. |
 | 2 | Served tabs, chrome marker, input refusal, live-upgrade support, palette action, the dashboard view | The read-only dashboard tab. |
-| 3 | Pane templates, ownership, pane hints, reveal, dispatch form, lifecycle, reconciliation, cleanup | Dispatch, agent tabs, worktree cleanup. |
-| 4 | Inbox through `agent report`, status-board view, `contour agent transcript`, transcript view; GitLab and Jira rows | Everything in revision 2's screens. |
+| 3 | Pane templates, ownership, pane hints, `file-read`, reveal, dispatch form, lifecycle, reconciliation, cleanup | Dispatch, agent tabs, worktree cleanup. |
+| 4 | Inbox through `agent report` and `pane.takeInbox`, status-board view, `contour agent transcript`, transcript view; GitLab and Jira rows | Everything in revision 2's screens. |
 
 ## 9. Risks
 
@@ -521,3 +565,18 @@ this text now fixes:
 10. The default branch was read in a way that fails on common clones. → §6.2.
 11. Start-up could exceed the process cap; long lists were silently cut; failures had no back-off. →
     §6.1, §6.2.
+
+A second independent review, of the text as revised after the first, found and this text now fixes:
+
+12. An issue run's branch tracked the default branch, so a plain `git push` went there. → `--no-track`
+    and `push.autoSetupRemote` (§6.2).
+13. Commands were not bound to a root on the host side, and `file-read` reached the repositories. →
+    `@<root>` on every command and pane, `read <root>`, `path:<root>` (§5.1, §7).
+14. The host's own `git status` could run a program an agent configured. → §6.3, §7.
+15. A fresh setup could never start, because the first commands ran in a directory that did not exist
+    yet. → they run in a repository.
+16. Changing `pane.reportStatus` would have broken older daemons and a shipped WIT import. → a new
+    verb (C20).
+17. Two worlds in one process could cross-link host functions. → C22.
+18. An agent that failed to start vanished without a trace. → §6.3.
+19. "Open a shell there" had no mechanism. → dropped for v1.
