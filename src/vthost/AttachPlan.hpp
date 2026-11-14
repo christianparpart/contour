@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include <vthost/WorkspaceVisibility.hpp>
@@ -24,6 +25,9 @@ struct WorkspaceSummary
     int tabCount = 0; ///< How many tabs it holds; zero for a workspace nothing has been created in yet.
     /// Whether some connection selects it right now (SessionHost::visibility()).
     WorkspaceVisibility visibility = WorkspaceVisibility::Hidden;
+    /// When a connection last stopped selecting it, larger being more recent; 0 when none has in this run of
+    /// the daemon (SessionHost::leftAt). A launch takes the launchable workspace left most recently.
+    uint64_t leftAt = 0;
 };
 
 /// @param workspace A workspace.
@@ -33,6 +37,12 @@ struct WorkspaceSummary
 {
     return workspace.tabCount > 0 && workspace.visibility == WorkspaceVisibility::Hidden;
 }
+
+/// Which workspace a launch brings back, and which one a connection whose workspace ended moves on to.
+/// @param workspaces Every workspace, in the order a window lists them.
+/// @return The launchable workspace (isLaunchable) left most recently -- of those never left, or left at
+///         once, the first in @p workspaces; nullopt when none is launchable.
+[[nodiscard]] std::optional<uint64_t> pickLaunchable(std::span<WorkspaceSummary const> workspaces);
 
 /// Whether the attaching connection's hello names the directory the session it creates starts in
 /// (proto::ClientHello::workingDirectory).
@@ -47,7 +57,7 @@ struct AttachContext
 {
     /// The workspace a first session is created in when the daemon has none to show.
     uint64_t primaryWorkspace = 0;
-    /// Every workspace, ascending by id: the order a window lists them in, and the order "first" means.
+    /// Every workspace, in the order a window lists them (the sidebar's): the order ties are broken in.
     std::vector<WorkspaceSummary> workspaces = {};
     /// Whether the hello names a working directory; a launch that would create nothing then opens a tab in
     /// it.

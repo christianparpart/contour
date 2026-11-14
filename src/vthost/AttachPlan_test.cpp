@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include <vthost/AttachPlan.hpp>
 
@@ -166,4 +167,39 @@ TEST_CASE("ids of another run of the daemon name none of its workspaces", "[vtho
     auto unstated = context;
     unstated.instance = 0;
     CHECK(planAttach(ofRun(AttachIntentKind::Select, 7), unstated).select == Select { 2 });
+}
+
+TEST_CASE("a Default launch selects the hidden workspace left most recently",
+          "[vthost][attach-plan][left-at]")
+{
+    auto const context = AttachContext { .primaryWorkspace = 1,
+                                         .workspaces = { { .id = 1, .tabCount = 1, .leftAt = 3 },
+                                                         { .id = 2, .tabCount = 1, .leftAt = 7 },
+                                                         { .id = 3, .tabCount = 1, .leftAt = 5 } } };
+    CHECK(planAttach({ .kind = AttachIntentKind::Default }, context)
+          == AttachPlan { .select = 2, .creation = AttachCreation::None });
+}
+
+TEST_CASE("a launch never takes a shown or tab-less workspace, however recently left",
+          "[vthost][attach-plan][left-at]")
+{
+    auto const context = AttachContext {
+        .primaryWorkspace = 1,
+        .workspaces = { { .id = 1, .tabCount = 1, .leftAt = 1 },
+                        { .id = 2, .tabCount = 1, .visibility = WorkspaceVisibility::Shown, .leftAt = 9 },
+                        { .id = 3, .tabCount = 0, .leftAt = 8 } }
+    };
+    CHECK(planAttach({ .kind = AttachIntentKind::Default }, context).select == Select { 1 });
+}
+
+TEST_CASE("never-left workspaces and ties go by list order, not by id", "[vthost][attach-plan][left-at]")
+{
+    // The sidebar lists 3 before 1 (a reorder): with no history, 3 is first.
+    auto const reordered = AttachContext { .primaryWorkspace = 1, .workspaces = { { 3, 1 }, { 1, 1 } } };
+    CHECK(planAttach({ .kind = AttachIntentKind::Default }, reordered).select == Select { 3 });
+
+    auto const tied = std::vector<WorkspaceSummary> { { .id = 4, .tabCount = 1, .leftAt = 2 },
+                                                      { .id = 2, .tabCount = 1, .leftAt = 2 } };
+    CHECK(pickLaunchable(tied) == Select { 4 });
+    CHECK(pickLaunchable(std::vector<WorkspaceSummary> {}) == std::nullopt);
 }
