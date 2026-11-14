@@ -1952,7 +1952,14 @@ class ChromeSnapshotScene
             .windowControls =
                 config::resolveWindowControlStyle(config::WindowControlStyle::Auto, variantHost(_variant)),
             .buttonLayout = buttonLayoutOf(scriptRow(_variant.script).buttons),
-            .accessibility = { .transparency = scriptRow(_variant.script).transparency },
+            // Reduced motion: a picture shows where the chrome comes to rest, never a frame of the way
+            // there, and with the style's own durations every wait below was a race against an animation
+            // clock -- one a stalled runner lost (the Settings page's fade, frozen part-way at opacity <1).
+            // At rest the two motion styles draw alike, save what never rests: a working badge stops
+            // spinning and an indeterminate progress bar stops pulsing, so a picture of them is the same
+            // every run instead of whichever frame the clock reached.
+            .accessibility = { .motion = config::MotionPreference::Reduced,
+                               .transparency = scriptRow(_variant.script).transparency },
             .appearance = {},
             .scheme = config::chromeSchemeColorsOf(
                 *config::preferredColorPalette(config::defaultColors(_variant.edition), _variant.appearance)),
