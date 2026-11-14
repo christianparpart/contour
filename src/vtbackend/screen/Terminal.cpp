@@ -132,6 +132,31 @@ namespace
     /// readFromPty()
     constexpr auto PendingInputRetry = std::chrono::milliseconds { 10 };
 
+    /// How long the thread that just released the state lock lets the threads waiting for it take it, before
+    /// it takes it again. Measured, a waiting thread is running again within about 60-100 us of the release,
+    /// so 2 ms leaves ample headroom. Past the bound the behaviour is the plain mutex's: the releaser
+    /// barges back in. @see Terminal::yieldToStateWaiters()
+    constexpr auto StateWaiterYieldBound = std::chrono::milliseconds { 2 };
+
+    /// Counts a thread among those waiting for the state lock for as long as it lives, also if the wait
+    /// throws.
+    class StateWaiterCount
+    {
+      public:
+        explicit StateWaiterCount(std::atomic<uint32_t>& waiters) noexcept: _waiters { waiters }
+        {
+            _waiters.fetch_add(1, std::memory_order_relaxed);
+        }
+        StateWaiterCount(StateWaiterCount const&) = delete;
+        StateWaiterCount(StateWaiterCount&&) = delete;
+        StateWaiterCount& operator=(StateWaiterCount const&) = delete;
+        StateWaiterCount& operator=(StateWaiterCount&&) = delete;
+        ~StateWaiterCount() { _waiters.fetch_sub(1, std::memory_order_relaxed); }
+
+      private:
+        std::atomic<uint32_t>& _waiters;
+    };
+
     /// Marks this thread as being inside the VT parser for as long as it is alive.
     struct ParseDepthGuard
     {
@@ -1879,13 +1904,31 @@ Handled Terminal::offerToViInput(Dispatch const& dispatch)
 
 void Terminal::acquireState(HoldBack holdBack) const
 {
-    _stateMutex.lock();
+    yieldToStateWaiters();
+    {
+        auto const waiting = StateWaiterCount { _stateWaiters };
+        _stateMutex.lock();
+    }
     _stateLockOwner.store(std::this_thread::get_id(), std::memory_order_relaxed);
     _stateHoldBack = holdBack;
 }
 
+void Terminal::yieldToStateWaiters() const noexcept
+{
+    // The uncontended path costs this one load. The releaser is looked at, and the clock read, only once a
+    // thread waits.
+    if (_stateWaiters.load(std::memory_order_relaxed) == 0
+        || _stateLastReleaser.load(std::memory_order_relaxed) != std::this_thread::get_id())
+        return;
+    // Bounded: a waiter that was preempted must not stall this thread for longer than it takes to run.
+    auto const deadline = _clocks.steady.now() + StateWaiterYieldBound;
+    while (_stateWaiters.load(std::memory_order_relaxed) > 0 && _clocks.steady.now() < deadline)
+        std::this_thread::yield();
+}
+
 bool Terminal::tryAcquireState(HoldBack holdBack) const
 {
+    yieldToStateWaiters();
     if (!_stateMutex.try_lock())
         return false;
     _stateLockOwner.store(std::this_thread::get_id(), std::memory_order_relaxed);
@@ -1896,6 +1939,7 @@ bool Terminal::tryAcquireState(HoldBack holdBack) const
 void Terminal::releaseState() const
 {
     _stateLockOwner.store(std::thread::id {}, std::memory_order_relaxed);
+    _stateLastReleaser.store(std::this_thread::get_id(), std::memory_order_relaxed);
     _stateMutex.unlock();
 }
 

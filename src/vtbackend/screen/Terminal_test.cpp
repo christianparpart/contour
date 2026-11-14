@@ -4670,6 +4670,29 @@ class PiecewisePty: public vtpty::MockPty
     std::atomic<size_t> _served = 0;
 };
 
+/// A PTY that never runs dry: every read finds a screenful of text, as a program flooding its terminal does.
+class FloodingPty final: public vtpty::MockPty
+{
+  public:
+    using vtpty::MockPty::MockPty;
+
+    [[nodiscard]] std::optional<ReadResult> read(crispy::BufferObject<char>& storage,
+                                                 std::optional<std::chrono::milliseconds> timeout,
+                                                 size_t size) override
+    {
+        _reads.fetch_add(1, std::memory_order_relaxed);
+        appendStdOutBuffer(_chunk);
+        return MockPty::read(storage, timeout, size);
+    }
+
+    /// How often the parser thread has read this PTY, i.e. how many batches it has begun.
+    [[nodiscard]] size_t reads() const noexcept { return _reads.load(std::memory_order_relaxed); }
+
+  private:
+    std::atomic<size_t> _reads = 0;
+    std::string _chunk = std::string(512, 'x') + "\r\n";
+};
+
 /// A PiecewisePty whose second read finds bytes another writer appended to the buffer since the first --
 /// the way writeToScreen() on the GUI thread appends, and its parse moves the hot end past them, while the
 /// parser thread reads ahead.
@@ -4960,6 +4983,141 @@ TEST_CASE("Terminal.processInputOnce.readAheadStepsAroundBytesAppendedMeanwhile"
     CHECK(readTwice == Awaited::Reached);
     CHECK(mock.mockPty().reads() == 2);
     CHECK(mock.terminal.primaryScreen().grid().lineText(LineOffset(0)).substr(0, 17) == "0123456789abcdef ");
+}
+
+namespace
+{
+/// Fails a test that hangs instead of hanging with it: a seconds-long guard, no measure of speed.
+constexpr auto StateLockHangGuard = 30s;
+
+/// The most batches a flooding thread may begin between another thread asking for the state lock and being
+/// given it. Without the courtesy the waiter is not served for as long as the flood runs: thousands.
+constexpr auto MaxBatchesBeforeWaiterServed = size_t { 20 };
+
+/// How many of the asks may exceed it: a thread preempted between noting the count and waiting for the lock
+/// sees the flood run on, through no fault of the lock. Without the courtesy nearly all of them do.
+constexpr auto MaxAsksServedLate = 20;
+
+/// How many asks for the state lock were served only after more than MaxBatchesBeforeWaiterServed units of
+/// work of the flooding thread, over 200 asks.
+/// @param terminal The terminal whose lock is asked for.
+/// @param progress The flooding thread's progress counter.
+template <typename Terminal, typename Progress>
+int asksServedLate(Terminal& terminal, Progress const& progress)
+{
+    auto late = 0;
+    for (auto const take: std::views::iota(0, 200))
+    {
+        std::ignore = take;
+        auto const before = progress();
+        terminal.lock();
+        late += progress() - before > MaxBatchesBeforeWaiterServed ? 1 : 0;
+        terminal.unlock();
+        // As a loop that has other work to do does: the flooding thread runs meanwhile.
+        std::this_thread::sleep_for(100us);
+    }
+    return late;
+}
+} // namespace
+
+TEST_CASE("Terminal.processInputOnce.letsAThreadWaitingForTheStateTakeIt", "[terminal][threading]")
+{
+    // A thread that waits for the state -- the daemon's loop, flushing what the parser thread parsed -- is
+    // served while the parser thread floods. Without the parser thread's courtesy a mutex that lets late
+    // arrivals barge in (macOS's) hands the lock back to the thread that just let go of it, and the waiter
+    // is served no sooner than the flood ends. Counted in batches, not in time, so load does not matter.
+    auto mock = MockTerm<FloodingPty> { PageSize { LineCount(3), ColumnCount(40) }, LineCount(10), 1024 };
+    auto& pty = static_cast<FloodingPty&>(mock.terminal.device());
+    auto stop = std::atomic<bool> { false };
+    auto parser = std::async(std::launch::async, [&] {
+        while (!stop.load(std::memory_order_relaxed) && mock.terminal.processInputOnce())
+        {
+        }
+    });
+
+    auto const late = asksServedLate(mock.terminal, [&] { return pty.reads(); });
+    stop.store(true, std::memory_order_relaxed);
+    REQUIRE(parser.wait_for(StateLockHangGuard) == std::future_status::ready);
+    parser.get();
+
+    INFO(late << " of 200 asks waited for more than " << MaxBatchesBeforeWaiterServed << " batches");
+    CHECK(late <= MaxAsksServedLate);
+}
+
+TEST_CASE("Terminal.lock.letsAThreadWaitingForTheStateTakeItFromAnyLoopThatRetakesIt",
+          "[terminal][threading]")
+{
+    // Not the parser thread's loop alone: any thread that lets go of the lock and takes it back -- here a
+    // loop of writeToScreen() calls, as tmux's PaneView::feed and the daemon's deliverPending are -- serves
+    // a waiting thread first.
+    auto mock = MockTerm { PageSize { LineCount(3), ColumnCount(40) }, LineCount(10), 1024 };
+    auto stop = std::atomic<bool> { false };
+    auto writes = std::atomic<size_t> { 0 };
+    auto writer = std::async(std::launch::async, [&] {
+        while (!stop.load(std::memory_order_relaxed))
+        {
+            mock.terminal.writeToScreen("xxxxxxxxxxxxxxxx\r\n");
+            writes.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    auto const late = asksServedLate(mock.terminal, [&] { return writes.load(std::memory_order_relaxed); });
+    stop.store(true, std::memory_order_relaxed);
+    REQUIRE(writer.wait_for(StateLockHangGuard) == std::future_status::ready);
+    writer.get();
+
+    INFO(late << " of 200 asks waited for more than " << MaxBatchesBeforeWaiterServed << " writes");
+    CHECK(late <= MaxAsksServedLate);
+}
+
+TEST_CASE("Terminal.processInputOnce.stopsLettingAWaiterInOncePastTheBound", "[terminal][threading]")
+{
+    // The courtesy is bounded: past StateWaiterYieldBound by the terminal's clock the parser thread goes on
+    // as a plain mutex would have it, so a waiter that never gets to run cannot stall it. Here this thread
+    // holds the lock, a second thread waits behind it, and the parser thread -- which let go of the lock
+    // last -- stands in the courtesy for as long as the clock stands still, before it tries for the lock,
+    // and so before it reads ahead past that failed try.
+    auto mock = MockTerm<FloodingPty> { PageSize { LineCount(3), ColumnCount(40) }, LineCount(10), 8192 };
+    auto& pty = static_cast<FloodingPty&>(mock.terminal.device());
+    auto letGo = std::atomic<bool> { false };
+    auto goOn = std::atomic<bool> { false };
+    auto parser = std::async(std::launch::async, [&] {
+        std::ignore = mock.terminal.processInputOnce(); // lets go of the lock: it is its last holder
+        letGo.store(true);
+        while (!goOn.load())
+            std::this_thread::yield();
+        std::ignore = mock.terminal.processInputOnce();
+    });
+    while (!letGo.load())
+        std::this_thread::yield();
+
+    mock.terminal.lock();
+    auto waiter = std::async(std::launch::async, [&] {
+        mock.terminal.lock();
+        mock.terminal.unlock();
+    });
+    // Time for the waiter to wait: generous, as nothing shows that it does.
+    std::this_thread::sleep_for(500ms);
+    auto const firstRead = pty.reads();
+    goOn.store(true);
+    std::this_thread::sleep_for(500ms);
+    // It read once, and stands in the courtesy: its failed try for the lock, which reads ahead, is not made.
+    CHECK(pty.reads() == firstRead + 1);
+
+    // The clock moves past the bound: the parser thread goes on, though the waiter still waits.
+    mock.steadyClock.advance(10ms);
+    auto const resumedBy = chrono::steady_clock::now() + StateLockHangGuard;
+    while (pty.reads() == firstRead + 1 && chrono::steady_clock::now() < resumedBy)
+        std::this_thread::sleep_for(1ms);
+    CHECK(pty.reads() > firstRead + 1);
+
+    mock.terminal.unlock();
+    // A thread that stands in the courtesy again is let out by the clock.
+    while (waiter.wait_for(1ms) != std::future_status::ready
+           || parser.wait_for(0s) != std::future_status::ready)
+        mock.steadyClock.advance(10ms);
+    waiter.get();
+    parser.get();
 }
 
 TEST_CASE("Terminal.processInputOnce.readAheadKeepsEachSourceApart", "[terminal][threading]")
