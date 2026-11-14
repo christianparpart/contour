@@ -1379,7 +1379,8 @@ class SessionHost final: public vtworkspace::ModelEvents
     [[nodiscard]] std::size_t connectedClients() const noexcept { return _attachedClients.size(); }
 
     /// Records that the window on @p client selected a workspace, which it reports as
-    /// SessionStreamEvents::selectedWorkspace: the raise role is settled again.
+    /// SessionStreamEvents::selectedWorkspace: the raise role is settled again, and the workspace it selected
+    /// before is stamped as left (@see leftAt). Called once selectedWorkspace() reports the new selection.
     /// @param client The attached client; one never counted (@see noteClientAttached) is ignored.
     void noteSelected(SessionStreamEvents const& client);
 
@@ -1404,6 +1405,12 @@ class SessionHost final: public vtworkspace::ModelEvents
     /// @param workspace A workspace.
     /// @return Shown while some attached client selects it, else Hidden.
     [[nodiscard]] WorkspaceVisibility visibility(uint64_t workspace) const;
+
+    /// @param workspace A workspace.
+    /// @return When a connection last stopped selecting @p workspace -- selecting another, or detaching --
+    ///         as a count that only grows, the larger being the more recent; 0 when none has in this run of
+    ///         the daemon. A launch takes the hidden workspace left most recently (pickLaunchable).
+    [[nodiscard]] uint64_t leftAt(uint64_t workspace) const noexcept;
 
     /// What a connection that is attaching sees as shown: the workspaces some attached client selects, and
     /// those a window's connection selected when it dropped within the reconnect grace
@@ -2484,6 +2491,14 @@ class SessionHost final: public vtworkspace::ModelEvents
     uint64_t _focusCounter = 0;
     /// The stamp of each attached client's last `Focused` report; absent for one never focused.
     std::unordered_map<SessionStreamEvents const*, uint64_t> _focusSerials;
+    /// Stamps @p workspace as left now; 0, a connection that selected none, is ignored. @see leftAt
+    void noteLeft(uint64_t workspace);
+    /// The workspace each attached client selected when the host last heard of it. @see noteSelected
+    std::unordered_map<SessionStreamEvents const*, uint64_t> _selectionSeen;
+    /// By workspace: when a connection last stopped selecting it. @see leftAt
+    std::unordered_map<uint64_t, uint64_t> _leftAt;
+    /// The stamp _leftAt handed out last.
+    uint64_t _leftClock = 0;
     /// The connection holding the raise role now; nullopt while none is attached.
     std::optional<ConnectionId> _raiseHolder;
     /// What serves the extensions' control calls. @see attachExtensionControl

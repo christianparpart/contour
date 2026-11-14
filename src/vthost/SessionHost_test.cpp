@@ -519,6 +519,131 @@ TEST_CASE("a workspace whose window's connection dropped stays shown to an attac
     CHECK_FALSE(host.shownForAttach().contains(workspace));
 }
 
+TEST_CASE("a workspace is stamped as left when its connection selects another or detaches",
+          "[vthost][host][left-at]")
+{
+    auto h = HostHarness {};
+    REQUIRE(h.host.createTab() != nullptr);
+    auto const a = h.host.workspaceId().value;
+    auto const* created = h.host.createWorkspace();
+    REQUIRE(created != nullptr);
+    auto const b = created->id().value;
+    CHECK(h.host.leftAt(a) == 0);
+
+    auto window = SelectingClient {};
+    window.selected = a;
+    h.host.noteClientAttached(&window);
+    CHECK(h.host.leftAt(a) == 0);
+
+    // Switching away leaves the old workspace, not the new one.
+    window.selected = b;
+    h.host.noteSelected(window);
+    auto const leftA = h.host.leftAt(a);
+    CHECK(leftA > 0);
+    CHECK(h.host.leftAt(b) == 0);
+
+    // Selecting the same workspace again leaves nothing.
+    h.host.noteSelected(window);
+    CHECK(h.host.leftAt(a) == leftA);
+    CHECK(h.host.leftAt(b) == 0);
+
+    h.host.noteClientDetached(&window, vthost::DetachKind::Closed);
+    CHECK(h.host.leftAt(b) > leftA);
+    CHECK(h.host.leftAt(a) == leftA);
+}
+
+TEST_CASE("a workspace two windows show is stamped again when the last one leaves", "[vthost][host][left-at]")
+{
+    using vthost::WorkspaceVisibility;
+    auto h = HostHarness {};
+    REQUIRE(h.host.createTab() != nullptr);
+    auto const a = h.host.workspaceId().value;
+
+    auto first = SelectingClient {};
+    auto second = SelectingClient {};
+    first.selected = a;
+    second.selected = a;
+    h.host.noteClientAttached(&first);
+    h.host.noteClientAttached(&second);
+
+    h.host.noteClientDetached(&first, vthost::DetachKind::Closed);
+    auto const firstLeft = h.host.leftAt(a);
+    CHECK(firstLeft > 0);
+    CHECK(h.host.visibility(a) == WorkspaceVisibility::Shown);
+
+    h.host.noteClientDetached(&second, vthost::DetachKind::Closed);
+    CHECK(h.host.leftAt(a) > firstLeft);
+    CHECK(h.host.visibility(a) == WorkspaceVisibility::Hidden);
+}
+
+TEST_CASE("a dropped window's workspace carries the drop as its stamp, held for the grace",
+          "[vthost][host][left-at]")
+{
+    constexpr auto Grace = std::chrono::milliseconds { 2000 };
+    auto clock = core::platform::ManualClock {};
+    auto wall = core::platform::ManualWallClock {};
+    core::net::testing::ScriptedBackend source;
+    core::net::EventLoop loop { source };
+    SessionHost host { loop,
+                       [](vtbackend::PageSize size, std::optional<vtpty::Process::ExecInfo> const&) {
+                           return std::make_unique<vtpty::MockPty>(size);
+                       },
+                       vtbackend::Settings {},
+                       core::defaultEnvironment(),
+                       vthost::SessionHostConfig {
+                           .pumping = vthost::SessionPumping::Manual,
+                           .clocks =
+                               vtbackend::TerminalClocks { .steady = clock,
+                                                           .wall = wall,
+                                                           .localTime = &vtbackend::fixedOffsetLocalTime<> },
+                           .reconnectGrace = Grace } };
+    REQUIRE(host.createTab() != nullptr);
+    auto const a = host.workspaceId().value;
+    auto const* created = host.createWorkspace();
+    REQUIRE(created != nullptr);
+    auto const b = created->id().value;
+
+    // B is left first, by a window that closed.
+    auto other = SelectingClient {};
+    other.selected = b;
+    host.noteClientAttached(&other);
+    host.noteClientDetached(&other, vthost::DetachKind::Closed);
+
+    // A's window drops: A is the more recently left, yet held from an attach for the grace.
+    auto window = SelectingClient {};
+    window.selected = a;
+    host.noteClientAttached(&window);
+    host.noteClientDetached(&window, vthost::DetachKind::Dropped);
+    auto const leftA = host.leftAt(a);
+    CHECK(leftA > host.leftAt(b));
+    CHECK(host.shownForAttach().contains(a));
+
+    clock.advance(Grace);
+    CHECK_FALSE(host.shownForAttach().contains(a));
+    CHECK(host.leftAt(a) == leftA);
+}
+
+TEST_CASE("a closed workspace forgets its stamp", "[vthost][host][left-at]")
+{
+    auto h = HostHarness {};
+    REQUIRE(h.host.createTab() != nullptr);
+    auto const a = h.host.workspaceId().value;
+    auto const* created = h.host.createWorkspace();
+    REQUIRE(created != nullptr);
+    auto const b = created->id().value;
+
+    auto window = SelectingClient {};
+    window.selected = b;
+    h.host.noteClientAttached(&window);
+    window.selected = a;
+    h.host.noteSelected(window);
+    REQUIRE(h.host.leftAt(b) > 0);
+
+    REQUIRE(h.host.closeWorkspace(vtworkspace::WorkspaceId { b }).has_value());
+    CHECK(h.host.leftAt(b) == 0);
+    h.host.noteClientDetached(&window, vthost::DetachKind::Closed);
+}
+
 TEST_CASE("a workspace whose window closed on purpose is offered to the very next attach",
           "[vthost][host][visibility]")
 {
