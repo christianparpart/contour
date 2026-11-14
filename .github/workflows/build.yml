@@ -937,7 +937,8 @@ jobs:
         id: test
         uses: vmactions/freebsd-vm@v1
         # The VM builds every target from scratch with no compiler cache; master's run of
-        # 2026-10-25 hit 60 minutes while still compiling, so the limit only bounds a hang.
+        # 2026-10-25 hit 60 minutes while still compiling, so the limit only bounds a hang. By
+        # 2026-11-14 the build alone had grown to fill it: 6 of 16 runs timed out while compiling.
         timeout-minutes: 120
         with:
           envs: 'MYTOKEN MYTOKEN2'
@@ -962,7 +963,12 @@ jobs:
             # Ninja, which install-deps.sh installs, rather than the Makefiles CMake defaults to here: the job
             # pools the top-level CMakeLists.txt sets up -- contour_heavy_compile_pool, one compile of the
             # heaviest test sources at a time, and contour_link_pool -- exist only under a Ninja generator.
-            cmake -S . -B build -G Ninja -DCONTOUR_TESTING=ON -DLIBUNICODE_USE_STD_SIMD=OFF
+            #
+            # CONTOUR_GUI_TESTING=OFF: contour_gui_test has never run on this VM (see below), yet compiling it
+            # took about 15 of the build's 115 minutes -- built only to be thrown away. Nothing else this job
+            # runs is defined under that option: its e2e tests carry the `e2e` label, its native ones are
+            # Windows-only. The contour executable itself is still built.
+            cmake -S . -B build -G Ninja -DCONTOUR_TESTING=ON -DCONTOUR_GUI_TESTING=OFF -DLIBUNICODE_USE_STD_SIMD=OFF
             cmake --build build/ -j2
             # ctest, not a hand-written list: that list predated src/coro, src/net, src/vthost and
             # src/vtworkspace, so those suites were built in this VM and thrown away -- and a BSD
@@ -970,12 +976,12 @@ jobs:
             # the VM's budget: `e2e` boots the real app repeatedly, and `lint` re-runs gates the
             # Linux jobs already own.
             #
-            # contour_gui_test is excluded BY NAME, not because it cannot work here -- it selects
-            # the offscreen QPA itself when there is no DISPLAY -- but because it has never once
-            # run on this VM, and this job gates master rather than a PR. Widening coverage to the
-            # daemon suites should not also stake master on an untried Qt run. Drop the exclusion
-            # once someone has watched it pass here.
-            ctest --test-dir build/ --output-on-failure -LE "e2e|lint" -E "contour_gui_test"
+            # contour_gui_test is not built here (CONTOUR_GUI_TESTING=OFF above), not because it cannot
+            # work -- it selects the offscreen QPA itself when there is no DISPLAY -- but because it has
+            # never once run on this VM, and this job gates master rather than a PR. Widening coverage to
+            # the daemon suites should not also stake master on an untried Qt run, nor spend the build
+            # budget on it. Turn the option back on once someone has watched it pass here.
+            ctest --test-dir build/ --output-on-failure -LE "e2e|lint"
             rm -rf _deps build
   # }}}
   # {{{ OpenBSD
