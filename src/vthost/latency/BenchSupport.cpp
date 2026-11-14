@@ -5,7 +5,10 @@
 #include <vtpty/Process.hpp>
 #include <vtpty/Pty.hpp>
 
+#include <crispy/BufferObject.hpp>
+
 #include <algorithm>
+#include <cerrno>
 #include <format>
 #include <fstream>
 #include <memory>
@@ -28,10 +31,31 @@ namespace
     /// The size of the pseudo terminal a benchmark child runs on; nothing reads what it shows.
     constexpr auto ChildPageSize =
         vtpty::PageSize { .lines = vtpty::LineCount(24), .columns = vtpty::ColumnCount(80) };
+    /// How much of a child's terminal output one read takes.
+    constexpr auto DrainBufferSize = std::size_t { 4096 };
+    /// How long a read of a child's terminal waits before it asks whether it is to stop.
+    constexpr auto DrainPoll = std::chrono::milliseconds { 50 };
     /// How often waitFor() asks whether the process is still there.
     constexpr auto WaitPoll = std::chrono::milliseconds { 2 };
     /// How long a daemon has to drop its sessions after a run.
     constexpr auto EmptyDaemonTimeout = std::chrono::seconds { 5 };
+
+    /// Reads and drops what @p child prints on its terminal, until @p stop is requested or the terminal ends.
+    void drainTerminal(vtpty::Process& child, std::stop_token const& stop)
+    {
+        auto pool = crispy::BufferObjectPool<char> { DrainBufferSize };
+        while (!stop.stop_requested())
+        {
+            auto const storage = pool.allocateBufferObject();
+            // Clear what this thread left behind: a stale EAGAIN must not pass for the poll running out.
+            errno = 0;
+            auto const read = child.read(*storage, DrainPoll, DrainBufferSize);
+            // Nothing within the poll is no end; an empty read is the end of the output, and any other
+            // failure a closed terminal.
+            if ((!read && errno != EAGAIN && errno != EINTR) || (read && read->data.empty()))
+                return;
+        }
+    }
 } // namespace
 
 std::expected<ScratchDirectory, std::string> ScratchDirectory::create()
@@ -58,7 +82,9 @@ ScratchDirectory::~ScratchDirectory()
     std::filesystem::remove_all(_path, error);
 }
 
-BenchProcess::BenchProcess(std::unique_ptr<vtpty::Process> process): _process { std::move(process) }
+BenchProcess::BenchProcess(std::unique_ptr<vtpty::Process> process):
+    _process { std::move(process) },
+    _drain { [&child = *_process](std::stop_token const& stop) { drainTerminal(child, stop); } }
 {
 }
 
@@ -95,6 +121,10 @@ std::expected<std::unique_ptr<BenchProcess>, std::string> BenchProcess::start(
 BenchProcess::~BenchProcess()
 {
     kill();
+    // The thread reads the process: it ends before the process goes.
+    _drain.request_stop();
+    if (_drain.joinable())
+        _drain.join();
 }
 
 bool BenchProcess::isRunning() const

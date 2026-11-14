@@ -18,6 +18,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -59,7 +60,9 @@ class ScratchDirectory
     std::filesystem::path _path;
 };
 
-/// A child process of the benchmark, ended when this goes.
+/// A child process of the benchmark, ended when this goes. Whatever it prints on its terminal is read and
+/// dropped: a terminal holds little (about a kilobyte on macOS), and a daemon that logs to it would stop
+/// mid-line, serving nothing, once it was full.
 class BenchProcess
 {
   public:
@@ -97,6 +100,7 @@ class BenchProcess
     explicit BenchProcess(std::unique_ptr<vtpty::Process> process);
 
     std::unique_ptr<vtpty::Process> _process;
+    std::jthread _drain; ///< Reads what the process writes to its terminal; ends first, before the process.
 };
 
 /// Whether a probe has said all it will.

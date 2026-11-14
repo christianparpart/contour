@@ -309,6 +309,8 @@ namespace
             policy.grace = std::chrono::milliseconds { launch.timings.graceMs };
         if (launch.timings.daemonExitBoundMs != 0)
             policy.daemonExitBound = std::chrono::milliseconds { launch.timings.daemonExitBoundMs };
+        if (launch.timings.startupBoundMs != 0)
+            policy.restartStartupBound = std::chrono::milliseconds { launch.timings.startupBoundMs };
         auto writer = core::codec::Writer {};
         core::codec::encodeFields(writer, launch);
         auto const ran = keeper::runKeeperProcess(keeper::KeeperProcessConfig {
@@ -468,6 +470,7 @@ KeeperFixture::KeeperFixture(HarnessSetup const& setup):
                                           .lifecycle = setup.lifecycle,
                                           .heartbeatTimeoutMs = setup.heartbeatTimeoutMs }) },
     _softDescriptorLimit { setup.softDescriptorLimit },
+    _startBound { setup.startBound },
     _relayListener { setup.start == HarnessStart::Relays || setup.start == HarnessStart::RelaysThenServes
                          ? unixSocket((_directory / "relay").string(), ::bind)
                          : keeper::UniqueFd {} },
@@ -481,7 +484,7 @@ KeeperFixture::KeeperFixture(HarnessSetup const& setup):
         acceptRelay();
         return;
     }
-    auto const deadline = std::chrono::steady_clock::now() + StartBound;
+    auto const deadline = std::chrono::steady_clock::now() + _startBound;
     while (daemonPid() == 0)
     {
         if (std::chrono::steady_clock::now() >= deadline)
@@ -508,10 +511,9 @@ void KeeperFixture::acceptRelay()
         throw std::runtime_error { std::format("the keeper's relaying daemon {}:\n{}", what, output) };
     };
     // Waits for @p fd to turn readable within the start bound.
-    auto const readable = [](int fd) {
+    auto const readable = [this](int fd) {
         auto poller = ::pollfd { .fd = fd, .events = POLLIN, .revents = 0 };
-        auto const bound = std::chrono::duration_cast<std::chrono::milliseconds>(StartBound).count();
-        return ::poll(&poller, 1, static_cast<int>(bound)) == 1;
+        return ::poll(&poller, 1, static_cast<int>(_startBound.count())) == 1;
     };
     if (!_relayListener.isOpen() || ::listen(_relayListener.get(), 1) != 0)
         fail("has nowhere to connect to");

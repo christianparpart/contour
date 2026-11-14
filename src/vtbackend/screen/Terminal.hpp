@@ -5117,6 +5117,22 @@ class Terminal: public IStatusLinePublishTarget
     /// @return Whether the lock was taken.
     [[nodiscard]] bool tryAcquireState(HoldBack holdBack) const;
 
+    /// How many threads wait in acquireState() for the state lock. @see yieldToStateWaiters()
+    mutable std::atomic<uint32_t> _stateWaiters { 0 };
+
+    /// The thread that last released the state lock. Only ever compared with the calling thread's id, which
+    /// only that thread stores, so relaxed suffices. @see yieldToStateWaiters()
+    mutable std::atomic<std::thread::id> _stateLastReleaser {};
+
+    /// Gives the threads waiting for the state lock the time to take it, for a bounded while, when the
+    /// calling thread is the one that released it last. acquireState() and tryAcquireState() call it first,
+    /// so that every loop that releases the lock and takes it back -- the parser thread's batches, a feed
+    /// that locks per chunk -- is covered in one place: a mutex that lets late arrivals barge in -- macOS's
+    /// does -- would otherwise hand the lock back to the thread that just let go of it, for as long as the
+    /// loop runs, and a thread waiting for it (the daemon's loop, which flushes what the parser thread
+    /// parsed) would be served no sooner than the loop ended. Costs one relaxed load when nobody waits.
+    void yieldToStateWaiters() const noexcept;
+
     /// Releases the state lock, and forgets its holder.
     void releaseState() const;
 
