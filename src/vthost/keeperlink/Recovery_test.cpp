@@ -51,6 +51,8 @@ namespace
 
 /// How long a daemon the keeper restarts may take to serve: generous, for debug builds on a loaded machine.
 constexpr auto RecoveryBound = std::chrono::milliseconds { 60s };
+/// What a daemon with hundreds of sessions is given to start, and to recover, under a sanitizer.
+constexpr auto ManySessionsBound = std::chrono::milliseconds { 10min };
 
 /// Places nothing: holds each child, parked, and crashes the daemon it plays as it is asked to place one.
 class CrashingPlacement final: public vtpty::ProcessPlacement
@@ -161,19 +163,6 @@ core::async::Task<void> attachUntil(core::net::EventLoop* loop,
     return attached;
 }
 
-/// Kills @p f's daemon as a crash would, and waits for the keeper's next one to serve.
-/// @return The new daemon's pid.
-int crashAndRecover(KeeperFixture& f, int signum = SIGKILL)
-{
-    auto const before = f.daemonPid();
-    REQUIRE(before > 0);
-    ::kill(before, signum);
-    auto const after = f.awaitNewDaemon(before, RecoveryBound);
-    INFO(f.log());
-    REQUIRE(after > 0);
-    return after;
-}
-
 /// Waits until @p done holds, for at most @p bound.
 [[nodiscard]] bool eventually(std::function<bool()> const& done, std::chrono::milliseconds bound = 20s)
 {
@@ -185,6 +174,21 @@ int crashAndRecover(KeeperFixture& f, int signum = SIGKILL)
         std::this_thread::sleep_for(20ms);
     }
     return true;
+}
+
+/// Kills @p f's daemon as a crash would, and waits for the keeper's next one to serve.
+/// @return The new daemon's pid.
+int crashAndRecover(KeeperFixture& f, int signum = SIGKILL, std::chrono::milliseconds bound = RecoveryBound)
+{
+    // A daemon busy with its sessions answers a status request late, and a request gives up after 2 s.
+    auto before = 0;
+    std::ignore = eventually([&] { return (before = f.daemonPid()) > 0; }, bound);
+    REQUIRE(before > 0);
+    ::kill(before, signum);
+    auto const after = f.awaitNewDaemon(before, bound);
+    INFO(f.log());
+    REQUIRE(after > 0);
+    return after;
 }
 
 [[nodiscard]] std::string readFile(fs::path const& path)
@@ -413,12 +417,17 @@ TEST_CASE("300 sessions recover", "[keeper][recovery]")
         .snapshot = vthost::testing::HarnessSnapshot::None,
         .tcp = vthost::testing::HarnessTcp::Off,
         // A common default, below what 300 sessions take in the daemon.
-        .softDescriptorLimit = 1024 } };
+        .softDescriptorLimit = 1024,
+        // The daemon spawns the 300 sessions before it serves, and a spawn takes about 0.4 s under a
+        // sanitizer: more than the keeper's 30 s startup bound and the fixture's start bound allow for. The
+        // production bound is left as it is.
+        .timings = { .startupBoundMs = static_cast<uint64_t>(ManySessionsBound.count()) },
+        .startBound = ManySessionsBound } };
     INFO(f.log());
     auto const before = attach(f);
     REQUIRE(before.sessions.size() == static_cast<std::size_t>(Sessions));
 
-    std::ignore = crashAndRecover(f);
+    std::ignore = crashAndRecover(f, SIGKILL, ManySessionsBound);
     auto const after = attach(f);
     CHECK(after.daemonInstance == before.daemonInstance);
     CHECK(after.sessions == before.sessions);

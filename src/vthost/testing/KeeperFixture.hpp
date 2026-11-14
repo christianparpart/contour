@@ -135,6 +135,10 @@ struct HarnessTimings
     uint64_t backoffMs = 0;         ///< The first backoff, and its cap: every backoff is this long.
     uint64_t graceMs = 0;           ///< How long a keeper that gave up waits before its one retry.
     uint64_t daemonExitBoundMs = 0; ///< How long a stopped daemon has to exit before it is killed.
+    /// How long a starting daemon may go without a heartbeat before the keeper takes it for hung; 0 for the
+    /// keeper's default. A daemon that spawns hundreds of sessions before it serves needs more under a
+    /// sanitizer.
+    uint64_t startupBoundMs = 0;
 };
 
 /// What the harness keeper hands its daemon, as the options record: opaque to the keeper, as `contour
@@ -175,6 +179,7 @@ struct HarnessLaunch
         visitor(11, self.snapshotIntervalMs);
         visitor(12, self.lifecycle);
         visitor(13, self.heartbeatTimeoutMs);
+        visitor(14, self.timings.startupBoundMs);
     }
 };
 
@@ -195,6 +200,10 @@ struct HarnessSetup
     HarnessLifecycle lifecycle = HarnessLifecycle::Persistent;
     /// As HarnessLaunch::heartbeatTimeoutMs.
     uint64_t heartbeatTimeoutMs = 0;
+    /// How long the constructor waits for the daemon to serve: generous, for debug and sanitizer builds on a
+    /// loaded machine; a daemon that serves returns at once. A test whose daemon has much to start (hundreds
+    /// of sessions, each spawned slowly under a sanitizer) names what it needs.
+    std::chrono::milliseconds startBound = std::chrono::seconds { 60 };
 };
 
 /// @param pid A process.
@@ -287,10 +296,6 @@ class KeeperFixture
     /// @return What the keeper and its daemons wrote to their standard error.
     [[nodiscard]] std::string log() const;
 
-    /// How long the constructor waits for the daemon to serve: generous, for debug and sanitizer builds on a
-    /// loaded machine; a daemon that serves returns at once.
-    static constexpr auto StartBound = std::chrono::seconds { 60 };
-
   private:
     /// How end() ends the processes.
     enum class Ending : uint8_t
@@ -317,6 +322,7 @@ class KeeperFixture
     };
 
     std::optional<uint64_t> _softDescriptorLimit; ///< @see HarnessSetup::softDescriptorLimit
+    std::chrono::milliseconds _startBound;        ///< @see HarnessSetup::startBound
     keeper::UniqueFd _relayListener; ///< For HarnessStart::Relays: where the daemon hands its channel over.
     keeper::UniqueFd _relay;         ///< Its connection: closing it lets the daemon end.
     keeper::UniqueFd _channel;       ///< The channel it handed over, until taken.
