@@ -921,14 +921,14 @@ inline constexpr uint32_t RunSchema = 1;
   names and error text are not ours).
 
   **A property test guards against a run that holds a slot forever:** for every state in which
-  `stepTag(run)` is `Some`, each of `CommandOk{""}`, `CommandFailed`, `CwdMissing` and `Lost` (and for
+  `stepTag(run)` has a value, each of `CommandOk{""}`, `CommandFailed`, `CwdMissing` and `Lost` (and for
   `Ending(Verify)`, each `GitFile` case) either changes the state or emits an effect. No awaited step
   may swallow its own result.
 
   Also test: `gitFileIsIntact` — exact match true; trailing newline true; a different prefix
   (`gitdir: /tmp/evil/.git/worktrees/<name>`) false; a different name false; extra lines false;
   `runFromJson(toJson(run))` round-trips every state with and without `failure`, with the two
-  monotonic fields zeroed; `runFromJson` of garbage, and of a document with `"v": 2`, is `None`;
+  monotonic fields zeroed; `runFromJson` of garbage, and of a document with `"v": 2`, is empty;
   `stepTag` per state; `occupiesASlot` per state; `stateFor` for all five statuses; every `Command`
   effect's argument names equal the placeholders of that command's argv, and every value passes its
   `argumentAccepts`.
