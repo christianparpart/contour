@@ -107,6 +107,9 @@ TEST_CASE("tmux rename-window names the window, and an empty name gives it back 
     CHECK(tmuxRenameWindowCommand(7, "my tab") == "rename-window -t %7 'my tab'");
     CHECK(tmuxRenameWindowCommand(7, "it's") == R"(rename-window -t %7 'it'\''s')");
     CHECK(tmuxRenameWindowCommand(7, "") == "set-option -w -t %7 automatic-rename on");
+    // A newline would end the command and run what follows it: no control character reaches the line.
+    CHECK(tmuxRenameWindowCommand(7, "x\nkill-server #") == "rename-window -t %7 'xkill-server #'");
+    CHECK(tmuxRenameWindowCommand(7, "\r\n") == "set-option -w -t %7 automatic-rename on");
 }
 
 TEST_CASE("a GUI rename of a tmux-mirrored tab is the tmux window's rename", "[attach][tmux][name]")

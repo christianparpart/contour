@@ -491,6 +491,16 @@ class MockPtySessionFactory final: public contour::session::SessionFactory
                    : contour::session::RemoteRouting::Local;
     }
 
+    /// Records the rename, as a factory mirroring another multiplexer's windows routes it there.
+    [[nodiscard]] contour::session::RemoteRouting requestRemoteWindowRename(vtpty::Pty const* pty,
+                                                                            std::string const& name) override
+    {
+        windowRenames.emplace_back(pty, name);
+        return contour::session::RemoteRouting::Routed;
+    }
+
+    /// Every requestRemoteWindowRename(), in order: the pty and the name.
+    std::vector<std::pair<vtpty::Pty const*, std::string>> windowRenames;
     /// How often reportSplitRatio() was called.
     int reportedSplitRatios = 0;
     /// How often reportTabPresentation() was called.

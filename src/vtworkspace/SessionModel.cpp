@@ -15,6 +15,8 @@
 #include <variant>
 #include <vector>
 
+#include <vtworkspace/ObjectName.hpp>
+
 namespace vtworkspace
 {
 
@@ -1192,8 +1194,7 @@ void SessionModel::setTabName(TabId tabId, std::string name)
     auto* tab = findTab(tabId);
     // A blank name clears it, never blanks the tab: the GUI's inline rename editor opens pre-filled with the
     // name (empty for a tab that has none) and commits verbatim on click-away.
-    if (std::ranges::all_of(name, [](unsigned char c) { return std::isspace(c) != 0; }))
-        name.clear();
+    name = normalizedName(name);
     if (tab == nullptr || tab->name() == name)
         return;
     tab->setName(std::move(name));

@@ -7,6 +7,7 @@
 #include <utility>
 
 #include <vthost/proto/Pdu.hpp>
+#include <vtworkspace/ObjectName.hpp>
 #include <vtworkspace/Tab.hpp>
 #include <vtworkspace/WorkspaceState.hpp>
 
@@ -79,6 +80,7 @@ namespace
 
 void WorkspaceNames::set(vtworkspace::WorkspaceId workspace, std::string name)
 {
+    name = vtworkspace::normalizedName(name);
     if (name.empty())
         _names.erase(workspace.value);
     else

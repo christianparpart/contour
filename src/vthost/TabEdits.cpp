@@ -8,6 +8,7 @@
 #include <cctype>
 #include <string>
 
+#include <vtworkspace/ObjectName.hpp>
 #include <vtworkspace/Pane.hpp>
 #include <vtworkspace/Tab.hpp>
 
@@ -93,12 +94,13 @@ namespace
                                         EditTarget const& target,
                                         proto::EditTab const& edit)
     {
-        // A blank name clears it, never blanks the tab.
-        if (std::ranges::all_of(edit.name, [](unsigned char c) { return std::isspace(c) != 0; }))
+        // Compared as it would be held: a blank name clears it, never blanks the tab.
+        auto name = vtworkspace::normalizedName(edit.name);
+        if (name.empty())
             return clearName(scope, target, edit);
-        if (scope.names.nameOf(target.tab.id()) == edit.name)
+        if (scope.names.nameOf(target.tab.id()) == name)
             return TabEditEffect::Unchanged;
-        scope.names.setName(target.tab.id(), edit.name);
+        scope.names.setName(target.tab.id(), std::move(name));
         return TabEditEffect::Changed;
     }
 

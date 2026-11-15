@@ -97,6 +97,20 @@ TEST_CASE("ObjectRegistry labels: set, replace, clear, and ignore the unknown", 
     CHECK(registry.nameOf(stranger).empty());
 }
 
+TEST_CASE("ObjectRegistry holds a name normalised: no control character, and a blank one cleared",
+          "[vthost][ids][name]")
+{
+    auto registry = makeRegistry();
+    auto const tab = registry.mint();
+    auto const ref = ObjectRef { ObjectKind::Tab, tab };
+    registry.bind(TabId { 3 }, tab);
+
+    registry.setName(ref, "x\nkill-server #");
+    CHECK(registry.nameOf(ref) == "xkill-server #");
+    registry.setName(ref, "  ");
+    CHECK(registry.nameOf(ref).empty());
+}
+
 TEST_CASE("ObjectRegistry rebinding replaces", "[vthost][ids]")
 {
     auto registry = makeRegistry();

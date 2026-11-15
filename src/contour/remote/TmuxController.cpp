@@ -19,6 +19,7 @@
 #include <vthost/tmux/CommandLine.hpp>
 #include <vthost/tmux/ControlModeSpawn.hpp>
 #include <vtworkspace/LayoutConvert.hpp>
+#include <vtworkspace/ObjectName.hpp>
 
 namespace contour::remote
 {
@@ -136,9 +137,11 @@ std::string tmuxKillPaneCommand(uint64_t pane)
 
 std::string tmuxRenameWindowCommand(uint64_t pane, std::string_view name)
 {
-    if (name.empty())
+    // A newline would end the command and start another: the name is normalised as every setter does it.
+    auto const normalized = vtworkspace::normalizedName(name);
+    if (normalized.empty())
         return std::format("set-option -w -t %{} automatic-rename on", pane);
-    return std::format("rename-window -t %{} {}", pane, vthost::tmux::quoteArgument(name));
+    return std::format("rename-window -t %{} {}", pane, vthost::tmux::quoteArgument(normalized));
 }
 
 std::string tmuxPaneDirectoryQuery(uint64_t pane)

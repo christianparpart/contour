@@ -1626,9 +1626,14 @@ void TerminalSessionManager::renameTab(window::WindowController& window, uint64_
 
 void TerminalSessionManager::nameTab(vtworkspace::TabId tabId, std::string name)
 {
-    _model->setTabName(tabId, std::move(name));
     auto const* const tab = _model->findTab(tabId);
-    if (tab == nullptr || tab->activePane() == nullptr)
+    if (tab == nullptr)
+        return;
+    auto const before = tab->name();
+    _model->setTabName(tabId, std::move(name));
+    // Only a change is forwarded: the editor commits the name it opened with on a click-away, and tmux turns
+    // a window's automatic naming off for good at any rename-window, the same name included.
+    if (tab->name() == before || tab->activePane() == nullptr)
         return;
     auto* const session = sessionForId(tab->activePane()->session());
     if (session == nullptr)

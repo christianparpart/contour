@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include <vtworkspace/ObjectName.hpp>
+
 namespace vthost
 {
 
@@ -172,6 +174,9 @@ ObjectRegistry::Subscription ObjectRegistry::onNameChanged(NameObserver observer
 
 void ObjectRegistry::setName(ObjectRef const& ref, std::string name)
 {
+    // Every name is held as it is normalised once here, whoever sets it: no control character, and a blank
+    // one cleared.
+    name = vtworkspace::normalizedName(name);
     if (!find(ref) || nameOf(ref) == name)
         return;
     if (name.empty())

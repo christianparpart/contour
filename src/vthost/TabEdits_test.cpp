@@ -155,6 +155,20 @@ TEST_CASE("an edit naming an unknown session or kind is refused", "[vthost][tab-
     CHECK(t.first->name().empty());
 }
 
+TEST_CASE("a SetName is held normalised, and one that normalises to the name it has changes nothing",
+          "[vthost][tab-edits][name]")
+{
+    auto t = TwoPaneTab {};
+    CHECK(applyTabEdit(t.model, t.names, { .session = 1, .kind = TabEditKind::SetName, .name = "a\nb" })
+          == TabEditEffect::Changed);
+    CHECK(t.first->name() == "ab");
+    CHECK(applyTabEdit(t.model, t.names, { .session = 1, .kind = TabEditKind::SetName, .name = "a\rb" })
+          == TabEditEffect::Unchanged);
+    CHECK(applyTabEdit(t.model, t.names, { .session = 1, .kind = TabEditKind::SetName, .name = " \t " })
+          == TabEditEffect::Changed);
+    CHECK(t.first->name().empty());
+}
+
 TEST_CASE("a zoom on another pane of a zoomed tab moves the zoom", "[vthost][tab-edits]")
 {
     auto t = TwoPaneTab {};

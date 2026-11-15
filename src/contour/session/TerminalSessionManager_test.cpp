@@ -2786,6 +2786,45 @@ TEST_CASE("TerminalSessionManager: a session's tab title and attention requests 
     contour::test::closeAllTabs(*window);
 }
 
+TEST_CASE("TerminalSessionManager: a user's rename reaches the routing factory once, and only on a change",
+          "[manager][name]")
+{
+    auto factoryOwned = std::make_unique<contour::test::MockPtySessionFactory>();
+    auto* const factory = factoryOwned.get();
+    contour::test::TestApp app { std::move(factoryOwned) };
+    auto& manager = app.manager();
+    contour::test::ScopedController const window { manager };
+    window->createNewTab();
+    auto* const session = window->activeSession();
+    REQUIRE(session != nullptr);
+    auto const* const pty = &session->terminal().device();
+    auto const* const tab = manager.model().workspace(window.id)->tabAt(0);
+    REQUIRE(tab != nullptr);
+
+    window->setTabName(0, QStringLiteral("build"));
+    CHECK(tab->name() == "build");
+    REQUIRE(factory->windowRenames.size() == 1);
+    CHECK(factory->windowRenames.back() == std::pair<vtpty::Pty const*, std::string> { pty, "build" });
+
+    // The editor commits the name it opened with on a click-away: nothing changed, nothing is forwarded.
+    window->setTabName(0, QStringLiteral("build"));
+    CHECK(factory->windowRenames.size() == 1);
+
+    // A name is forwarded as it is held: without a control character.
+    window->setTabName(0, QStringLiteral("x\nkill-server #"));
+    CHECK(tab->name() == "xkill-server #");
+    REQUIRE(factory->windowRenames.size() == 2);
+    CHECK(factory->windowRenames.back().second == "xkill-server #");
+
+    // A blank name clears it, which is a change.
+    window->setTabName(0, QStringLiteral("   "));
+    CHECK(tab->name().empty());
+    REQUIRE(factory->windowRenames.size() == 3);
+    CHECK(factory->windowRenames.back().second.empty());
+
+    contour::test::closeAllTabs(*window);
+}
+
 TEST_CASE("TerminalSessionManager: naming a session's tab locks only that tab's terminal",
           "[manager][notification][threading]")
 {
