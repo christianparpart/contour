@@ -981,6 +981,9 @@ jobs:
             # never once run on this VM, and this job gates master rather than a PR. Widening coverage to
             # the daemon suites should not also stake master on an untried Qt run, nor spend the build
             # budget on it. Turn the option back on once someone has watched it pass here.
+            # CONTOUR_TEST_TRACE names each Catch2 case as it starts and ends, with its time, as the macOS and
+            # Windows jobs do: a case that hangs here is then named in the timed-out test's output.
+            export CONTOUR_TEST_TRACE=1
             ctest --test-dir build/ --output-on-failure -LE "e2e|lint"
             rm -rf _deps build
   # }}}
