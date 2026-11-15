@@ -56,6 +56,7 @@
 #include <vtcontrol/Events.hpp>
 #include <vtcontrol/Json.hpp>
 #include <vtcontrol/LegacySpelling.hpp>
+#include <vtcontrol/testing/LegacyShapes.hpp>
 #include <vthost/CommandBlockWire.hpp>
 #include <vthost/DaemonControlWire.hpp>
 #include <vthost/FlushPolicy.hpp>
@@ -6180,51 +6181,7 @@ TEST_CASE("a ControlRequest is answered with its reply", "[vthost][native][contr
     CHECK(error->code == vtcontrol::ControlErrorCode::MethodNotFound);
 }
 
-// compat(0.9.0): the shapes a client of the old spelling decodes, as they were before the rename. In a named
-// namespace: glaze reflects a type by its name, which one without linkage does not have.
-namespace legacyspelling
-{
-struct LegacyPaneInfo
-{
-    std::string id {};
-    std::string label {};
-    std::string title {};
-    std::string cwd {};
-    bool isActive = false;
-    vtcontrol::Size size {};
-    std::vector<vtcontrol::ProgramStatusInfo> programStatus {};
-    std::optional<vtcontrol::BlockInfo> lastFinished {};
-};
-
-struct LegacyTabInfo
-{
-    std::string id {};
-    std::string label {};
-    std::string title {};
-    uint32_t position = 0;
-    bool isActive = false;
-    std::vector<LegacyPaneInfo> panes {};
-};
-
-struct LegacyWorkspaceInfo
-{
-    std::string id {};
-    std::string label {};
-    uint32_t position = 0;
-    std::string native {};
-    std::string visibility {};
-    uint32_t clients = 0;
-    std::vector<LegacyTabInfo> tabs {};
-    std::optional<vtcontrol::WorkspaceGitInfo> git {};
-};
-
-struct LegacyListReply
-{
-    std::vector<LegacyWorkspaceInfo> workspaces {};
-};
-} // namespace legacyspelling
-
-using legacyspelling::LegacyListReply;
+using vtcontrol::testing::legacyspelling::LegacyListReply;
 
 TEST_CASE("a client without the names capability is answered in the old spelling",
           "[vthost][native][control][compat-0.9.0]")

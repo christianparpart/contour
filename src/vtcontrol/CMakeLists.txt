@@ -27,6 +27,7 @@ add_library(vtcontrol STATIC
     Wit.hpp
     testing/FakeControlApi.hpp
     testing/JsonProbe.hpp
+    testing/LegacyShapes.hpp
     testing/SequentialUuidSource.hpp
 )
 target_link_libraries(vtcontrol PUBLIC
