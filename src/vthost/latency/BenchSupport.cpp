@@ -40,8 +40,15 @@ namespace
     /// How long a daemon has to drop its sessions after a run.
     constexpr auto EmptyDaemonTimeout = std::chrono::seconds { 5 };
 
-    /// Reads and drops what @p child prints on its terminal, until @p stop is requested or the terminal ends.
-    void drainTerminal(vtpty::Process& child, std::stop_token const& stop)
+    /// How much of a child's newest output is kept for a failure message.
+    constexpr auto TailCapacity = std::size_t { 2048 };
+
+    /// Reads what @p child prints on its terminal, keeping the newest @p TailCapacity bytes in @p tail,
+    /// until @p stop is requested or the terminal ends.
+    void drainTerminal(vtpty::Process& child,
+                       std::stop_token const& stop,
+                       std::mutex& tailMutex,
+                       std::string& tail)
     {
         auto pool = crispy::BufferObjectPool<char> { DrainBufferSize };
         while (!stop.stop_requested())
@@ -54,6 +61,13 @@ namespace
             // failure a closed terminal.
             if ((!read && errno != EAGAIN && errno != EINTR) || (read && read->data.empty()))
                 return;
+            if (read)
+            {
+                auto const lock = std::scoped_lock { tailMutex };
+                tail.append(read->data);
+                if (tail.size() > TailCapacity)
+                    tail.erase(0, tail.size() - TailCapacity);
+            }
         }
     }
 } // namespace
@@ -84,7 +98,7 @@ ScratchDirectory::~ScratchDirectory()
 
 BenchProcess::BenchProcess(std::unique_ptr<vtpty::Process> process):
     _process { std::move(process) },
-    _drain { [&child = *_process](std::stop_token const& stop) { drainTerminal(child, stop); } }
+    _drain { [this](std::stop_token const& stop) { drainTerminal(*_process, stop, _tailMutex, _tail); } }
 {
 }
 
@@ -152,6 +166,31 @@ void BenchProcess::kill()
     if (_process->alive())
         _process->terminate(vtpty::Process::TerminationHint::Kill);
     static_cast<void>(_process->wait());
+}
+
+std::string BenchProcess::outputTail() const
+{
+    auto const lock = std::scoped_lock { _tailMutex };
+    return _tail;
+}
+
+std::string describeExit(std::optional<vtpty::Process::ExitStatus> const& status)
+{
+    if (!status)
+        return "it did not end";
+    if (auto const* normal = std::get_if<vtpty::NormalExit>(&*status))
+        return std::format("it exited with status {}", normal->exitCode);
+    return std::format("it was killed by signal {}", std::get<vtpty::SignalExit>(*status).signum);
+}
+
+std::string describeChildFailure(std::string_view reason,
+                                 std::optional<vtpty::Process::ExitStatus> const& status,
+                                 std::string_view outputTail)
+{
+    auto message = std::format("{} ({})", reason, describeExit(status));
+    if (!outputTail.empty())
+        message += std::format("; its output ended with:\n{}", outputTail);
+    return message;
 }
 
 std::expected<void, std::string> judgeProbe(ProbeResult const& result)

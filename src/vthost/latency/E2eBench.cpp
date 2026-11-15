@@ -141,7 +141,11 @@ namespace
             auto const status = (*process)->waitFor(LaunchTimeout);
             if (!status)
                 return std::unexpected("the GUI did not end in time");
-            return readReport(reportFile, spawnedAt);
+            auto launched = readReport(reportFile, spawnedAt);
+            if (!launched && !std::filesystem::exists(reportFile))
+                return std::unexpected(
+                    describeChildFailure(launched.error(), status, (*process)->outputTail()));
+            return launched;
         }
 
         /// Stops the daemon at the benchmark's socket, if one runs, and waits until it is gone.
