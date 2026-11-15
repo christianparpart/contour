@@ -2100,7 +2100,7 @@ core::cli::Command ContourGuiApp::parameterDefinition() const
         CLI::Command {
             "connect",
             "Opens a window on a chosen place for its sessions. TARGET is `daemon` (this computer's daemon; "
-            "`daemon:LABEL` for another one), `local` (this window only, no daemon), the name of a saved "
+            "`daemon:NAME` for another one), `local` (this window only, no daemon), the name of a saved "
             "host, "
             "or an `ssh://` or `tls://` address. Without a TARGET the Connect picker asks.",
             CLI::OptionList {
@@ -2127,7 +2127,7 @@ core::cli::Command ContourGuiApp::parameterDefinition() const
             CLI::CommandList {},
             CLI::CommandSelect::Explicit,
             CLI::Verbatim { "TARGET",
-                            "Where the sessions live: daemon, daemon:LABEL, local, a saved host's name, or "
+                            "Where the sessions live: daemon, daemon:NAME, local, a saved host's name, or "
                             "an ssh:// or tls:// address. Omitted: the Connect picker asks." } });
 
     command.children.insert(
@@ -2223,7 +2223,7 @@ core::cli::Command ContourGuiApp::parameterDefinition() const
                 CLI::Option { "workspace",
                               CLI::Value { ""s },
                               "Shows only this daemon workspace -- its id or an id suffix (see "
-                              "`contour ls`), its label or its 1-based position -- instead of what a "
+                              "`contour ls`), its name or its 1-based position -- instead of what a "
                               "launch brings back; fails when it names no workspace, or several.",
                               "WORKSPACE" },
             },

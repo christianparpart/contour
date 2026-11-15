@@ -464,8 +464,8 @@ COLLAPSED, EXPANDED = 1, 2  # window::RowExpansion
 
 
 def state(d):
-    """[(workspace label, [(tab label, [pane id, ...]), ...]), ...] in order."""
-    return [(w["label"], [(t["label"], [p["id"] for p in t["panes"]]) for t in w["tabs"]])
+    """[(workspace name, [(tab name, [pane id, ...]), ...]), ...] in order."""
+    return [(w["name"], [(t["name"], [p["id"] for p in t["panes"]]) for t in w["tabs"]])
             for w in d.workspaces()]
 
 
@@ -480,8 +480,8 @@ def settle(d, what, predicate, seconds=15):
     return deadline_loop(seconds, what, lambda: predicate(state(d)), interval=0.2)
 
 
-def workspace_named(d, label):
-    return next(w for w in d.workspaces() if w["label"] == label)
+def workspace_named(d, name):
+    return next(w for w in d.workspaces() if w["name"] == name)
 
 
 def row(d, title, kind, seconds=15, **props):
@@ -561,10 +561,10 @@ def band(item, which):
 
 
 def name_tab(d, tab, name):
-    """Labels a tab through the control API, and waits for the window to show it: a tab's label names it in
-    the sidebar and the tab strip."""
+    """Names a tab through the control API, and waits for the window to show it: a tab's name is what the
+    sidebar and the tab strip call it."""
     d.cli("rename", tab["id"], name)
-    deadline_loop(15, f"the tab labelled {name!r}",
+    deadline_loop(15, f"the tab named {name!r}",
                   lambda: d.find("sidebarRow", required=False, title=name, kind=TAB)
                   or d.find("tabItem", required=False, tabTitle=name), interval=0.2)
 
@@ -575,7 +575,7 @@ def title_shown_pane(d, title):
 
 
 def two_workspaces(d):
-    """alpha (shown, one tab `a1`) and beta (one tab `b1`), both labelled through the control API."""
+    """alpha (shown, one tab `a1`) and beta (one tab `b1`), both named through the control API."""
     d.cli("rename", "workspace:1", "alpha")
     name_tab(d, d.workspaces()[0]["tabs"][0], "a1")
     beta = d.cli("workspace", "new")
@@ -585,23 +585,23 @@ def two_workspaces(d):
     row(d, "beta", WORKSPACE)
 
 
-def new_tab(d, workspace, label):
-    """Opens a tab in a workspace, labelled `label`, and waits for the sidebar to show it."""
-    d.cli("new", "--workspace", workspace, "--name", label)
-    settle(d, f"the tab {label}", lambda s: label in tab_labels(d, workspace))
-    row(d, label, TAB)
+def new_tab(d, workspace, name):
+    """Opens a tab in a workspace, named `name`, and waits for the sidebar to show it."""
+    d.cli("new", "--workspace", workspace, "--name", name)
+    settle(d, f"the tab {name}", lambda s: name in tab_names(d, workspace))
+    row(d, name, TAB)
 
 
-def tab_labels(d, workspace):
-    return [t["label"] for t in workspace_named(d, workspace)["tabs"]]
+def tab_names(d, workspace):
+    return [t["name"] for t in workspace_named(d, workspace)["tabs"]]
 
 
-def split_shown_tab(d, label="a1"):
+def split_shown_tab(d, tab_name="a1"):
     """Splits the shown tab, so its panes get rows of their own and headers. Returns the two pane ids."""
-    tab = next(t for w in d.workspaces() for t in w["tabs"] if t["label"] == label)
+    tab = next(t for w in d.workspaces() for t in w["tabs"] if t["name"] == tab_name)
     first = tab["panes"][0]["id"]
     second = d.cli("split", "--pane", first, "--right")
-    settle(d, "the split", lambda s: any(len(p) == 2 for _, tabs in s for name, p in tabs if name == label))
+    settle(d, "the split", lambda s: any(len(p) == 2 for _, tabs in s for name, p in tabs if name == tab_name))
     return first, second
 # }}}
 
@@ -626,7 +626,7 @@ def case_toggle_sidebar(d):
 def case_reorder_workspaces(d):
     """A workspace row dragged below another one moves after it."""
     two_workspaces(d)
-    expect([w["label"] for w in d.workspaces()] == ["alpha", "beta"], "unexpected start order", d)
+    expect([w["name"] for w in d.workspaces()] == ["alpha", "beta"], "unexpected start order", d)
     drop_onto(d, Desktop.centre(row(d, "alpha", WORKSPACE)), band(row(d, "beta", WORKSPACE), "lower"),
               "sidebarRowDrop")
     settle(d, "alpha to move after beta", lambda s: [w for w, _ in s] == ["beta", "alpha"])
@@ -652,7 +652,7 @@ def case_tab_row_to_workspace_row_then_show(d):
     drop_onto(d, Desktop.centre(row(d, "a2", TAB)), band(row(d, "beta", WORKSPACE), "middle"), "sidebarRowDrop")
     settle(d, "a2 to move into beta", lambda s: [t for t, _ in s[1][1]] == ["b1", "a2"])
     d.click(Desktop.centre(row(d, "a2", TAB)))
-    deadline_loop(10, "beta to be shown", lambda: [w["label"] for w in d.workspaces()
+    deadline_loop(10, "beta to be shown", lambda: [w["name"] for w in d.workspaces()
                                                    if w.get("visibility") == "shown"] == ["beta"])
     row(d, "a2", TAB, selected=True)
     expect_panes_draw(d)
@@ -782,7 +782,7 @@ def case_keyboard_switch(d):
     two_workspaces(d)
 
     def shown():
-        return [w["label"] for w in d.workspaces() if w.get("visibility") == "shown"]
+        return [w["name"] for w in d.workspaces() if w.get("visibility") == "shown"]
 
     expect(shown() == ["alpha"], f"alpha should be shown, not {shown()}", d)
     d.click(Desktop.centre(d.wait_item("terminalPane")))
@@ -827,19 +827,39 @@ def case_in_process_tab_row_to_empty_area(d):
     expect_panes_draw(d)
 
 
-def case_tab_label_names_the_tab(d):
-    """A tab's control-API label is what its sidebar row shows, over the title its shell set (OSC 2); clearing
-    the label gives the row back that title."""
+def case_tab_name_names_the_tab(d):
+    """A tab's name, given through the control API, is what its sidebar row shows, over the title its shell
+    set (OSC 2); clearing the name gives the row back that title."""
     tab = d.workspaces()[0]["tabs"][0]
     d.click(Desktop.centre(d.wait_item("terminalPane")))
     title_shown_pane(d, "shell-title")
     row(d, "shell-title", TAB)
-    d.cli("label", tab["id"], "build")
+    d.cli("rename", tab["id"], "build")
     row(d, "build", TAB)
     d.wait_gone("sidebarRow", title="shell-title", kind=TAB)
-    d.cli("label", tab["id"], "")
+    d.cli("rename", tab["id"], "")
     row(d, "shell-title", TAB)
     d.wait_gone("sidebarRow", title="build", kind=TAB)
+
+
+def case_gui_rename_names_the_tab(d):
+    """A tab renamed through the window (its sidebar row's Rename…) gets the one name the CLI knows it by:
+    `contour ls` shows it, `tab:<name>` addresses the tab, and `contour rename tab:<name> ""` clears it."""
+    tab = d.workspaces()[0]["tabs"][0]
+    expect(tab["name"] == "", f"the tab starts named {tab['name']!r}", d)
+    d.click(Desktop.centre(items_when(d, 1, "sidebarRow", kind=TAB)[0]), button=3)
+    d.click(Desktop.centre(d.wait_item("", text="Rename…")))
+    d.wait_item("sidebarRenameField")
+    d.type("deploy")
+    d.key("Return")
+    settle(d, "the tab to be named deploy", lambda s: [t for t, _ in s[0][1]] == ["deploy"])
+    row(d, "deploy", TAB)
+    listing = d.cli("ls")
+    expect("deploy" in listing, f"`contour ls` does not show the name:\n{listing}", d)
+    d.cli("rename", "tab:deploy", "")
+    settle(d, "the name to be cleared", lambda s: [t for t, _ in s[0][1]] == [""])
+    d.wait_gone("sidebarRow", title="deploy", kind=TAB)
+    expect(d.workspaces()[0]["tabs"][0]["id"] == tab["id"], "the rename replaced the tab", d)
 
 
 def case_ctrl_d_quits_clean(d):

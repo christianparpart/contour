@@ -356,7 +356,7 @@ costs when nobody uses it, and which existing type it is built on. Signatures ar
 #### `contour:terminal/workspace`
 
 > **Shipped in part** as `terminal-extensions:control/control@0.1.0` (`wit/control/`): listing,
-> opening, splitting, closing and labelling workspaces, tabs and panes, under the `control read` and
+> opening, splitting, closing and naming workspaces, tabs and panes, under the `control read` and
 > `control write` manifest lines. Focus, move, resize, zoom, swap and layouts are not in it yet.
 
 **Permissions:** `workspace:read`, `workspace:write` · **Placement:** session · **Cost unused:** nil

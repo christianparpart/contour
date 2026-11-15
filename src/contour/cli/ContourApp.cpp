@@ -1557,7 +1557,7 @@ int ContourApp::serveDaemon(DaemonVerbOptions const& options,
         config.persistence =
             workspacePersistenceOf(hostConfig->daemon.value().restore, *std::move(snapshotPath));
     else
-        errorLog()("the label '{}' names no snapshot file; this daemon keeps no workspaces", daemonLabel);
+        errorLog()("the name '{}' names no snapshot file; this daemon keeps no workspaces", daemonLabel);
     auto profiles = std::make_shared<ConfigProfileCatalog const>(
         *std::move(hostConfig), daemonProfile, vthost::HostedColorPreference);
     // Edits of the configuration reach the sessions spawned afterwards, and the scrollback of those
@@ -1901,7 +1901,7 @@ std::expected<std::optional<vthost::NativeTcpListenerConfig>, std::string> Conto
     auto const identityFile =
         vthost::daemonIdentityPath(vthost::daemonStateDirectory(processEnvironment()), daemonLabel);
     if (!identityFile)
-        return std::unexpected { std::format("the label '{}' names no TLS identity file", daemonLabel) };
+        return std::unexpected { std::format("the name '{}' names no TLS identity file", daemonLabel) };
 
     return vthost::NativeTcpListenerConfig {
         .host = hostPort->first,

@@ -17,8 +17,8 @@ program has something to say, a second line with the reason.
 
 | Row | Title | Right-hand side | Second line |
 | --- | --- | --- | --- |
-| Workspace | Its label, or the folder or repository it was started in | The git branch with `↑` commits ahead and `↓` behind its upstream, such as `feat/billing ↑2 ↓1`, then the status glyph of its most urgent pane | None |
-| Tab | The tab's title | Time in the current state | What the program in it says it is doing |
+| Workspace | Its name, or the folder or repository it was started in | The git branch with `↑` commits ahead and `↓` behind its upstream, such as `feat/billing ↑2 ↓1`, then the status glyph of its most urgent pane | None |
+| Tab | Its name, or the title its program or the title template gives it | Time in the current state | What the program in it says it is doing |
 | Pane | Shown only for a tab with more than one pane | The same | The same |
 
 - **Status and reason.** The status comes from agent hooks (see `contour agent setup`), from a blocked
@@ -126,8 +126,8 @@ filter is only a view: it never changes what a drag or a rename acts on.
 
 - **Click** a row to show it. Click the disclosure triangle to fold or unfold it.
 - **Double-click** a workspace's or a tab's name to rename it. Return commits, Escape cancels. A workspace's
-  label is shared: every window of the daemon and every `workspace.labelChanged` subscriber of the
-  [control API](control-api.md) hears it.
+  or a tab's name is shared: every window of the daemon and every `object.renamed` subscriber of the
+  [control API](control-api.md) hears it, and `contour rename` addresses the object by it (`tab:logs`).
 - **Right-click** for the row's menu:
     - a workspace: Rename…, Mark Seen, New Tab Here, Move Up, Move Down, **Merge into Tab** (a workspace of
       one tab only), Close Workspace… (the last workspace of an in-process window cannot be closed);
@@ -181,9 +181,9 @@ workspace and show it. The button stands where each platform keeps a sidebar's "
 on macOS, Windows and the Terminal style, and as a "new folder" icon in the header bar on Linux, so it is never
 the title band's new-tab **+**. It is named after the **folder** the current pane is in, or, inside a git worktree,
 after the **repository's root folder**, and its first shell starts in that directory. A pane with no known
-directory leaves the label empty and the workspace shows as `Workspace N`. The name is written once at
+directory leaves the name empty and the workspace shows as `Workspace N`. The name is written once at
 creation; renaming changes it from then on. `workspace.create` of the [control API](control-api.md) does
-the same, with an optional `cwd` and `label`.
+the same, with an optional `cwd` and `name`.
 
 ## The hover card
 
@@ -201,7 +201,7 @@ the jump key beside it.
 
 With the sidebar away, a window on a daemon shows one **location chip** at the leading edge of its title band:
 `local › billing ▾`, the daemon the window is on and the shown workspace. The default local daemon reads `local`,
-a named one its label (`work`), a remote one its host, and a daemon without a name `daemon`. A window with no
+a named one its name (`work`), a remote one its host, and a daemon without a name `daemon`. A window with no
 daemon shows the workspace alone. The chip is marked when *another* workspace needs you, has failed, or has a
 result you have not seen (done-not-seen and up). Work that is only running, or unseen output, does not mark it:
 the chip is not a progress indicator. The tabs move into the title band behind the chip, following
