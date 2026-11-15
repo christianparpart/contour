@@ -93,7 +93,7 @@ struct SwitchToTab;
 struct SwitchToPreviousTab;
 struct SwitchToTabLeft;
 struct SwitchToTabRight;
-struct SetTabTitle;
+struct RenameTab;
 struct SplitVertical;
 struct SplitHorizontal;
 struct ClosePane;

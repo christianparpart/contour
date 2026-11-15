@@ -375,7 +375,7 @@ TEST_CASE("the field's hint, the empty text and the level title follow the view"
                            "work")
           == "Filter workspaces on work…");
     CHECK(switcherHintText(SwitcherView { .level = SwitcherLevel::NewDaemon }, "work")
-          == "Label, such as work2");
+          == "Name, such as work2");
 
     CHECK(switcherEmptyText("zzz") == "No workspace matches “zzz”");
 
@@ -400,7 +400,7 @@ TEST_CASE("switcherLabelState judges the label as it is typed", "[switcher]")
           == SwitcherLabelState { .verdict = LabelVerdict::Available,
                                   .message = "Available",
                                   .actionTitle = "Start daemon “research” and switch this window to it",
-                                  .equivalentCommand = "contour daemon --label research",
+                                  .equivalentCommand = "contour daemon --name research",
                                   .subject = SwitcherHintSubject::CreateDaemon });
 
     CHECK(switcherLabelState("work", running, style)

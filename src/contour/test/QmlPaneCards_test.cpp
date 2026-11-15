@@ -3187,7 +3187,7 @@ TEST_CASE("Accepting a palette row runs that command and gives the keyboard back
 
     // Asserted from INSIDE the command, the only place the ordering is observable — by the time
     // acceptCurrent() returns, everything has already happened. The command must run LAST: one that opens
-    // a keyboard-driven surface of its own (SetTabColor's swatch picker, SetTabTitle's rename field)
+    // a keyboard-driven surface of its own (SetTabColor's swatch picker, RenameTab's rename field)
     // takes the focus as it opens, so running it any earlier lets the palette's own dismissal reclaim
     // that focus, and the surface cannot be typed into at all.
     controller.observeOnRun = [&] {

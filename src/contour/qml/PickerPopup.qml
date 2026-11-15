@@ -204,7 +204,7 @@ Popup {
     // Whatever closed the picker -- Escape, a pick, a click outside -- the keyboard must go back where it was:
     // to the dialog or popup the picker opened over, else to the terminal, or the user is left typing into
     // nothing. Only THEN does the pick run: a command that opens a keyboard-driven surface of its own
-    // (SetTabColor's swatch picker, SetTabTitle's rename field) takes the focus as it opens, and running it any
+    // (SetTabColor's swatch picker, RenameTab's rename field) takes the focus as it opens, and running it any
     // earlier means this restore takes that focus straight back. Same law, and the same shape, as
     // ActionContextMenu.qml's _pendingActionId: act once the popup is genuinely gone.
     //

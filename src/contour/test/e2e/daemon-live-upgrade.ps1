@@ -249,10 +249,10 @@ while ($true) { $n++; Write-Host "tick $n"; Start-Sleep -Milliseconds 200 }
     $labelDir = Join-Path $env:TMP "contour-$env:USERNAME"
     $socketA = Join-Path $labelDir 'relocA'
     $socketB = Join-Path $labelDir 'relocB'
-    $a = Start-Process -FilePath $Contour -ArgumentList "daemon --label relocA --log-file `"$(Join-Path $Out 'relocA.log')`"" `
+    $a = Start-Process -FilePath $Contour -ArgumentList "daemon --name relocA --log-file `"$(Join-Path $Out 'relocA.log')`"" `
         -PassThru -WindowStyle Hidden
     $script:Daemons += $a.Id
-    $b = Start-Process -FilePath $Contour -ArgumentList "daemon --label relocB --in-place --log-file `"$(Join-Path $Out 'relocB.log')`"" `
+    $b = Start-Process -FilePath $Contour -ArgumentList "daemon --name relocB --in-place --log-file `"$(Join-Path $Out 'relocB.log')`"" `
         -PassThru -WindowStyle Hidden
     $script:Daemons += $b.Id
     if (-not (WaitFor 200 { (Test-Path $socketA) -and (Test-Path $socketB) })) { Fail "the daemons did not bind $labelDir within 20s" }

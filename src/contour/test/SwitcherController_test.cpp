@@ -415,7 +415,7 @@ TEST_CASE("Switcher: New Daemon starts the daemon and switches this window; Shif
     s.controller->checkLabel("research");
     CHECK(s.controller->labelVerdict() == static_cast<int>(window::LabelVerdict::Available));
     CHECK(s.controller->labelMessage() == "Available");
-    CHECK(s.controller->labelCommand() == "contour daemon --label research");
+    CHECK(s.controller->labelCommand() == "contour daemon --name research");
     REQUIRE(s.controller->rows().size() == 1);
     CHECK(s.selected().kind == SwitcherRowKind::LabelAction);
 

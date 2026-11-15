@@ -162,6 +162,15 @@ Task<void> daemonWithoutControlApi(core::net::ISocket* socket, std::vector<proto
         received->push_back(*frame);
 }
 
+/// Writes @p pdu to @p socket under @p serial.
+Task<void> sendPdu(core::net::ISocket* socket, uint64_t serial, proto::DecodedPdu pdu)
+{
+    auto writer = proto::Writer {};
+    proto::encodePdu(writer, serial, pdu);
+    auto const bytes = writer.view();
+    std::ignore = co_await socket->write(std::span { bytes.data(), bytes.size() });
+}
+
 /// compat(0.9.0): a daemon of a release before the `names` capability: it shares the control API, answers
 /// every ControlRequest with @p reply, an event in the old spelling first, and records what it was sent.
 Task<void> daemonWithoutNames(core::net::ISocket* socket,
@@ -169,15 +178,10 @@ Task<void> daemonWithoutNames(core::net::ISocket* socket,
                               std::vector<proto::DecodedFrame>* received)
 {
     auto buffer = std::vector<std::byte> {};
-    auto const sendPdu = [socket](uint64_t serial, proto::DecodedPdu const& pdu) -> Task<void> {
-        auto writer = proto::Writer {};
-        proto::encodePdu(writer, serial, pdu);
-        auto const bytes = writer.view();
-        std::ignore = co_await socket->write(std::span { bytes.data(), bytes.size() });
-    };
     auto hello = co_await readOne(socket, &buffer);
     REQUIRE(hello);
-    co_await sendPdu(hello->serial,
+    co_await sendPdu(socket,
+                     hello->serial,
                      proto::DecodedPdu { proto::ServerHello {
                          .agreedVersion = proto::SupportedVersions.max,
                          .versions = proto::SupportedVersions,
@@ -190,12 +194,14 @@ Task<void> daemonWithoutNames(core::net::ISocket* socket,
         if (request == nullptr)
             continue;
         co_await sendPdu(
+            socket,
             0,
             proto::DecodedPdu { proto::ControlEvent {
                 .subscription = 1,
                 .event =
                     R"({"type":"workspace.labelChanged","workspace":"workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab","tab":"","pane":"","payload":{"label":"ops"}})" } });
-        co_await sendPdu(frame->serial,
+        co_await sendPdu(socket,
+                         frame->serial,
                          proto::DecodedPdu { proto::ControlReply { .requestId = request->requestId,
                                                                    .outcome = proto::ControlOutcome::Ok,
                                                                    .body = reply } });
@@ -457,16 +463,34 @@ TEST_CASE("resolveControlEndpoint precedence", "[vthost][client][control]")
     CHECK(describe({ .daemon = "/run/user/1000/x:1" }, empty) == "unix:/run/user/1000/x:1");
     CHECK(describe({ .daemon = "./x:1" }, empty) == "unix:./x:1");
 
-    SECTION("a label names the local daemon of that label, over the environment")
+    SECTION("a daemon's name picks the local daemon of that name, over the environment")
     {
         auto const named = [&](std::string_view name) {
             return std::format(
                 "unix:{}",
                 core::pathToUtf8(vthost::muxSocketPath(vthost::daemonNameFromOption(name), {}, empty)));
         };
-        CHECK(describe({ .name = "work" }, empty) == named("work"));
-        CHECK(describe({ .name = "work" }, withDaemon) == named("work"));
-        CHECK(describe({ .name = "work" }, empty) != describe({}, empty));
+        auto const work =
+            vthost::client::LocalDaemons { .contains = [](std::string_view name) { return name == "work"; } };
+        CHECK(describe({ .daemon = "name:work" }, empty) == named("work"));
+        CHECK(describe({ .daemon = "name:work" }, withDaemon) == named("work"));
+        CHECK(describe({ .daemon = "work", .localDaemons = work }, empty) == named("work"));
+        CHECK(describe({ .daemon = "name:work" }, empty) != describe({}, empty));
+    }
+    SECTION("a word naming both a local daemon and a saved host is refused, naming both spellings")
+    {
+        auto const everything = [](std::string_view) {
+            return true;
+        };
+        auto const resolved =
+            vthost::client::resolveControlEndpoint({ .daemon = "work",
+                                                     .localDaemons = { .contains = everything },
+                                                     .savedHosts = { .contains = everything } },
+                                                   empty);
+        REQUIRE_FALSE(resolved);
+        CHECK(resolved.error().failure == ControlFailure::Misconfigured);
+        CHECK(resolved.error().message.contains("--daemon name:work"));
+        CHECK(resolved.error().message.contains("--daemon host:work"));
     }
     SECTION("a TCP endpoint carries the CA, and so is verified")
     {

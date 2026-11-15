@@ -40,13 +40,6 @@ namespace
             ControlClientError { .failure = failure, .message = std::move(message), .remote = std::nullopt });
     }
 
-    /// @param spec What names an endpoint.
-    /// @return Whether it names a saved host rather than a path: a URL-like `scheme://`, or a bare word.
-    [[nodiscard]] bool namesSavedHost(std::string_view spec) noexcept
-    {
-        return spec.contains("://") || spec.find_first_of("/\\:") == std::string_view::npos;
-    }
-
     /// @param kind Why a transport could not connect.
     /// @return How a control client reports it: a daemon that is not (yet) trusted is Untrusted, so no
     ///         request goes to it, a question the user declined is Declined, a transport that is set up
@@ -491,47 +484,50 @@ void ControlClient::keepEvent(std::string event)
 std::expected<std::shared_ptr<ITransportFactory>, ControlClientError> resolveControlEndpoint(
     ControlEndpointOptions const& options, core::Environment const& env)
 {
-    // A daemon name picks a local daemon outright, exactly as `contour client --label` resolves it.
-    if (!options.name.empty())
-        return std::make_shared<UnixTransportFactory>(
-            muxSocketPath(daemonNameFromOption(options.name), {}, env),
-            UnixTransportFactory::EnsureDaemon {});
     auto const spec =
         !options.daemon.empty() ? options.daemon : env.get("CONTOUR_DAEMON").value_or(std::string {});
     // Never a daemon started for a control call: an empty ensureDaemon.
     if (spec.empty())
         return std::make_shared<UnixTransportFactory>(muxSocketPath({}, {}, env),
                                                       UnixTransportFactory::EnsureDaemon {});
-    // A spec that reads as a path is one, a colon in it notwithstanding (`/run/user/1000/x:1`).
-    auto const socketAt = [](std::string const& path) {
-        return std::make_shared<UnixTransportFactory>(
-            core::pathFromUtf8(path).value_or(std::filesystem::path {}),
-            UnixTransportFactory::EnsureDaemon {});
+    auto const target = resolveDaemonWord(spec, options.localDaemons, options.savedHosts);
+    if (!target)
+        return fail(ControlFailure::Misconfigured,
+                    std::format("--daemon {}", describe(target.error(), spec)));
+    auto const socketAt = [](std::filesystem::path path) {
+        return std::make_shared<UnixTransportFactory>(std::move(path), UnixTransportFactory::EnsureDaemon {});
     };
-    if (spec.starts_with('/') || spec.starts_with('.'))
-        return socketAt(spec);
-    if (auto const hostPort = parseHostPort(spec))
+    auto const& text = target->text;
+    switch (target->kind)
     {
-        if (options.knownDaemons == nullptr)
-            return fail(ControlFailure::Misconfigured, "no file to keep pinned daemons in is available");
-        return std::make_shared<TlsTransportFactory>(
-            TcpEndpoint { .host = hostPort->first,
-                          .port = hostPort->second,
-                          .token = options.token,
-                          .caPem = options.tlsCaPem,
-                          .expectedFingerprint = options.daemonFingerprint },
-            *options.knownDaemons,
-            options.pinPrompt,
-            options.keySourceProvider);
+        case DaemonWordKind::SocketPath: break;
+        case DaemonWordKind::LocalName: return socketAt(muxSocketPath(daemonNameFromOption(text), {}, env));
+        case DaemonWordKind::HostPort: {
+            if (options.knownDaemons == nullptr)
+                return fail(ControlFailure::Misconfigured, "no file to keep pinned daemons in is available");
+            auto const hostPort = parseHostPort(text).value_or(std::pair<std::string, std::uint16_t> {});
+            return std::make_shared<TlsTransportFactory>(
+                TcpEndpoint { .host = hostPort.first,
+                              .port = hostPort.second,
+                              .token = options.token,
+                              .caPem = options.tlsCaPem,
+                              .expectedFingerprint = options.daemonFingerprint },
+                *options.knownDaemons,
+                options.pinPrompt,
+                options.keySourceProvider);
+        }
+        case DaemonWordKind::SshUrl:
+        case DaemonWordKind::SavedHost:
+            if (!options.resolveSavedHost)
+                break;
+            return options.resolveSavedHost(text, options.daemonFingerprint)
+                .transform_error([](std::string message) {
+                    return ControlClientError { .failure = ControlFailure::Unreachable,
+                                                .message = std::move(message),
+                                                .remote = std::nullopt };
+                });
     }
-    if (options.resolveSavedHost && namesSavedHost(spec))
-        return options.resolveSavedHost(spec, options.daemonFingerprint)
-            .transform_error([](std::string message) {
-                return ControlClientError { .failure = ControlFailure::Unreachable,
-                                            .message = std::move(message),
-                                            .remote = std::nullopt };
-            });
-    return socketAt(spec);
+    return socketAt(core::pathFromUtf8(text).value_or(std::filesystem::path {}));
 }
 
 std::expected<std::string, ControlClientError> runControlCall(

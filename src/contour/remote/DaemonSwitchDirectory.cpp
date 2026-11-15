@@ -24,7 +24,7 @@ std::string DaemonSwitchDirectory::cacheKeyOf(LinkedDaemon const& daemon)
 {
     switch (daemon.address.kind)
     {
-        case vthost::proto::SwitchDaemonKind::Name: return std::format("label:{}", daemon.address.name);
+        case vthost::proto::SwitchDaemonKind::Name: return std::format("name:{}", daemon.address.name);
         case vthost::proto::SwitchDaemonKind::Host: return std::format("host:{}", daemon.address.name);
         case vthost::proto::SwitchDaemonKind::Same: break;
     }

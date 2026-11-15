@@ -573,7 +573,7 @@ class WindowController:
     /// @param name Its new name; empty (or blank) clears it, so its title names it again.
     Q_INVOKABLE void setTabName(int index, QString const& name);
     /// Asks the active tab's QML delegate to open its inline title editor (the keyboard entry point
-    /// for the SetTabTitle action). No-op when this window has no active tab. Emits
+    /// for the RenameTab action). No-op when this window has no active tab. Emits
     /// tabTitleEditRequested() with the active tab's row so exactly that TabItem starts editing.
     Q_INVOKABLE void beginActiveTabTitleEdit();
     /// Asks the active tab's QML delegate to open its color picker (the keyboard entry point for the

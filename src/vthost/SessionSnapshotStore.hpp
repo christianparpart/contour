@@ -161,7 +161,8 @@ class SessionSnapshotStore
 /// @return Whether it can name a file beneath a directory: not empty, and holding none of `/`, `\`, `:`,
 ///         NUL or `..`, which would leave the directory (`:` on Windows, where `C:x` replaces the whole
 ///         path it is appended to) or end the name.
-[[nodiscard]] bool isValidDaemonName(std::string_view name);
+/// @see validateDaemonName(), the full rules a name the user gives a new daemon is held to.
+[[nodiscard]] bool isFileSafeDaemonName(std::string_view name);
 
 /// `<stateDirectory>/sessions/<name>.snapshot`.
 /// @param stateDirectory The daemon's state directory (`daemonStateDirectory(...)`, StatePath.hpp).

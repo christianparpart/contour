@@ -234,7 +234,7 @@ struct SwitcherLabelState
     LabelVerdict verdict = LabelVerdict::Empty; ///< What the label amounts to.
     std::string message;                        ///< The verdict line; empty for an empty label.
     std::string actionTitle;                    ///< The one action row; empty for none.
-    std::string equivalentCommand;              ///< `contour daemon --label ‹label›`, when Available.
+    std::string equivalentCommand;              ///< `contour daemon --name ‹name›`, when Available.
     SwitcherHintSubject subject = SwitcherHintSubject::None; ///< What the footer's hints are about.
 
     bool operator==(SwitcherLabelState const&) const = default;

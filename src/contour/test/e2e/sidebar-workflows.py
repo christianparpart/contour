@@ -178,9 +178,9 @@ class Desktop:
         if self.in_process:
             self.spawn("client", [self.contour, "terminal", *debug], self.env(gui=True))
         else:
-            self.spawn("daemon", [self.contour, "daemon", "--label", LABEL], self.env())
+            self.spawn("daemon", [self.contour, "daemon", "--name", LABEL], self.env())
             deadline_loop(30, "the daemon", lambda: self.cli_ok("ls"))
-            self.spawn("client", [self.contour, "client", "--label", LABEL, *debug], self.env(gui=True))
+            self.spawn("client", [self.contour, "client", "--daemon", "name:" + LABEL, *debug], self.env(gui=True))
         deadline_loop(60, "the client's window", self.window_id, interval=0.25)
         deadline_loop(60, "the client's geometry dump", lambda: self.find("sidebarTree", required=False),
                       interval=0.25)

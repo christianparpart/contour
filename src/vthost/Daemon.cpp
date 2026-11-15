@@ -375,7 +375,7 @@ namespace
             // remedy here, the two halves of the story are two processes apart.
             if (listener.error().code == core::net::NetErrorCode::AddressInUse)
                 errorLog()("a daemon is already serving this socket; attach to it with "
-                           "'contour client', or start a separate one with --label NAME");
+                           "'contour client', or start a separate one with --name NAME");
             return std::unexpected(EXIT_FAILURE);
         }
         daemonLog()("bound {}", path);

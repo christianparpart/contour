@@ -1860,7 +1860,7 @@ class TerminalSession: public QAbstractItemModel, public vtbackend::Terminal::Ev
     bool operator()(actions::SwitchToPreviousTab);
     bool operator()(actions::SwitchToTabLeft);
     bool operator()(actions::SwitchToTabRight);
-    bool operator()(actions::SetTabTitle);
+    bool operator()(actions::RenameTab);
     bool operator()(actions::SetTabColor const& action);
     bool operator()(actions::ResetTabColor);
     bool operator()(actions::SplitVertical);

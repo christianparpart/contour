@@ -65,7 +65,7 @@ namespace
 std::optional<std::filesystem::path> daemonIdentityPath(std::filesystem::path const& stateDirectory,
                                                         std::string_view name)
 {
-    if (!isValidDaemonName(name))
+    if (!isFileSafeDaemonName(name))
         return std::nullopt;
     return stateDirectory / "tls" / std::format("{}.pem", name);
 }

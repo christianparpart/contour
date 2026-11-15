@@ -662,7 +662,7 @@ layouts:
 )"sv);
     CHECK(config.layouts.value().at("work").tabs.at(0).name == "notes");
     INFO("captured error log:\n" << capture.text());
-    CHECK(capture.count("name:") == 0);
+    CHECK_FALSE(capture.contains("name:"));
 }
 
 TEST_CASE("Config: a layout tab's old title: loads as its name, with a warning",

@@ -1537,7 +1537,6 @@ int ContourGuiApp::clientAction()
         parameters().get<bool>("contour.client.tmux") ? ClientEngine::Tmux : ClientEngine::Native;
     request.tmuxSocket = parameters().get<string>("contour.client.tmux-socket");
     request.socket = parameters().get<string>("contour.client.socket");
-    request.label = parameters().get<string>("contour.client.label");
     request.profile = parameters().get<string>("contour.client.profile");
     request.config = parameters().get<string>("contour.client.config");
     request.connectTcp = parameters().get<string>("contour.client.connect-tcp");
@@ -1554,7 +1553,30 @@ int ContourGuiApp::clientAction()
         return EXIT_FAILURE;
     }
     request.token = *std::move(token);
-    auto const host = parameters().get<string>("contour.client.host");
+    auto host = parameters().get<string>("contour.client.host");
+    if (auto const daemon = parameters().get<string>("contour.client.daemon"); !daemon.empty())
+    {
+        if (auto const given = firstGivenOption("contour.client", cli::DaemonExclusions))
+        {
+            cerr << std::format("contour client: pass either --daemon or --{}, not both\n", *given);
+            return EXIT_FAILURE;
+        }
+        auto const target =
+            vthost::client::resolveDaemonWord(daemon,
+                                              cli::localDaemonsOf(processEnvironment(), fileSystem()),
+                                              cli::savedHostsOf(request.config));
+        if (!target)
+        {
+            cerr << std::format("contour client: --daemon {}\n",
+                                vthost::client::describe(target.error(), daemon));
+            return EXIT_FAILURE;
+        }
+        auto picked = cli::clientDaemonOf(*target);
+        request.socket = std::move(picked.socket);
+        request.name = std::move(picked.name);
+        request.connectTcp = std::move(picked.connectTcp);
+        host = std::move(picked.host);
+    }
     if (!host.empty())
         if (auto const given = firstGivenOption("contour.client", cli::HostExclusions))
         {
@@ -1869,7 +1891,7 @@ std::expected<void, std::string> ContourGuiApp::startNativeAttach()
     else
     {
         // The local daemon: its socket and size policy are the client's options, else the `daemon:` section.
-        auto const socketLabel = vthost::daemonNameFromOption(_clientRequest ? _clientRequest->label : "");
+        auto const socketLabel = vthost::daemonNameFromOption(_clientRequest ? _clientRequest->name : "");
         auto const& label = socketLabel.name;
         auto const controlPath = vthost::muxSocketPath(
             socketLabel,
@@ -2119,14 +2141,16 @@ core::cli::Command ContourGuiApp::parameterDefinition() const
                 CLI::Option { "socket",
                               CLI::Value { ""s },
                               "Path of the daemon's control socket file. Defaults to the "
-                              "configuration's `daemon.socket`, else $XDG_RUNTIME_DIR/contour/LABEL "
-                              "($CONTOUR_MUX when no --label is given).",
+                              "configuration's `daemon.socket`, else $XDG_RUNTIME_DIR/contour/NAME "
+                              "($CONTOUR_MUX when no --daemon is given).",
                               "PATH" },
-                CLI::Option { "label",
-                              CLI::Value { ""s },
-                              "Socket label distinguishing daemon instances (default: `default`). Given, "
-                              "it beats $CONTOUR_MUX.",
-                              "NAME" },
+                CLI::Option {
+                    "daemon",
+                    CLI::Value { ""s },
+                    "The daemon to attach to: a socket path, HOST:PORT, an ssh:// URL, or a name: a "
+                    "local daemon's (default: `default`), else a host of hosts:. `name:NAME` and "
+                    "`host:NAME` say which. Given, it beats $CONTOUR_MUX.",
+                    "PATH|HOST:PORT|URL|NAME" },
                 CLI::Option { "tmux",
                               CLI::Value { false },
                               "Attaches to a real tmux server (spawns `tmux -C attach-session`): "
@@ -4168,7 +4192,7 @@ int ContourGuiApp::connectAction()
     request.logFilter = parameters().get<string>("contour.connect.log");
     request.logFile = parameters().get<string>("contour.connect.log-file");
     request.config = configPath;
-    request.label = plan.label; // Empty: the default label, which $CONTOUR_MUX outranks.
+    request.name = plan.name; // Empty: the default daemon, which $CONTOUR_MUX outranks.
     return launchClient(std::move(request), plan.host);
 }
 

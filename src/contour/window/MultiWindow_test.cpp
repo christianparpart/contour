@@ -653,7 +653,7 @@ TEST_CASE("REGRESSION: tab operations from a second window target that window, n
 TEST_CASE("beginActiveTabTitleEdit requests the active tab's inline editor, per window",
           "[contour][multiwindow]")
 {
-    // The SetTabTitle action asks the acting window's WindowController to open the inline title
+    // The RenameTab action asks the acting window's WindowController to open the inline title
     // editor for its ACTIVE tab; the controller signals tabTitleEditRequested(activeTabIndex) so
     // the matching QML TabItem starts editing. Verify the signal fires with the active tab's row,
     // and only on the window whose controller was asked (no cross-window leakage).

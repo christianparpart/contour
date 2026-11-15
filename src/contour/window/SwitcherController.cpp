@@ -887,7 +887,7 @@ void SwitcherController::cancel()
 
 QString SwitcherController::labelCaption() const
 {
-    return tr("Label — names the daemon in the switcher, the sidebar and --label");
+    return tr("Name — names the daemon in the switcher, the sidebar and --daemon");
 }
 
 QString SwitcherController::labelCommandCaption() const

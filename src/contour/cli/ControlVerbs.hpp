@@ -145,6 +145,11 @@ struct ControlIo
     std::shared_ptr<vthost::IPinPrompt> pinPrompt {};
     /// Makes what signs a `HOST:PORT` daemon's key proof; empty for no key.
     vthost::client::ClientKeySourceProvider keySourceProvider {};
+    /// The local daemons a bare `--daemon` word may name (vthost::client::resolveDaemonWord()); empty for
+    /// none.
+    vthost::client::LocalDaemons localDaemons {};
+    /// The saved hosts a bare `--daemon` word may name; empty for none.
+    vthost::client::SavedHosts savedHosts {};
 };
 
 /// The daemon's end of a control verb: where its calls go. The real one dials a transport; tests answer.

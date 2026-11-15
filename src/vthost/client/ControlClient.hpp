@@ -30,6 +30,7 @@
 #include <vtcontrol/LegacySpelling.hpp>
 #include <vthost/KnownDaemons.hpp>
 #include <vthost/Transport.hpp>
+#include <vthost/client/DaemonWord.hpp>
 #include <vthost/client/KeySource.hpp>
 #include <vthost/proto/Pdu.hpp>
 
@@ -148,10 +149,9 @@ using SavedHostResolver = std::function<std::expected<std::shared_ptr<ITransport
 /// What a control client is told about where its daemon is.
 struct ControlEndpointOptions
 {
-    std::string daemon {}; ///< `--daemon`: a socket path, `HOST:PORT`, or a saved host; empty for none.
-    /// `--label`: a local daemon by its socket name, as `contour client --label` reads it; empty for none.
-    /// It names the endpoint, so it wins over `$CONTOUR_DAEMON`, and is not combined with @ref daemon.
-    std::string name {};
+    /// `--daemon`: a socket path, `HOST:PORT`, a URL, or a local daemon's or a saved host's name, as
+    /// resolveDaemonWord() reads it; empty for none.
+    std::string daemon {};
     std::string token {};    ///< The token a TCP endpoint is sent.
     std::string tlsCaPem {}; ///< The CA certificate (PEM) a TCP endpoint is verified against; empty for none.
     /// `--daemon-fingerprint`: the fingerprint a TCP endpoint without a CA must present on first contact;
@@ -165,21 +165,23 @@ struct ControlEndpointOptions
     std::shared_ptr<IPinPrompt> pinPrompt {};
     /// Makes what signs a TCP endpoint's key proof on the call's own loop; empty for no key.
     ClientKeySourceProvider keySourceProvider {};
-    /// Resolves a spec that names a saved host (one holding `://`, or a bare word); empty for no saved hosts,
-    /// every such spec then being a path.
+    /// Resolves a spec that names a saved host (a URL, `host:NAME`, or a bare word that names no local
+    /// daemon); empty for no saved hosts, every such spec then being a path.
     SavedHostResolver resolveSavedHost {};
+    LocalDaemons localDaemons {}; ///< The local daemons a bare word may name.
+    SavedHosts savedHosts {};     ///< The saved hosts a bare word may name.
 };
 
 /// Picks the daemon a control client talks to.
 ///
-/// An `options.name` names the local daemon of that name (vthost::muxSocketPath) and nothing else is read.
-/// Otherwise the spec is the first non-empty of `options.daemon`, `$CONTOUR_DAEMON`, and the default socket.
-/// A spec starting with `/` or `.` is a socket path even with a colon in it; a `HOST:PORT` spec is TCP+TLS
-/// with the options' token and CA; one holding `://`, or a bare word, goes to the saved-host resolver when
-/// there is one; anything else is a socket path. A socket path never starts a daemon.
+/// The spec is the first non-empty of `options.daemon`, `$CONTOUR_DAEMON`, and the default socket, read by
+/// resolveDaemonWord(): a socket path; a `HOST:PORT`, TCP+TLS with the options' token and CA; a local
+/// daemon's name, its socket (vthost::muxSocketPath); a URL or a saved host's name, which goes to the
+/// saved-host resolver when there is one and is a socket path otherwise. No daemon is started.
 /// @param options What the user said.
 /// @param env Where `$CONTOUR_DAEMON` (and the default socket's inputs) are read from.
-/// @return The transport, or ControlFailure::Unreachable with the resolver's message.
+/// @return The transport; ControlFailure::Misconfigured for a word that names no daemon (an ambiguous one),
+///         or ControlFailure::Unreachable with the resolver's message.
 [[nodiscard]] std::expected<std::shared_ptr<ITransportFactory>, ControlClientError> resolveControlEndpoint(
     ControlEndpointOptions const& options, core::Environment const& env);
 

@@ -95,7 +95,7 @@ namespace
         ActionCategory { .name = "SwitchToPreviousTab", .category = CommandCategory::Tab },
         ActionCategory { .name = "SwitchToTabLeft", .category = CommandCategory::Tab },
         ActionCategory { .name = "SwitchToTabRight", .category = CommandCategory::Tab },
-        ActionCategory { .name = "SetTabTitle", .category = CommandCategory::Tab },
+        ActionCategory { .name = "RenameTab", .category = CommandCategory::Tab },
         ActionCategory { .name = "SplitVertical", .category = CommandCategory::Pane },
         ActionCategory { .name = "SplitHorizontal", .category = CommandCategory::Pane },
         ActionCategory { .name = "ClosePane", .category = CommandCategory::Pane },
@@ -370,7 +370,7 @@ std::vector<Command> DaemonCommandSource::commands() const
     };
 
     for (auto const& local: state.localDaemons)
-        addDaemon({ actions::DaemonRefKind::Label, local.label },
+        addDaemon({ actions::DaemonRefKind::Name, local.label },
                   local.label,
                   workspaceCountHint(local.workspaces, "A daemon on this computer."));
     for (auto const& host: state.hosts)

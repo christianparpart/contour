@@ -17,8 +17,8 @@ std::string LaunchTargetFailure::describe() const
             return std::format("'{}' is neither daemon, local, a saved host nor an ssh:// or tls:// address",
                                detail);
         case LaunchTargetError::BadAddress: return detail;
-        case LaunchTargetError::LabelNotUsed: return std::format("'{}' takes no label", detail);
-        case LaunchTargetError::EmptyLabel: return std::format("'{}:' names no label", detail);
+        case LaunchTargetError::NameNotUsed: return std::format("'{}' takes no name", detail);
+        case LaunchTargetError::EmptyName: return std::format("'{}:' has no name after the colon", detail);
     }
     return {};
 }
@@ -45,14 +45,14 @@ std::expected<LaunchTarget, LaunchTargetFailure> parseLaunchTarget(
     {
         if (colon == std::string_view::npos)
             return LaunchTarget { .kind = row->kind, .name = {} };
-        if (row->label == KeywordLabel::None)
-            return std::unexpected { LaunchTargetFailure { .error = LaunchTargetError::LabelNotUsed,
+        if (row->name == KeywordName::None)
+            return std::unexpected { LaunchTargetFailure { .error = LaunchTargetError::NameNotUsed,
                                                            .detail = std::string { word } } };
-        auto const label = text.substr(colon + 1);
-        if (label.empty())
-            return std::unexpected { LaunchTargetFailure { .error = LaunchTargetError::EmptyLabel,
+        auto const name = text.substr(colon + 1);
+        if (name.empty())
+            return std::unexpected { LaunchTargetFailure { .error = LaunchTargetError::EmptyName,
                                                            .detail = std::string { word } } };
-        return LaunchTarget { .kind = row->kind, .name = std::string { label } };
+        return LaunchTarget { .kind = row->kind, .name = std::string { name } };
     }
 
     if (auto const name = std::string { text }; hosts.contains(name))
@@ -79,7 +79,7 @@ AttachPlan attachPlanOf(LaunchTarget const& target)
     {
         case LaunchTargetKind::InProcess: return AttachPlan { .hosting = Hosting::InProcess };
         case LaunchTargetKind::LocalDaemon:
-            return AttachPlan { .hosting = Hosting::LocalDaemon, .label = target.name };
+            return AttachPlan { .hosting = Hosting::LocalDaemon, .name = target.name };
         case LaunchTargetKind::SavedHost:
         case LaunchTargetKind::Address:
             return AttachPlan { .hosting = Hosting::RemoteHost, .host = target.name };

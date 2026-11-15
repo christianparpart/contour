@@ -139,7 +139,7 @@ class SwitcherController: public QAbstractListModel
     Q_PROPERTY(QString labelMessage READ labelMessage NOTIFY labelChanged)
     /// The one action row's title; empty for none.
     Q_PROPERTY(QString labelAction READ labelAction NOTIFY labelChanged)
-    /// `contour daemon --label ‹label›` for an available label; empty otherwise.
+    /// `contour daemon --name ‹name›` for an available label; empty otherwise.
     Q_PROPERTY(QString labelCommand READ labelCommand NOTIFY labelChanged)
     /// How many group headers the rows draw: the rows that open a group. With every row the same height, it
     /// gives the list's height without laying the list out (PickerPopup sizes itself from it).

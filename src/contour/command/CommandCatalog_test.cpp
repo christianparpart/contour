@@ -115,7 +115,7 @@ TEST_CASE("ActionCommandSource offers every action that can run without an argum
         // None of these has a default key binding. Before the palette they were unreachable without
         // first editing contour.yml.
         CHECK(hasCommand(commands, "ClearHistoryAndReset"));
-        CHECK(hasCommand(commands, "SetTabTitle"));
+        CHECK(hasCommand(commands, "RenameTab"));
         CHECK(hasCommand(commands, "ResetConfig"));
 
         // Coloring a tab was mouse-only (right-click -> "Choose Color…") before these actions existed.
@@ -451,7 +451,7 @@ DaemonRowsState windowOnDefault()
 {
     return DaemonRowsState {
         .switching = DaemonSwitching::Available,
-        .current = actions::DaemonRef { actions::DaemonRefKind::Label, "default" },
+        .current = actions::DaemonRef { actions::DaemonRefKind::Name, "default" },
         .localDaemons = { { .label = "default", .workspaces = 3 }, { .label = "admin", .workspaces = 2 } },
         .hosts = { { .name = "studio", .hint = "ssh://studio" } },
         .workspaces = { { .position = 1, .name = "main", .role = command::WorkspaceRowRole::Current },
@@ -502,10 +502,10 @@ TEST_CASE("DaemonCommandSource rows carry the action that runs them", "[contour]
     rows.state = windowOnDefault();
     auto const commands = DaemonCommandSource { rows }.commands();
 
-    auto const* admin = find(commands, "SwitchToDaemon:label:admin");
+    auto const* admin = find(commands, "SwitchToDaemon:name:admin");
     REQUIRE(admin != nullptr);
     CHECK(std::get<actions::SwitchToDaemon>(admin->action).daemon
-          == actions::DaemonRef { actions::DaemonRefKind::Label, "admin" });
+          == actions::DaemonRef { actions::DaemonRefKind::Name, "admin" });
     CHECK(admin->description == "2 workspaces");
 
     auto const* studio = find(commands, "OpenDaemon:host:studio");

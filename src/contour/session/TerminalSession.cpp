@@ -7410,7 +7410,7 @@ bool TerminalSession::operator()(actions::OpenCommandPalette)
     return true;
 }
 
-bool TerminalSession::operator()(actions::SetTabTitle)
+bool TerminalSession::operator()(actions::RenameTab)
 {
     // Open the GUI-native inline tab-title editor for the active tab. Routed through the manager
     // like every other tab op so it targets this session's window.

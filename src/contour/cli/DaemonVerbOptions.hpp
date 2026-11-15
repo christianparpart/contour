@@ -42,7 +42,7 @@ enum class OptionFlag : uint8_t
 struct DaemonVerbOptions
 {
     std::string socket;                         ///< `--socket`: the control socket file.
-    std::string label;                          ///< `--label`: the socket label.
+    std::string name;                           ///< `--name`: the daemon's name.
     std::string config;                         ///< `--config`: the configuration file.
     std::string profile;                        ///< `--profile`: the profile the hosted sessions run.
     OptionFlag background = OptionFlag::Absent; ///< `--background`: relaunch detached.
@@ -70,7 +70,7 @@ struct DaemonVerbOptions
     /// Every member of the struct has exactly one row, and @ref DaemonOptionFieldCount says how many.
     static constexpr auto Fields = std::tuple {
         std::pair { 1U, &DaemonVerbOptions::socket },
-        std::pair { 2U, &DaemonVerbOptions::label },
+        std::pair { 2U, &DaemonVerbOptions::name },
         std::pair { 3U, &DaemonVerbOptions::config },
         std::pair { 4U, &DaemonVerbOptions::profile },
         std::pair { 5U, &DaemonVerbOptions::background },
@@ -115,7 +115,7 @@ static_assert(std::tuple_size_v<decltype(DaemonVerbOptions::Fields)> == DaemonOp
 inline void requireEveryDaemonOptionListed(DaemonVerbOptions const& options)
 {
     [[maybe_unused]] auto const& [socket,
-                                  label,
+                                  name,
                                   config,
                                   profile,
                                   background,
@@ -149,7 +149,7 @@ class DaemonLaunch
     /// @param given The options as the command line gave them.
     /// @param configuredSocket The configuration's `daemon.socket`; empty for none.
     /// @return The launch: the control socket is `--socket`, else the configuration's `daemon.socket`, else
-    ///         the one the label (`--label`, `$CONTOUR_MUX`, or the default) names.
+    ///         the one the name (`--name`, `$CONTOUR_MUX`, or the default) names.
     [[nodiscard]] static DaemonLaunch resolve(DaemonVerbOptions given, std::string const& configuredSocket);
 
     /// Restores a launch exactly as it was resolved; what decodeDaemonLaunch() makes of a record.

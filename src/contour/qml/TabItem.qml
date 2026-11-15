@@ -782,7 +782,7 @@ Item {
         currentColor: root.tabColor
     }
 
-    // Keyboard entry points (the SetTabTitle / SetTabColor actions): the WindowController emits
+    // Keyboard entry points (the RenameTab / SetTabColor actions): the WindowController emits
     // tabTitleEditRequested(index) / tabColorPickRequested(index) for the active tab; the matching
     // delegate opens its editor or its flyout. The active tab's delegate is always realized, so an
     // in-delegate Connections reliably fires.

@@ -246,6 +246,25 @@ void qtCustomMessageOutput(QtMsgType type, QMessageLogContext const& context, QS
         abort();
 }
 #endif
+
+/// compat(0.9.0): tells the user what the rewrite of an old spelling of the command line replaced. A process
+/// may run with no usable stderr (a GUI launched from a desktop, a daemon on /dev/null closed): a note that
+/// cannot be written is not worth failing the command for.
+/// @param notes One sentence each, naming the replacement.
+void printNotes(std::span<std::string const> notes)
+{
+    for (auto const& note: notes)
+    {
+        try
+        {
+            std::println(stderr, "Note: {}", note);
+        }
+        catch (std::system_error const&)
+        {
+            return; // Nowhere to write the rest to either.
+        }
+    }
+}
 } // namespace
 
 int main(int argc, char const* argv[])
@@ -289,18 +308,10 @@ int main(int argc, char const* argv[])
             environment, std::span<char const* const> { argv, static_cast<std::size_t>(argc) }))
         return *exitCode;
 
-    // compat(0.9.0): the old spellings of the command line, rewritten before anything parses it. The app
-    // keeps argv for as long as it lives, as it does the rewrite's.
-    auto const rewritten = contour::cli::rewriteLegacyArguments(
-        std::span<char const* const> { argv, static_cast<std::size_t>(argc) });
-    for (auto const& note: rewritten.notes)
-        std::println(stderr, "Note: {}", note);
+    // compat(0.9.0): the old spellings of the command line, rewritten against the app's syntax before it
+    // parses them. Declared ahead of the app, which keeps argv for as long as it lives.
+    auto rewritten = contour::cli::RewrittenArguments {};
     auto rewrittenPointers = std::vector<char const*> {};
-    for (auto const& argument: rewritten.arguments)
-        rewrittenPointers.push_back(argument.c_str());
-    rewrittenPointers.push_back(nullptr); // argv[argc], as main() is given it
-    argc = static_cast<int>(rewritten.arguments.size());
-    argv = rewrittenPointers.data();
 
 #ifdef CONTOUR_FRONTEND_GUI
     #ifndef _WIN32
@@ -334,6 +345,15 @@ int main(int argc, char const* argv[])
     // what remains is `contour daemon` and the CLI verbs, which need nothing beyond Qt Core.
     contour::cli::ContourApp app { environment };
 #endif
+
+    rewritten = contour::cli::rewriteLegacyArguments(
+        std::span<char const* const> { argv, static_cast<std::size_t>(argc) }, app.parameterDefinition());
+    printNotes(rewritten.notes);
+    for (auto const& argument: rewritten.arguments)
+        rewrittenPointers.push_back(argument.c_str());
+    rewrittenPointers.push_back(nullptr); // argv[argc], as main() is given it
+    argc = static_cast<int>(rewritten.arguments.size());
+    argv = rewrittenPointers.data();
 
     return app.run(argc, argv);
 }

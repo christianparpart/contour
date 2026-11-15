@@ -152,7 +152,7 @@ TEST_CASE("shortcutIndex maps commands to the chord that runs them", "[contour][
         // Nothing binds these by default; the palette shows them with an empty shortcut column — and
         // being reachable at all despite having no chord is exactly the point of having a palette.
         CHECK_FALSE(index.contains("ClearHistoryAndReset"));
-        CHECK_FALSE(index.contains("SetTabTitle"));
+        CHECK_FALSE(index.contains("RenameTab"));
         CHECK_FALSE(index.contains("ResetConfig"));
     }
 

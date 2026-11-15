@@ -1004,7 +1004,7 @@ TEST_CASE("switch builds workspace.switch from its destination flags", "[contour
     auto const build = [](std::vector<std::string_view> const& args) {
         return verbNamed("switch").buildParams(parseFlags(args));
     };
-    CHECK(build({ "switch", "--to-label", "admin" })
+    CHECK(build({ "switch", "--to-name", "admin" })
           == vtcontrol::encodeJson(vtcontrol::SwitchWorkspaceRequest { .toName = "admin" }));
     CHECK(build({ "switch", "--workspace", "w1", "--to-host", "box", "--to-workspace", "build" })
           == vtcontrol::encodeJson(vtcontrol::SwitchWorkspaceRequest {
@@ -1029,7 +1029,7 @@ TEST_CASE("switch refuses what cannot be a destination", "[contour][cli][control
     CHECK(run.err.str().contains("save it first"));
     CHECK(status({ "switch" }) == 2);
     CHECK(run.err.str().contains("needs a destination"));
-    CHECK(status({ "switch", "--to-label", "a", "--to-host", "b" }) == 2);
+    CHECK(status({ "switch", "--to-name", "a", "--to-host", "b" }) == 2);
     CHECK(channel.calls.empty());
 }
 
@@ -1052,7 +1052,7 @@ TEST_CASE("switch sends the caller's pane and exits by the window's outcome",
         auto run = Run {};
         auto channel = ScriptedChannel { std::format(R"({{"outcome":"{}","detail":"why"}})", row.outcome) };
         CHECK(contour::cli::runControlVerb(
-                  verbNamed("switch"), parseFlags({ "switch", "--to-label", "admin" }), channel, run.io())
+                  verbNamed("switch"), parseFlags({ "switch", "--to-name", "admin" }), channel, run.io())
               == row.status);
         REQUIRE(channel.calls.size() == 1);
         CHECK(channel.calls.front().method == "workspace.switch");
@@ -1068,33 +1068,52 @@ TEST_CASE("switch exits 3 when no window selects the workspace", "[contour][cli]
     auto channel =
         ScriptedChannel { std::unexpected(remoteError(vtcontrol::ControlErrorCode::NotFound, "nobody")) };
     CHECK(contour::cli::runControlVerb(
-              verbNamed("switch"), parseFlags({ "switch", "--to-label", "admin" }), channel, run.io())
+              verbNamed("switch"), parseFlags({ "switch", "--to-name", "admin" }), channel, run.io())
           == 3);
 }
 
-TEST_CASE("--daemon and --label exclude each other, and --label names a local daemon",
-          "[contour][cli][control]")
+TEST_CASE("--daemon picks a local daemon by its name", "[contour][cli][control]")
 {
-    SECTION("both is bad usage on every verb")
+    auto const socketOf = [](core::Environment const& env) {
+        return core::pathToUtf8(vthost::muxSocketPath(vthost::daemonNameFromOption("work"), {}, env));
+    };
+    SECTION("name:NAME, with no daemon behind it, is unreachable, naming its socket")
     {
         auto run = Run {};
         CHECK(contour::cli::runControlVerb(
-                  verbNamed("ls"), parseFlags({ "ls", "--daemon", "/x", "--label", "work" }), run.io())
-              == 2);
-        CHECK(run.err.str() == "Error: --daemon and --label exclude each other\n");
-    }
-    SECTION("a label with no daemon behind it is unreachable, naming its socket")
-    {
-        auto run = Run {};
-        CHECK(contour::cli::runControlVerb(verbNamed("ls"), parseFlags({ "ls", "--label", "work" }), run.io())
+                  verbNamed("ls"), parseFlags({ "ls", "--daemon", "name:work" }), run.io())
               == 4);
         INFO(run.err.str());
-        CHECK(run.err.str().contains(
-            core::pathToUtf8(vthost::muxSocketPath(vthost::daemonNameFromOption("work"), {}, run.env))));
+        CHECK(run.err.str().contains(socketOf(run.env)));
+    }
+    SECTION("a bare word naming a local daemon is that daemon")
+    {
+        auto run = Run {};
+        auto io = run.io();
+        io.localDaemons = { .contains = [](std::string_view name) { return name == "work"; } };
+        CHECK(contour::cli::runControlVerb(verbNamed("ls"), parseFlags({ "ls", "--daemon", "work" }), io)
+              == 4);
+        INFO(run.err.str());
+        CHECK(run.err.str().contains(socketOf(run.env)));
+    }
+    SECTION("a bare word naming a local daemon and a saved host is bad usage, naming both spellings")
+    {
+        auto run = Run {};
+        auto io = run.io();
+        auto const everything = [](std::string_view) {
+            return true;
+        };
+        io.localDaemons = { .contains = everything };
+        io.savedHosts = { .contains = everything };
+        CHECK(contour::cli::runControlVerb(verbNamed("ls"), parseFlags({ "ls", "--daemon", "work" }), io)
+              == 2);
+        INFO(run.err.str());
+        CHECK(run.err.str().contains("--daemon name:work"));
+        CHECK(run.err.str().contains("--daemon host:work"));
     }
 }
 
-TEST_CASE("--label picks the daemon and --name names what a creating verb makes", "[contour][cli][control]")
+TEST_CASE("--daemon picks the daemon and --name names what a creating verb makes", "[contour][cli][control]")
 {
     struct Row
     {
@@ -1104,13 +1123,13 @@ TEST_CASE("--label picks the daemon and --name names what a creating verb makes"
     };
     auto const rows = std::array {
         Row { .path = "workspace.new",
-              .args = { "workspace", "new", "--label", "work", "--name", "ops" },
+              .args = { "workspace", "new", "--daemon", "name:work", "--name", "ops" },
               .params = vtcontrol::encodeJson(vtcontrol::CreateWorkspaceRequest { .name = "ops" }) },
         Row { .path = "new",
-              .args = { "new", "--label", "work", "--name", "logs" },
+              .args = { "new", "--daemon", "name:work", "--name", "logs" },
               .params = vtcontrol::encodeJson(vtcontrol::CreateTabRequest { .name = "logs" }) },
         Row { .path = "split",
-              .args = { "split", "--label", "work", "--name", "tail" },
+              .args = { "split", "--daemon", "name:work", "--name", "tail" },
               .params = vtcontrol::encodeJson(vtcontrol::SplitRequest { .name = "tail" }) },
     };
     for (auto const& row: rows)
@@ -1121,7 +1140,7 @@ TEST_CASE("--label picks the daemon and --name names what a creating verb makes"
         REQUIRE(params.has_value());
         CHECK(*params == row.params);
 
-        // The connection goes to the daemon labelled `work`, which does not run: its socket is named.
+        // The connection goes to the daemon named `work`, which does not run: its socket is named.
         auto run = Run {};
         CHECK(contour::cli::runControlVerb(verbNamed(row.path), flags, run.io()) == 4);
         INFO(run.err.str());

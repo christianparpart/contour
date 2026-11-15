@@ -535,7 +535,7 @@ TEST_CASE("Switcher: New Daemon shows the verdict, the equivalent command and on
 
     typeLabel("research");
     CHECK(text("switcherLabelVerdict") == "Available");
-    CHECK(text("switcherLabelCommand") == "contour daemon --label research");
+    CHECK(text("switcherLabelCommand") == "contour daemon --name research");
     auto* command = f.scene->part(QStringLiteral("switcherLabelCommand"));
     REQUIRE(command != nullptr);
     CHECK(command->property("font").value<QFont>().family()

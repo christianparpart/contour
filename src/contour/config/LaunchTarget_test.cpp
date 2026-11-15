@@ -59,8 +59,8 @@ struct RefusedRow
 constexpr auto RefusedRows = std::array {
     RefusedRow { "", LaunchTargetError::Empty },
     RefusedRow { "nowhere", LaunchTargetError::UnknownName },
-    RefusedRow { "local:x", LaunchTargetError::LabelNotUsed },
-    RefusedRow { "daemon:", LaunchTargetError::EmptyLabel },
+    RefusedRow { "local:x", LaunchTargetError::NameNotUsed },
+    RefusedRow { "daemon:", LaunchTargetError::EmptyName },
     RefusedRow { "ftp://host", LaunchTargetError::BadAddress },
     RefusedRow { "tls://host", LaunchTargetError::BadAddress },
     RefusedRow { "ssh://-oProxyCommand=x", LaunchTargetError::BadAddress },
@@ -115,13 +115,13 @@ TEST_CASE("LaunchTarget.attachPlan maps each kind onto an attach path", "[contou
 {
     CHECK(attachPlanOf({ LaunchTargetKind::InProcess, {} }) == AttachPlan { .hosting = Hosting::InProcess });
     CHECK(attachPlanOf({ LaunchTargetKind::LocalDaemon, {} })
-          == AttachPlan { .hosting = Hosting::LocalDaemon, .label = {}, .host = {} });
+          == AttachPlan { .hosting = Hosting::LocalDaemon, .name = {}, .host = {} });
     CHECK(attachPlanOf({ LaunchTargetKind::LocalDaemon, "build" })
-          == AttachPlan { .hosting = Hosting::LocalDaemon, .label = "build", .host = {} });
+          == AttachPlan { .hosting = Hosting::LocalDaemon, .name = "build", .host = {} });
     CHECK(attachPlanOf({ LaunchTargetKind::SavedHost, "starfive" })
-          == AttachPlan { .hosting = Hosting::RemoteHost, .label = {}, .host = "starfive" });
+          == AttachPlan { .hosting = Hosting::RemoteHost, .name = {}, .host = "starfive" });
     CHECK(attachPlanOf({ LaunchTargetKind::Address, "ssh://me@pi4.lan" })
-          == AttachPlan { .hosting = Hosting::RemoteHost, .label = {}, .host = "ssh://me@pi4.lan" });
+          == AttachPlan { .hosting = Hosting::RemoteHost, .name = {}, .host = "ssh://me@pi4.lan" });
 }
 
 TEST_CASE("LaunchTarget.connectArguments spells the connect verb", "[contour][connect]")

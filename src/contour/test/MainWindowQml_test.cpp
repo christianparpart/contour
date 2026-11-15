@@ -1185,7 +1185,7 @@ TEST_CASE("an icon-only pill renames in the open (offscreen)", "[contour][gui][q
     // An icon-only pill has no room for a close button, active or not.
     CHECK_FALSE(part(*tab, QStringLiteral("tabCloseButton")).isVisible());
 
-    emit controller.tabTitleEditRequested(TabCount - 1); // what SetTabTitle asks of the active tab
+    emit controller.tabTitleEditRequested(TabCount - 1); // what RenameTab asks of the active tab
     QQuickItem* field = nullptr;
     REQUIRE(QTest::qWaitFor(
         [&] {

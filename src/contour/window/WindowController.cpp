@@ -873,7 +873,7 @@ command::DaemonRowsState WindowController::daemonRows() const
 
     using Kind = vthost::proto::SwitchDaemonKind;
     if (target->kind == Kind::Name)
-        state.current = actions::DaemonRef { actions::DaemonRefKind::Label, target->daemon };
+        state.current = actions::DaemonRef { actions::DaemonRefKind::Name, target->daemon };
     else if (target->kind == Kind::Host)
         state.current = actions::DaemonRef { actions::DaemonRefKind::Host, target->daemon };
 
@@ -1564,7 +1564,7 @@ QRectF WindowController::dropGhostRect(int zone, qreal width, qreal height, qrea
 void WindowController::runTabAction(int row, actions::Action const& action)
 {
     std::visit(core::Overloaded {
-                   [&](actions::SetTabTitle const&) { emit tabTitleEditRequested(row); },
+                   [&](actions::RenameTab const&) { emit tabTitleEditRequested(row); },
                    [&](actions::SetTabColor const& color) {
                        if (color.color.has_value())
                            setTabColor(row, platform::toQColor(*color.color));
@@ -3672,7 +3672,7 @@ void WindowController::runSidebarAction(SidebarRowKey const& row, actions::Actio
     static constexpr auto ByIdActions = std::array {
         ByIdAction { .matches = holds<actions::MarkSeen>, .run = MarkRowSeen },
         ByIdAction { .matches = holds<actions::RenameWorkspace>, .run = RenameRow },
-        ByIdAction { .matches = holds<actions::SetTabTitle>, .run = RenameRow },
+        ByIdAction { .matches = holds<actions::RenameTab>, .run = RenameRow },
         ByIdAction { .matches = holds<actions::MoveWorkspaceUp>, .run = MoveRowUp },
         ByIdAction { .matches = holds<actions::MoveWorkspaceDown>, .run = MoveRowDown },
         ByIdAction { .matches = holds<actions::MoveTabToWorkspace>, .run = MoveRowTab },

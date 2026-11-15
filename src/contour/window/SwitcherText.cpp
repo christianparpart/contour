@@ -278,7 +278,7 @@ SwitcherLabelState switcherLabelState(std::string_view label,
         case LabelVerdict::Empty: break;
         case LabelVerdict::Available:
             state.message = "Available";
-            state.equivalentCommand = std::format("contour daemon --label {}", label);
+            state.equivalentCommand = std::format("contour daemon --name {}", label);
             state.subject = SwitcherHintSubject::CreateDaemon;
             break;
         case LabelVerdict::Running:
@@ -298,7 +298,7 @@ std::string switcherHintText(SwitcherView const& view, std::string_view daemonNa
 {
     switch (view.level)
     {
-        case SwitcherLevel::NewDaemon: return "Label, such as work2";
+        case SwitcherLevel::NewDaemon: return "Name, such as work2";
         case SwitcherLevel::Daemon: return std::format("Filter workspaces on {}…", daemonName);
         case SwitcherLevel::Top: break;
     }

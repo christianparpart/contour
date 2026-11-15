@@ -1644,7 +1644,7 @@ constexpr StringLiteral InputMappingsConfig {
     "p.\n"
     "{comment} - WriteScreen       Writes VT sequence in `chars` member to the screen (bypassing the "
     "application).\n"
-    "{comment} - SetTabTitle       Rename the active tab inline (opens the tab-title editor).\n"
+    "{comment} - RenameTab         Rename the active tab inline (opens the tab's name editor).\n"
     "{comment} - SetTabColor       Colorize the active tab. With `color: '#RRGGBB'` it applies that "
     "color directly; without it, the tab's color picker opens.\n"
     "{comment} - ResetTabColor     Removes the color given to the active tab, restoring its default.\n"

@@ -19,6 +19,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <variant>
@@ -49,19 +50,19 @@ enum class CycleDirection : uint8_t
     Previous, ///< Backward, wrapping at the start.
 };
 
-/// What a DaemonRef names: a local daemon by label, or a saved host.
+/// What a DaemonRef names: a local daemon by its name, or a saved host.
 enum class DaemonRefKind : uint8_t
 {
-    Label = 0, ///< A local daemon on this computer, by its label (`label:` in a binding).
-    Host,      ///< A saved host from `hosts:` (`host:` in a binding).
+    Name = 0, ///< A local daemon on this computer, by its name (`name:` in a binding).
+    Host,     ///< A saved host from `hosts:` (`host:` in a binding).
 };
 
-/// The daemon a switching action names. Converted from the binding's `label:` / `host:` keys at the YAML
+/// The daemon a switching action names. Converted from the binding's `name:` / `host:` keys at the YAML
 /// boundary, so nothing beyond the parser sees which key spelled it.
 struct DaemonRef
 {
-    DaemonRefKind kind {}; ///< Whether @c name is a local label or a saved host.
-    std::string name;      ///< The label or the host name; never empty in a parsed binding.
+    DaemonRefKind kind {}; ///< Whether @c name is a local daemon's or a saved host's.
+    std::string name;      ///< The daemon's or the host's name; never empty in a parsed binding.
     bool operator==(DaemonRef const&) const = default;
 };
 
@@ -153,7 +154,7 @@ struct SwitchToTab{ int position; };
 struct SwitchToPreviousTab{};
 struct SwitchToTabLeft{};
 struct SwitchToTabRight{};
-struct SetTabTitle{};
+struct RenameTab{};
 struct SplitVertical{};    // split the active pane left/right
 struct SplitHorizontal{};  // split the active pane top/bottom
 struct ClosePane{};
@@ -183,7 +184,7 @@ struct CycleDaemon{ CycleDirection direction = CycleDirection::Next; };    // sh
 struct SwitchToDaemon{ DaemonRef daemon; }; // show the named daemon in this window
 struct OpenDaemon{ DaemonRef daemon; };     // show the named daemon in a new window
 struct ShowSwitcher{};                      // open the daemon & workspace switcher popup
-struct NewDaemon{};                         // start a new local daemon under a label asked for, and show it here
+struct NewDaemon{};                         // start a new local daemon of a name asked for, and show it here
 struct UpgradeDaemon{};                     // upgrade this window's local daemon in place, keeping every program
 struct OpenContextMenu{};        // open the terminal pane's context menu (bound to the right button)
 struct SelectAll{};              // select the whole scrollback and screen
@@ -317,7 +318,7 @@ using ActionVariant = std::variant<CancelSelection,
                                    SwitchToPreviousTab,
                                    SwitchToTabLeft,
                                    SwitchToTabRight,
-                                   SetTabTitle,
+                                   RenameTab,
                                    SplitVertical,
                                    SplitHorizontal,
                                    ClosePane,
@@ -651,7 +652,27 @@ concept ParameterizedActionConcept = core::oneOf<T,
 /// ParameterizedActionConcept member), false if it is runnable as-is.
 [[nodiscard]] bool isParameterized(Action const& action) noexcept;
 
+/// @param name An action's name, in any case; an old name of ActionAliases also.
+/// @return The action of that name, a parameterized one still lacking its argument; nullopt for none.
 std::optional<Action> fromString(std::string const& name);
+
+/// compat(0.9.0): an action's old name, which still loads as the action it was renamed to.
+struct ActionAlias
+{
+    std::string_view oldName; ///< The name it had, e.g. "SetTabTitle".
+    std::string_view name;    ///< Its catalog name now, e.g. "RenameTab".
+};
+
+/// compat(0.9.0): every old action name that still loads; removed before 0.9.0. Renaming an action is
+/// adding a row.
+inline constexpr auto ActionAliases = std::array {
+    ActionAlias { .oldName = "SetTabTitle", .name = "RenameTab" },
+};
+
+/// compat(0.9.0): @p name, when it is an old one of ActionAliases.
+/// @param name An action's name, in any case.
+/// @return Its alias row; nullptr for a current or unknown name.
+[[nodiscard]] ActionAlias const* actionAliasOf(std::string_view name);
 
 namespace documentation
 {
@@ -849,8 +870,9 @@ namespace documentation
     constexpr inline std::string_view SwitchToPreviousTab { "Switch to the previously focused tab" };
     constexpr inline std::string_view SwitchToTabLeft { "Switch to tab to the left" };
     constexpr inline std::string_view SwitchToTabRight { "Switch to tab to the right" };
-    constexpr inline std::string_view SetTabTitle {
-        "Rename the current tab inline (opens the tab-title editor)"
+    constexpr inline std::string_view RenameTab {
+        "Rename the current tab inline (opens the tab's name editor). Its old name SetTabTitle still loads "
+        "until 0.9.0."
     };
     constexpr inline std::string_view SetTabColor {
         "Colorize the current tab. Without a color, this opens the tab's color picker; with one (e.g. "
@@ -990,20 +1012,20 @@ namespace documentation
     };
     constexpr inline std::string_view CycleDaemon {
         "Shows the next (`direction: next`, the default) or previous (`direction: previous`) daemon in this "
-        "window: the local daemons by label, then the saved hosts some window shows; wrapping around."
+        "window: the local daemons by name, then the saved hosts some window shows; wrapping around."
     };
     constexpr inline std::string_view SwitchToDaemon {
-        "Shows the daemon named by `label` (a local daemon) or `host` (a saved host, see `hosts:`) in this "
+        "Shows the daemon named by `name` (a local daemon) or `host` (a saved host, see `hosts:`) in this "
         "window. A binding that names neither, or both, is dropped."
     };
     constexpr inline std::string_view OpenDaemon {
-        "Shows the daemon named by `label` (a local daemon) or `host` (a saved host, see `hosts:`) in a new "
+        "Shows the daemon named by `name` (a local daemon) or `host` (a saved host, see `hosts:`) in a new "
         "window. A binding that names neither, or both, is dropped."
     };
     constexpr inline std::string_view ShowSwitcher { "Opens the popup to switch this window to another "
                                                      "daemon or workspace, or to open one in a new window." };
     constexpr inline std::string_view NewDaemon {
-        "Asks for a label, starts a new local daemon under it and shows it in this window."
+        "Asks for a name, starts a new local daemon of that name and shows it in this window."
     };
     constexpr inline std::string_view UpgradeDaemon {
         "Upgrades this window's local daemon in place, keeping every program running, even when the daemon "

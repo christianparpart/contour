@@ -176,6 +176,8 @@ add_library(vthost STATIC
     client/ConnectionState.hpp
     client/ControlClient.cpp
     client/ControlClient.hpp
+    client/DaemonWord.cpp
+    client/DaemonWord.hpp
     client/DaemonControlClient.cpp
     client/DaemonControlClient.hpp
     control/BlockWaiters.cpp
@@ -450,6 +452,7 @@ if(VTHOST_TESTING)
         testing/ScenarioGuard.hpp
         client/ClientSupervisor_test.cpp
         client/ControlClient_test.cpp
+        client/DaemonWord_test.cpp
         client/KeySource_test.cpp
         client/DaemonControlClient_test.cpp
         control/ControlService_test.cpp

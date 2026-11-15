@@ -176,7 +176,7 @@ namespace
                     argv.emplace_back("client");
                     argv.push_back(std::format("--socket={}", _socket.string()));
                     // Unique, so that no registered service of the user's answers for this launch.
-                    argv.push_back(std::format("--label={}", _label));
+                    argv.push_back(std::format("--name={}", _label));
                     break;
             }
             argv.push_back(std::format("--config={}", _config.string()));

@@ -114,11 +114,43 @@ std::optional<vtbackend::RGBColor>& blockStatusHoverOf(vtbackend::ColorPalette& 
 
 } // namespace
 
-TEST_CASE("Config: SetTabTitle action binds, old SetTabName name is rejected", "[config]")
+namespace
 {
-    // The tab-rename action was renamed SetTabName -> SetTabTitle. The new name must resolve to a
-    // binding; the retired name must NOT (fromString() returns nullopt, so it is dropped).
+/// @return How many bindings of @p mappings, keys and characters alike, run a @p Tag action.
+template <typename Tag>
+[[nodiscard]] std::ptrdiff_t bindingsOf(contour::config::InputMappings const& mappings)
+{
+    auto const countIn = [](auto const& list) {
+        return std::ranges::count_if(
+            list, [](auto const& m) { return std::holds_alternative<Tag>(m.binding.at(0)); });
+    };
+    return countIn(mappings.keyMappings) + countIn(mappings.charMappings);
+}
+} // namespace
+
+TEST_CASE("Config: RenameTab action binds, the retired SetTabName name is rejected", "[config]")
+{
+    // The retired name does not resolve (fromString() returns nullopt), so its binding is dropped.
     QTemporaryDir dir;
+    auto capture = core::log::ScopedCapture { "error" };
+    auto const config = loadFromYaml(dir, R"(
+default_profile: main
+profiles:
+    main:
+        shell: /bin/sh
+input_mapping:
+    - { mods: [Control, Shift], key: 'R', action: RenameTab }
+    - { mods: [Control, Shift], key: 'N', action: SetTabName }
+)"sv);
+    CHECK(bindingsOf<contour::actions::RenameTab>(config.inputMappings.value()) == 1);
+    INFO("captured error log:\n" << capture.text());
+    CHECK_FALSE(capture.contains("RenameTab"));
+}
+
+TEST_CASE("Config: the old SetTabTitle name binds RenameTab, with a warning", "[config][compat-0.9.0]")
+{
+    QTemporaryDir dir;
+    auto capture = core::log::ScopedCapture { "error" };
     auto const config = loadFromYaml(dir, R"(
 default_profile: main
 profiles:
@@ -126,30 +158,10 @@ profiles:
         shell: /bin/sh
 input_mapping:
     - { mods: [Control, Shift], key: 'R', action: SetTabTitle }
-    - { mods: [Control, Shift], key: 'N', action: SetTabName }
 )"sv);
-
-    auto const& mappings = config.inputMappings.value();
-    auto const bindsTo = [&](auto actionTag) {
-        auto const inKey = std::ranges::any_of(mappings.keyMappings, [&](auto const& m) {
-            return std::holds_alternative<decltype(actionTag)>(m.binding.at(0));
-        });
-        auto const inChar = std::ranges::any_of(mappings.charMappings, [&](auto const& m) {
-            return std::holds_alternative<decltype(actionTag)>(m.binding.at(0));
-        });
-        return inKey || inChar;
-    };
-
-    CHECK(bindsTo(contour::actions::SetTabTitle {}));
-    // The retired "SetTabName" string does not resolve, so it is dropped: exactly ONE SetTabTitle
-    // binding survives (the 'R' line), while the 'N'/SetTabName line adds nothing. Count across both
-    // key and char mapping lists (an uppercase letter key may land in either).
-    auto const countIn = [](auto const& list) {
-        return std::ranges::count_if(list, [](auto const& m) {
-            return std::holds_alternative<contour::actions::SetTabTitle>(m.binding.at(0));
-        });
-    };
-    CHECK(countIn(mappings.keyMappings) + countIn(mappings.charMappings) == 1);
+    CHECK(bindingsOf<contour::actions::RenameTab>(config.inputMappings.value()) == 1);
+    INFO("captured error log:\n" << capture.text());
+    CHECK(capture.count("RenameTab") == 1);
 }
 
 TEST_CASE("Config: the command palette is bound to Ctrl+Shift+P by default", "[config][palette]")

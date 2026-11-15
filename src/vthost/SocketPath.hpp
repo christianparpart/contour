@@ -51,7 +51,7 @@ struct DaemonName
     DaemonNameOrigin origin = DaemonNameOrigin::Default;
 };
 
-/// Reads a `--label` option whose declared default is empty, so that "not given" is distinguishable
+/// Reads a `--name` option whose declared default is empty, so that "not given" is distinguishable
 /// from "given as `default`" (the option parser reports defaults and given values alike).
 /// @param option The option's value; empty when the user did not pass it.
 /// @return The name it names, Explicit when @p option is non-empty, else the default name.
@@ -104,7 +104,7 @@ struct MuxSocketPathInputs
 /// Precedence mirrors tmux's socket discovery, adapted to XDG conventions:
 ///  1. @c explicitPath (the `--socket PATH` flag) verbatim, if non-empty;
 ///  2. a name the user gave (@c nameOrigin Explicit), derived by rungs 4 to 6: an explicit `-L` beats
-///     `$TMUX` in tmux, and `--label` beats `$CONTOUR_MUX` here. Without that, a shell inside a
+///     `$TMUX` in tmux, and `--name` beats `$CONTOUR_MUX` here. Without that, a shell inside a
 ///     daemon-hosted pane could never address a second daemon;
 ///  3. @c contourMuxEnv verbatim, if set and non-empty (the `$CONTOUR_MUX` override, analogous to tmux's
 ///     `$TMUX` naming the active server's socket), when no name was given;
@@ -128,7 +128,7 @@ struct MuxSocketPathInputs
 /// Note that it only makes the two SANDBOXED derivations agree. A `contour` installed on the host
 /// is not sandboxed and still derives rung 5, which is why the sandboxed daemon also exports
 /// `$CONTOUR_MUX` — rung 3 — into the shells it hosts. A sandboxed shell running `contour client` with
-/// no `--label` therefore still finds its own daemon; only a name it spells out redirects it.
+/// no `--name` therefore still finds its own daemon; only a name it spells out redirects it.
 ///
 /// The parent directory is NOT created here; the listener's bind path hardens
 /// and creates it (see core::net::ensureOwnedPrivateDirectory).
@@ -279,23 +279,25 @@ enum class DaemonNameError : uint8_t
 {
     switch (error)
     {
-        case DaemonNameError::Empty: return "Type a label for the daemon.";
+        case DaemonNameError::Empty: return "Type a name for the daemon.";
         case DaemonNameError::TooLong:
-            return std::format("A label has at most {} characters.", MaxDaemonNameLength);
-        case DaemonNameError::LeadingDot: return "A label cannot start with a dot.";
+            return std::format("A name has at most {} characters.", MaxDaemonNameLength);
+        case DaemonNameError::LeadingDot: return "A name cannot start with a dot.";
         case DaemonNameError::InvalidCharacter:
-            return R"(A label may hold only letters, digits, "-", "_" and ".".)";
-        case DaemonNameError::SiblingSuffix: return R"(A label cannot end in "-native", "-tmux" or ".log".)";
+            return R"(A name may hold only letters, digits, "-", "_" and ".".)";
+        case DaemonNameError::SiblingSuffix: return R"(A name cannot end in "-native", "-tmux" or ".log".)";
     }
-    return "This label cannot be used.";
+    return "This name cannot be used.";
 }
 
 /// Checks that @p name can name a daemon of its own: its control socket is a file of that name in the
 /// runtime directory, which local discovery lists (sibling files and hidden ones skipped).
-/// daemonNameFromOption() reads any `--label` the user passes; a name the GUI asks the user for is held to
+/// daemonNameFromOption() reads any `--name` the user passes; a name the GUI asks the user for is held to
 /// these rules first.
 /// @param name The name asked for.
 /// @return Nothing when it can; why not otherwise.
+/// @see isFileSafeDaemonName(), the narrower check that a name read from elsewhere (a snapshot file, an
+///      identity) cannot leave the directory it names a file in.
 [[nodiscard]] constexpr std::expected<void, DaemonNameError> validateDaemonName(std::string_view name)
 {
     if (name.empty())

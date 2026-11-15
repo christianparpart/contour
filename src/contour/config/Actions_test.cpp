@@ -219,8 +219,8 @@ TEST_CASE("Actions: the switching actions write their arguments as the keys they
     CHECK(std::format("{}", Action { CycleDaemon { CycleDirection::Previous } })
           == "CycleDaemon, direction: previous");
     CHECK(std::format("{}", Action { CycleWorkspace {} }) == "CycleWorkspace, direction: next");
-    CHECK(std::format("{}", Action { SwitchToDaemon { { DaemonRefKind::Label, "admin" } } })
-          == "SwitchToDaemon, label: 'admin'");
+    CHECK(std::format("{}", Action { SwitchToDaemon { { DaemonRefKind::Name, "admin" } } })
+          == "SwitchToDaemon, name: 'admin'");
     CHECK(std::format("{}", Action { OpenDaemon { { DaemonRefKind::Host, "studio" } } })
           == "OpenDaemon, host: 'studio'");
 }

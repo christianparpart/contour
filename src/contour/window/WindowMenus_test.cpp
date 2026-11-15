@@ -156,7 +156,7 @@ TEST_CASE("CloseTabsToRight closes everything after the row", "[contour][windowm
     CHECK(window->count() == 1);
 }
 
-TEST_CASE("SetTabTitle and SetTabColor ask the row's tab to edit", "[contour][windowmenus][tabaction]")
+TEST_CASE("RenameTab and SetTabColor ask the row's tab to edit", "[contour][windowmenus][tabaction]")
 {
     TestApp app;
     ScopedController const window { app.manager() };
@@ -164,7 +164,7 @@ TEST_CASE("SetTabTitle and SetTabColor ask the row's tab to edit", "[contour][wi
     auto titleSpy = QSignalSpy { window.controller, &WindowController::tabTitleEditRequested };
     auto colorSpy = QSignalSpy { window.controller, &WindowController::tabColorPickRequested };
 
-    window->runTabAction(2, actions::Action { actions::SetTabTitle {} });
+    window->runTabAction(2, actions::Action { actions::RenameTab {} });
     REQUIRE(titleSpy.count() == 1);
     CHECK(titleSpy.front().front().toInt() == 2);
 

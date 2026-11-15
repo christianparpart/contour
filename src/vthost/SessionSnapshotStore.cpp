@@ -220,7 +220,7 @@ std::expected<void, StoreFailure> SessionSnapshotStore::confirmRestored() const
     return failedAt(StoreStep::Replace, _fileSystem.remove(sibling(".restored"))).transform([](bool) {});
 }
 
-bool isValidDaemonName(std::string_view name)
+bool isFileSafeDaemonName(std::string_view name)
 {
     constexpr auto Refused = std::string_view { "/\\:\0", 4 };
     return !name.empty() && name.find_first_of(Refused) == std::string_view::npos && !name.contains("..");
@@ -229,7 +229,7 @@ bool isValidDaemonName(std::string_view name)
 std::optional<std::filesystem::path> sessionSnapshotPath(std::filesystem::path const& stateDirectory,
                                                          std::string_view name)
 {
-    if (!isValidDaemonName(name))
+    if (!isFileSafeDaemonName(name))
         return std::nullopt;
     return stateDirectory / "sessions" / std::format("{}.snapshot", name);
 }
