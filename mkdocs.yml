@@ -5,54 +5,42 @@ repo_url: https://github.com/contour-terminal/contour/
 repo_name: contour-terminal/contour
 site_description: Technical Landing Page for Contour Terminal Emulator
 site_author: Christian Parpart
+edit_uri: edit/master/docs/
 # Any warning fails the build, the CI deploy's included, and a link to a heading that does not exist is one.
 strict: true
 validation:
   links:
     anchors: warn
 theme:
-  name: material
-  logo: /assets/contour-logo.png
-  favicon: /assets/contour-logo.png
-  palette:
-  - media: "(prefers-color-scheme: light)"
-    scheme: default
-    primary: deep red
-    accent: deep red
-    toggle:
-      icon: material/weather-sunny
-      name: Switch to dark mode
-
-  - media: "(prefers-color-scheme: dark)"
-    scheme: slate
-    primary: deep red
-    accent: red
-    toggle:
-      icon: material/weather-night
-      name: Switch to light mode
-  features:
-    - content.action.edit
-    - content.action.view
-    - content.code.copy
-    - content.tabs.link
-    - navigation.expand # Do we want this?
-    - navigation.footer
-    - navigation.indexes
-    # - navigation.instant # conflicts with colorscheme preview
-    - navigation.tabs
-    - navigation.tabs.sticky
-    - navigation.top
-    - navigation.sections
-    - navigation.tracking
-    - search.highlight
-    - search.share
-    - search.suggest
-    - toc.follow
-extra_css:
-  - stylesheets/extra.css
+  name: null
+  custom_dir: website/theme
+  static_templates:
+    - 404.html
+  search_index_only: true # keeps the search plugin from copying its lunr/worker scripts
+hooks:
+  - website/hooks.py
+watch:
+  - website/theme
+exclude_docs: |
+  internals/
+  CONTRIBUTING.md
+  superpowers/
+  drafts/
+  configuration/advanced/
+  vt-extensions/csi-u-extended-keyboard-protocol.md
+  configuration/key-mapping-actions.md
+  requirements.txt
+extra:
+  generated_pages:
+    - configuration/index.md
+    - configuration/profiles.md
+    - vt-sequence/index.md
+    - release-notes.md
 markdown_extensions:
   - attr_list
   - md_in_html
+  - toc:
+      permalink: "#"
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -60,14 +48,15 @@ markdown_extensions:
   - admonition
   - pymdownx.details
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path: [!relative $docs_dir]
+      check_paths: true
   - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.caret
   - pymdownx.mark
   - pymdownx.tilde
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 plugins:
   - mkdocs-video:
@@ -76,90 +65,89 @@ plugins:
       video_controls: True
       css_style:
         width: "100%"
-  - glightbox
-  - exclude:
-      glob:
-        - 'drafts/*'
-        - 'configuration/advanced/*' # disabled until ready
   - search:
       separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])'
+  - redirects:
+      redirect_maps:
+        demo/font-ligatures.md: features.md#font-ligatures
+        demo/images.md: features.md#images
+        demo/ime.md: features.md#input-method-editor
+        demo/size_indicator.md: features.md#size-indicator
+        demo/input-modes.md: input-modes.md#select-and-yank
+        demo/line-marks.md: input-modes.md#line-marks
+        demo/statusline.md: configuration/indicator-statusline.md#host-programmable-status-line
+        demo/git-branch-drawings.md: configuration/index.md#git_drawings
+        vt-extensions/index.md: vt-extensions/synchronized-output.md
+        internals/CODING_STYLE.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/CODING_STYLE.md
+        internals/build-times.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/build-times.md
+        internals/index.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/index.md
+        internals/keyboard-input.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/keyboard-input.md
+        internals/latency.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/latency.md
+        internals/macos-code-signing.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/macos-code-signing.md
+        internals/native-chrome.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/native-chrome.md
+        internals/profiling.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/profiling.md
+        internals/release-builds.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/release-builds.md
+        internals/release-signing.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/release-signing.md
+        internals/releasing.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/releasing.md
+        internals/sanitizers.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/sanitizers.md
+        internals/session-oom-isolation.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/session-oom-isolation.md
+        internals/software-architecture/index.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/software-architecture/index.md
+        internals/spell-checking.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/spell-checking.md
+        internals/text-stack.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/text-stack.md
+        internals/vt-conformance.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/vt-conformance.md
+        internals/vthost.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/vthost.md
+        internals/windows-cross-build.md: https://github.com/contour-terminal/contour/blob/master/docs/internals/windows-cross-build.md
+        CONTRIBUTING.md: https://github.com/contour-terminal/contour/blob/master/docs/CONTRIBUTING.md
+        vt-extensions/csi-u-extended-keyboard-protocol.md: https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/csi-u-extended-keyboard-protocol.md
 
-#Page tree
+# Page tree: three workspaces, optional groups inside them. Navigation is data.
 nav:
-  - Home:
-    - index.md
-    - CONTRIBUTING.md
-  - Getting started:
-    - Installation: install.md
-    - Release Notes: release-notes.md # This page is auto-generated from metainfo.xml by the CI/CD pipeline
-  - Configuration:
-    - configuration/index.md
-    - configuration/profiles.md
-    - configuration/settings.md
-    - configuration/links.md
-    - configuration/layouts.md
-    - configuration/hosts.md
-    - configuration/colors.md
-    - configuration/indicator-statusline.md
-    - configuration/paths.md
-    - configuration/key-mapping.md
-    #- Images (Advanced) : configuration/advanced/images.md
-    #- Mouse (Advanced) : configuration/advanced/images.md
-    #- Misc (Advanced) : configuration/advanced/mouse.md
-    #- Rendered (Advanced) : configuration/advanced/rendered.md
-  - Features:
-    - List of features: features.md
-    - Persistent sessions: persistent-sessions.md
-    - Workspace sidebar: sidebar.md
-    - Remote hosts: remote-hosts.md
-    - Control API: control-api.md
-    - Font ligatures: demo/font-ligatures.md
-    - Images: demo/images.md
-    - ReGIS vector graphics: demo/regis-graphics.md
-    - Input method editor (IME): demo/ime.md
-    - Line marks: demo/line-marks.md
-    - Command blocks: demo/command-blocks.md
-    - Status line: demo/statusline.md
-    - Status-line extensions: extensions.md
-    - Hint mode: demo/hint-mode.md
-    - Input modes: input-modes.md
-    - Accessibility: accessibility.md
-    - Secure input: secure-input.md
-    - Drag and drop: demo/drag-and-drop.md
-    - Quick terminal: quick-terminal.md
-    - Size indicator: demo/size_indicator.md
-    - Git branch drawings: demo/git-branch-drawings.md
-  - VT sequence reference:
-    - vt-sequence/index.md
-  - VT extensions:
-    - vt-extensions/index.md
-    - vt-extensions/clickable-links.md
-    - vt-extensions/unicode-core.md
-    - vt-extensions/vertical-line-marks.md
-    - vt-extensions/color-palette-update-notifications.md
-    # TODO(publish when ready): - vt-extensions/csi-u-extended-keyboard-protocol.md
-    - vt-extensions/synchronized-output.md
-    - vt-extensions/buffer-capture.md
-    - vt-extensions/font-settings.md
-    - vt-extensions/line-reflow-mode.md
-    - vt-extensions/save-and-restore-sgr-attributes.md
-    - vt-extensions/osc-133-shell-integration.md
-    - vt-extensions/osc-3008-context.md
-    - vt-extensions/osc-9-4-progress.md
-    - vt-extensions/program-status.md
-    - vt-extensions/semantic-block-query.md
-    - vt-extensions/private-use-glyphs.md
-  - Internals:
-    - internals/index.md
-    - internals/CODING_STYLE.md
-    - internals/native-chrome.md
-    - internals/vthost.md
-    - internals/session-oom-isolation.md
-    - internals/sanitizers.md
-    - internals/text-stack.md
-    - internals/vt-conformance.md
-    - internals/macos-code-signing.md
-    - internals/releasing.md
-    - internals/release-signing.md
-    - internals/release-builds.md
-    - internals/windows-cross-build.md
+  - contour:
+    - home: index.md
+    - install: install.md
+    - features: features.md
+    - release notes: release-notes.md
+    - guides:
+      - persistent sessions: persistent-sessions.md
+      - workspace sidebar: sidebar.md
+      - remote hosts: remote-hosts.md
+      - control api: control-api.md
+      - command blocks: demo/command-blocks.md
+      - hint mode: demo/hint-mode.md
+      - input modes: input-modes.md
+      - drag and drop: demo/drag-and-drop.md
+      - status-line extensions: extensions.md
+      - quick terminal: quick-terminal.md
+      - accessibility: accessibility.md
+      - secure input: secure-input.md
+  - configure:
+    - config file: configuration/index.md
+    - profiles: configuration/profiles.md
+    - settings window: configuration/settings.md
+    - colors: configuration/colors.md
+    - key mapping: configuration/key-mapping.md
+    - more:
+      - layouts: configuration/layouts.md
+      - links: configuration/links.md
+      - hosts: configuration/hosts.md
+      - status line: configuration/indicator-statusline.md
+      - paths: configuration/paths.md
+  - reference:
+    - vt sequences: vt-sequence/index.md
+    - regis graphics: demo/regis-graphics.md
+    - extensions:
+      - synchronized output: vt-extensions/synchronized-output.md
+      - shell integration: vt-extensions/osc-133-shell-integration.md
+      - clickable links: vt-extensions/clickable-links.md
+      - buffer capture: vt-extensions/buffer-capture.md
+      - program status: vt-extensions/program-status.md
+      - semantic block query: vt-extensions/semantic-block-query.md
+      - "progress (osc 9;4)": vt-extensions/osc-9-4-progress.md
+      - "context (osc 3008)": vt-extensions/osc-3008-context.md
+      - vertical line marks: vt-extensions/vertical-line-marks.md
+      - palette notifications: vt-extensions/color-palette-update-notifications.md
+      - font settings: vt-extensions/font-settings.md
+      - line reflow mode: vt-extensions/line-reflow-mode.md
+      - private-use glyphs: vt-extensions/private-use-glyphs.md
+      - save and restore sgr: vt-extensions/save-and-restore-sgr-attributes.md
+      - unicode core: vt-extensions/unicode-core.md

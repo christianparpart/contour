@@ -1,0 +1,60 @@
+{#- Shared shell: every page carries the whole window. Home is page.file.src_uri == "index.md". -#}
+{%- set is_home = page and page.file.src_uri == "index.md" -%}
+{#- The workspace shown: the active one, or on a page outside every workspace (the 404) the first. -#}
+{%- set shown = namespace(ws=none, active=false) %}
+{%- for ws in nav if ws.children %}{% if loop.first or ws.active %}{% set shown.ws = ws %}{% endif %}{% if ws.active %}{% set shown.active = true %}{% endif %}{% endfor %}
+{%- set page_title = page.title if page and page.title else config.site_name -%}
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{% if page and page.title and not is_home %}{{ page.title }} - {% endif %}{{ config.site_name }}</title>
+<meta name="description" content="{{ page.meta.description if page and page.meta and page.meta.description else config.site_description }}">
+<meta name="site-root" content="{{ '.'|url }}">
+{%- if page and page.canonical_url %}
+<link rel="canonical" href="{{ page.canonical_url }}">
+{%- endif %}
+<link rel="icon" href="{{ 'assets/contour-logo.png'|url }}">
+<script>
+try {
+  var root = document.documentElement;
+  root.className = root.className.replace("no-js", "js");
+  var theme = localStorage.getItem("contour-site.theme");
+  if (theme === "light" || theme === "dark") root.setAttribute("data-theme", theme);
+  if (localStorage.getItem("contour-site.maximized") === "1") root.setAttribute("data-max", "");
+  if (localStorage.getItem("contour-site.single-keys") === "0") root.setAttribute("data-nokeys", "");
+} catch (e) {}
+</script>
+<link rel="preload" href="{{ 'assets/theme/fonts/JetBrainsMono-Regular.woff2'|url }}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{ 'assets/theme/site.css'|url }}">
+<script type="module" src="{{ 'assets/theme/js/main.js'|url }}"></script>
+</head>
+<body>
+<button id="cw-launcher" class="launcher needs-js" title="Open Contour"><img src="{{ 'assets/contour-logo.png'|url }}" alt=""><span>contour</span></button>
+<div class="window" id="cw-window">
+  <div class="titlebar" id="cw-titlebar">
+    <div class="wc needs-js"><button class="close needs-js" id="cw-wc-close" title="Close" aria-label="Close window"></button><button class="min needs-js" id="cw-wc-min" title="Minimize" aria-label="Minimize window"></button><button class="max needs-js" id="cw-wc-max" title="Maximize" aria-label="Maximize window"></button></div>
+    <div class="title"><img src="{{ 'assets/contour-logo.png'|url }}" alt=""><span id="cw-title">{{ page_title }}</span></div>
+    <div class="wc-spacer"></div>
+  </div>
+  {% include "partials/strip.html" %}
+  <div class="panes">
+    {% include "partials/tabs.html" %}
+    <main class="page" id="cw-page" tabindex="-1" autofocus>
+      {%- if is_home %}
+      <div class="prompt"><span class="path">~</span> <span class="sym">❯</span> <span class="cmd" id="cw-typed">contour --about</span><span class="cursor" id="cw-typed-cursor"></span></div>
+      {%- endif %}
+      {%- if page %}
+      {{ page.content }}
+      {%- else %}
+      {% block content %}{% endblock %}
+      {%- endif %}
+    </main>
+    {% include "partials/aside.html" %}
+  </div>
+  {% include "partials/status.html" %}
+  {% include "partials/overlays.html" %}
+</div>
+</body>
+</html>

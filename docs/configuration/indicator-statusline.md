@@ -175,3 +175,25 @@ Parameter                 | Description
 
     `{Tabs}` remains fully supported, and the two can be used together.
 
+## Host-programmable status line
+
+The status line in Contour is an implementation of the
+[DEC VT320 status line feature](https://www.vt100.net/docs/vt320-uu/appendixe.html).
+Besides the indicator status line described on this page, a second one can be displayed
+alternatively, which can be written to and fully controlled like the main display.
+
+There are not many applications yet doing so, but any application that has fast output but a
+rarely updating status line, maybe even tmux or screen, could make use of it to trivialize
+the common use-case.
+
+If you consider playing around with it, have a look at the VT sequences
+
+- `DECSASD` - Select Active Status Display
+- `DECSSDT` - Select Status Display (Line) Type
+
+The indicator status line itself can be toggled via configuration, e.g.:
+
+```yaml
+input_mapping:
+    - { mods: [Control, Alt],   key: '.',           action: ToggleStatusLine }
+```

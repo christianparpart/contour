@@ -785,9 +785,9 @@ int ContourApp::documentationGlobalConfig()
 Contour offers a wide range of configuration options that can be customized, including color scheme, shell, initial working directory, and more.
 The configuration options can be categorized into several groups:
 
-- Global options: These settings determine the overall behavior of the terminal and apply to all profiles.<br/>
-- Profiles: With profiles, you can configure the terminal more granularly and create multiple profiles that can be easily switched between.<br/>
-- Color scheme: Contour allows you to define different color schemes for the terminal and choose which one to use for each of the profiles. <br/>
+- Global options: These settings determine the overall behavior of the terminal and apply to all profiles.
+- Profiles: With profiles, you can configure the terminal more granularly and create multiple profiles that can be easily switched between.
+- Color scheme: Contour allows you to define different color schemes for the terminal and choose which one to use for each of the profiles.
 
 
 On Unix systems, the main configuration file is located at  `~/.config/contour/contour.yml` and is both read from and auto-generated there. On Windows systems, the file is located at  `%LocalAppData%\contour\contour.yml`.
@@ -795,12 +795,17 @@ On Unix systems, the main configuration file is located at  `~/.config/contour/c
 !!! note "Please note that on Unix systems, the environment variable `XDG_CONFIG_HOME` (by default set to `~/.config`) is taken into account."
 
 By default, on Unix systems, Contour is executed with the following arguments `contour config ~/.config/contour/contour.yml profile main`. If the configuration file includes a `default_profile` variable, it will be used as the default profile. Otherwise, the first profile listed in the file will be the default one.
+
 ## How to
 
 ### Load specific configuration file
+
 `contour config /path/to/file/with/configuration.yml`
+
 ### Set profile for current session
-you can utilize the `profile` parameter with the `contour` command <br/>
+
+You can utilize the `profile` parameter with the `contour` command:
+
 `contour profile one_of_profiles`
 
 
@@ -844,6 +849,7 @@ Profiles is the main part of user specific customizations, you can create more t
 
 
 By default each profile inherites values from `default_profile`. This means that you can specify only values that you want to change in respect to default profile, for example you can create new profile to use `bash` as a shell preserving other configuration from `main` profile
+
 ```
 profiles:
     main:
@@ -861,6 +867,7 @@ In contour you can specify different colors inside terminal, for example text ba
 You can configure your color profiles, whereas a color can be expressed in standard web format, with a leading # followed by red/green/blue values, 7 characters in total. You may alternatively use 0x as prefix instead of #. For example 0x102030 is equal to '#102030'.
 
 Syntax for color schemes repeat the one of profiles. First color scheme inside configuration file must be named `default`, each other color schemes inherit values from `default` color scheme. Example of configuration for `color_schemes`
+
 ```
 color_schemes:
     default:

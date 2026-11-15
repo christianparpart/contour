@@ -499,7 +499,7 @@ loginctl enable-linger
 ```
 
 Contour never enables lingering itself. To install the daemon alone on a server, see
-[Contour daemon on a server](install.md#contour-daemon-on-a-server).
+[Contour daemon on a server](#contour-daemon-on-a-server).
 
 A service-managed daemon runs with `--lifecycle=persistent`: it **never exits on its own**, not even
 with zero sessions and zero clients. `contour client` finds the registration and starts it before it
@@ -507,6 +507,37 @@ falls back to spawning a daemon on demand. A registration made by an older relea
 name is found as well.
 
 `--start boot` and `--start manual` (a Windows service) are not implemented yet.
+
+## Contour daemon on a server
+
+`contour-daemon` is the Qt-free package for machines that only host persistent sessions
+and have no display, such as a server you reach over SSH. It ships the `contour` command-line tool
+without the GUI stack (no Qt, no QML; the text shaper's Cairo dependency still pulls in the X11 client libraries). Packages are attached to each
+[release](https://github.com/contour-terminal/contour/releases) (they are not served from a package repository):
+
+- `.deb` for Ubuntu 24.04 and 26.04 (amd64), named `contour-daemon-<version>-ubuntu<release>-amd64.deb`
+- `.rpm` for Fedora 44 (x86_64), named `contour-daemon-<version>-fedora44-x86_64.rpm`
+
+```sh
+sudo apt install ./contour-daemon-[0-9]*-ubuntu24.04-amd64.deb   # Ubuntu 24.04 (use ubuntu26.04 on 26.04)
+sudo dnf install ./contour-daemon-[0-9]*-fedora44-x86_64.rpm     # Fedora 44
+```
+
+CentOS and RHEL (EL9, EL10) packages are not provided yet.
+The RPM packages come without the bundled status-line extensions; the `.deb` ships them.
+
+`contour-daemon` and the GUI package `contour` conflict, and `contour` already includes the daemon, so a desktop
+installation needs nothing more. On Debian and Ubuntu, `apt` replaces one with the other; on Fedora, `dnf install`
+refuses, so swap them with `dnf swap contour contour-daemon` (or `dnf install --allowerasing`).
+
+The package installs a systemd user unit but does not enable it. Each user registers and enables their own copy (it then starts with their next login; `daemon-service start` starts it now):
+
+```sh
+contour daemon-service install
+```
+
+See [Starting the daemon at login](#starting-the-daemon-at-login). The packaged service opens no
+listening port (TCP is opt-in, see [Remote access over TCP](#remote-access-over-tcp)); reach it over SSH, see [Remote hosts](remote-hosts.md).
 
 ## Stopping a daemon
 
@@ -903,4 +934,4 @@ since it exits 10 seconds after its last session and client are gone.
   [tmux interoperability](#tmux-interoperability)).
 
 For the architecture behind all of this — the two protocols, the delta transport, the stable row
-identity in the grid — see [the internals page](internals/vthost.md).
+identity in the grid — see [the internals page](https://github.com/contour-terminal/contour/blob/master/docs/internals/vthost.md).

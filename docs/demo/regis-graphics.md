@@ -1,7 +1,7 @@
 # ReGIS Vector Graphics
 
 Contour implements **ReGIS** (Remote Graphics Instruction Set), DEC's vector-graphics language
-introduced with the VT330/VT340 terminals. Where [Sixel](images.md) transmits a raster (a grid of
+introduced with the VT330/VT340 terminals. Where [Sixel](../features.md#images) transmits a raster (a grid of
 pixels), ReGIS transmits *drawing instructions* — lines, circles, arcs, curves, filled polygons and
 text — which the terminal rasterises. This makes ReGIS compact and resolution-independent: a circle
 is a few bytes, not a bitmap.

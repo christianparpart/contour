@@ -18,10 +18,10 @@ color_schemes:
 
 
 ```
-:octicons-horizontal-rule-16: ==background==  determines the default background color of the terminal. <br/>
-:octicons-horizontal-rule-16: ==foreground==  option sets the default foreground text color of the terminal. <br/>
-:octicons-horizontal-rule-16: ==bright\_foreground==  option sets the default foreground text color of the terminal when text text is instructed to be bold (/bright). This is only used if profile option `draw_bold_text_with_bright_colors` is set to `true`<br/>
-:octicons-horizontal-rule-16: ==dimmed\_foreground==  option sets the default foreground text color of the terminal when text text is instructed to be dimmed. <br/>
+- ==background==  determines the default background color of the terminal.
+- ==foreground==  option sets the default foreground text color of the terminal.
+- ==bright\_foreground==  option sets the default foreground text color of the terminal when text text is instructed to be bold (/bright). This is only used if profile option `draw_bold_text_with_bright_colors` is set to `true`
+- ==dimmed\_foreground==  option sets the default foreground text color of the terminal when text text is instructed to be dimmed.
 
 
 
@@ -36,9 +36,9 @@ color_schemes:
       blur: false
 
 ```
-:octicons-horizontal-rule-16: ==path== To specify the image file to use as the background, you need to provide the full path to the image. Both `~` (home directory) and `${VAR}` (environment variable) expansion are supported — see [Path Handling](paths.md) for details. By default, the path option is set to an empty string, indicating that background image support is disabled. <br/>
-:octicons-horizontal-rule-16: ==opacity== option controls the opacity of the background image. It determines how transparent or intense the image appears. The default value is 0.5, which provides a moderately transparent background. You can adjust this value to make the image more or less prominent, depending on your preferences. <br/>
-:octicons-horizontal-rule-16: ==blur== option applies a blur effect to the background image. This can help reduce distractions and keep the focus on the terminal contents. By default, the blur option is set to false, indicating that background image blurring is disabled. If you want to enable it, set the value to true.
+- ==path== To specify the image file to use as the background, you need to provide the full path to the image. Both `~` (home directory) and `${VAR}` (environment variable) expansion are supported — see [Path Handling](paths.md) for details. By default, the path option is set to an empty string, indicating that background image support is disabled.
+- ==opacity== option controls the opacity of the background image. It determines how transparent or intense the image appears. The default value is 0.5, which provides a moderately transparent background. You can adjust this value to make the image more or less prominent, depending on your preferences.
+- ==blur== option applies a blur effect to the background image. This can help reduce distractions and keep the focus on the terminal contents. By default, the blur option is set to false, indicating that background image blurring is disabled. If you want to enable it, set the value to true.
 
 
 
@@ -52,8 +52,8 @@ color_schemes:
       default: CellForeground
       text: CellBackground
 ```
-:octicons-horizontal-rule-16: ==default== option allows you to specify the color of the cursor shape. By default, the default value is set to CellForeground, which means the cursor color will be the same as the cell's foreground color. You can change this value to any valid RGB color or use the special options CellForeground or CellBackground. <br/>
-:octicons-horizontal-rule-16: ==text== allows you to specify the color of the characters that would be covered by the cursor shape. This is useful for ensuring readability when the cursor overlaps with the text. By default, the text value is set to CellBackground, which means the overridden text color will be the same as the cell's background color. Similarly to the default option, you can specify any valid RGB color or use the CellForeground or CellBackground options.
+- ==default== option allows you to specify the color of the cursor shape. By default, the default value is set to CellForeground, which means the cursor color will be the same as the cell's foreground color. You can change this value to any valid RGB color or use the special options CellForeground or CellBackground.
+- ==text== allows you to specify the color of the characters that would be covered by the cursor shape. This is useful for ensuring readability when the cursor overlaps with the text. By default, the text value is set to CellBackground, which means the overridden text color will be the same as the cell's background color. Similarly to the default option, you can specify any valid RGB color or use the CellForeground or CellBackground options.
 
 
 
@@ -67,8 +67,8 @@ color_schemes:
       normal: '#f0f000'
       hover: '#ff0000'
 ```
-:octicons-horizontal-rule-16: ==normal==  defines the color to be used for hyperlink decoration in its normal state (not being hovered). <br/>
-:octicons-horizontal-rule-16: ==hover==  determines the color to be applied to hyperlink decoration when it is being hovered over.
+- ==normal==  defines the color to be used for hyperlink decoration in its normal state (not being hovered).
+- ==hover==  determines the color to be applied to hyperlink decoration when it is being hovered over.
 
 
 
@@ -83,10 +83,10 @@ color_schemes:
       background: '#ffa500'
       background_alpha: 0.5
 ```
-:octicons-horizontal-rule-16: ==foreground==  section specifies the color to be used for the foreground of the highlighted text. <br/>
-:octicons-horizontal-rule-16: ==foreground_alpha== option determines the transparency level of the foreground color. It accepts a value between 0.0 (fully transparent) and 1.0 (fully opaque). This option allows you to control the visibility of the highlighted text. <br/>
-:octicons-horizontal-rule-16: ==background== option in the vi_mode_highlight section defines the color to be used for the background of the highlighted text. <br/>
-:octicons-horizontal-rule-16: ==background_alpha== option controls the transparency level of the background color. It accepts a value between 0.0 (fully transparent) and 1.0 (fully opaque).
+- ==foreground==  section specifies the color to be used for the foreground of the highlighted text.
+- ==foreground_alpha== option determines the transparency level of the foreground color. It accepts a value between 0.0 (fully transparent) and 1.0 (fully opaque). This option allows you to control the visibility of the highlighted text.
+- ==background== option in the vi_mode_highlight section defines the color to be used for the background of the highlighted text.
+- ==background_alpha== option controls the transparency level of the background color. It accepts a value between 0.0 (fully transparent) and 1.0 (fully opaque).
 
 
 
@@ -213,10 +213,10 @@ color_schemes:
           background: '#1a1716'
 ```
 
-:octicons-horizontal-rule-16: ==default== Colors of the fold column at rest. Set the background to
-this scheme's own background to keep the gutter transparent along with the rest of the window. <br/>
-:octicons-horizontal-rule-16: ==hover== Colors of the fold run under the pointer — the whole run of
-the hovered fold, not just the row beneath it. <br/>
+- ==default== Colors of the fold column at rest. Set the background to
+this scheme's own background to keep the gutter transparent along with the rest of the window.
+- ==hover== Colors of the fold run under the pointer — the whole run of
+the hovered fold, not just the row beneath it.
 
 ### `block_status`
 Defines the colors of a command block's marks by how its command ended (see
@@ -274,9 +274,9 @@ color_schemes:
         separator: '#595757'
 ```
 
-:octicons-horizontal-rule-16: ==background== The band's color. The command copied into it keeps its own
-colors; only the cells the shell left on the default background take this one. <br/>
-:octicons-horizontal-rule-16: ==separator== The one-pixel line along the band's bottom edge. <br/>
+- ==background== The band's color. The command copied into it keeps its own
+colors; only the cells the shell left on the default background take this one.
+- ==separator== The one-pixel line along the band's bottom edge.
 
 ### Palette Presets 
 When choosing a palette from a preset as the color scheme  (in `profiles`) it is possible to tweak any configuration:

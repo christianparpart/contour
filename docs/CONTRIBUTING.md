@@ -28,27 +28,41 @@ You can also see some live development on [Twitch](https://www.twitch.tv/christi
 
 ## Contributing to the Website
 
-The website is living directly in the project's main repository.
-We are using [MkDocs](https://squidfunk.github.io/mkdocs-material/) to create the website
-and have the project well documented.
-
-Please bear with us, we just started developing this website, it is incomplete and far from perfect.
-This is why documentation and website development needs the most love and probably external contributions.
+The website lives directly in the project's main repository: the pages are Markdown files in
+[`docs/`](.), built with [MkDocs](https://www.mkdocs.org/) and our own theme in
+[`website/theme`](../website/theme). The reference pages (configuration, profiles, VT sequences,
+release notes) are generated from the `contour` binary and the metainfo, not written by hand.
 
 ## Running the website locally
 
-In order to contribute to the website, it's best tested locally in an iterative approach.
-
-Have a recent Python right next to you, such as Python 3.11+ and install the module requirements:
-
-```sh
-pip install -r docs/requirements.txt
-```
-
-Use your editor of choice to change the content in `docs/` and Running
+Have a recent Python right next to you, Python 3.11+, and install the module requirements
+into a virtual environment:
 
 ```sh
-mkdocs serve
+python3 -m venv out/website-venv
+out/website-venv/bin/pip install -r docs/requirements.txt
 ```
 
-to spawn the test HTTP server at port 8080.
+Generate the reference pages with a built `contour` binary:
+
+```sh
+website/tools/generate-reference.sh <path-to-contour>
+```
+
+Then start the preview server:
+
+```sh
+website/tools/preview.sh serve
+```
+
+It prints the local address and the address on your LAN, so a phone on the same network can open
+the LAN address to check the narrow-screen layout.
+
+Check your change with a strict build, the site checker and the tests:
+
+```sh
+out/website-venv/bin/mkdocs build --strict
+out/website-venv/bin/python website/tools/check_site.py
+python -m unittest discover -s website/tools
+node --test website/tests/*.test.js
+```

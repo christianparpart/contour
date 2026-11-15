@@ -350,8 +350,8 @@ color_schemes:
 }
 
 /// The entry of @p section in reference page @p doc, from its heading to the next one; empty when it has
-/// none. A leaf is looked for there, as its `==term==`: a bare word such as `marks` or `pager` turns up in
-/// other entries' prose, and in its own entry's YAML example besides.
+/// none. A leaf is looked for there, as its list item (- `term`): a bare word such as `marks` or `pager`
+/// turns up in other entries' prose, and in its own entry's YAML example besides.
 [[nodiscard]] std::string_view referenceEntry(std::string_view doc, std::string_view section)
 {
     auto const heading = std::format("### `{}`\n", section);
@@ -1518,7 +1518,7 @@ TEST_CASE("Config: the generated config and the reference docs carry every comma
             {
                 INFO(scope << ": " << section << "." << leaf);
                 CHECK(hasPath(written, std::array { section, leaf }));
-                CHECK(referenceEntry(reference, section).contains(std::format("=={}==", leaf)));
+                CHECK(referenceEntry(reference, section).contains(std::format("- `{}`", leaf)));
             }
     };
     checkSections("global", generated, globalDoc, globalSections);
@@ -2526,4 +2526,104 @@ TEST_CASE("Config: a fresh macOS configuration carries the Command pane chords a
 
     CHECK(charBinding(Modifiers { Modifier::Control, Modifier::Shift }, U'E') == nullptr);
     CHECK(charBinding(Modifiers { Modifier::Control, Modifier::Shift }, U'O') == nullptr);
+}
+
+TEST_CASE("documentation pages are clean web Markdown", "[config][docs]")
+{
+    auto const pages = std::vector<std::pair<std::string, std::string>> {
+        { "global", contour::config::documentationGlobalConfig() },
+        { "profile", contour::config::documentationProfileConfig() },
+    };
+    for (auto const& [name, page]: pages)
+    {
+        INFO("page: " << name);
+        CHECK_FALSE(page.contains(":octicons-"));
+        CHECK_FALSE(page.contains("fmt formatted doc"));
+        CHECK_FALSE(page.contains("vt-extensions/index.md"));
+        // Web strings take two paths. DocumentationWriter::processEntry runs most of them through
+        // std::vformat, so those spell a literal brace doubled ("{{"); the vector and extension overloads
+        // (e.g. HintPatternsWeb) bypass it and spell it single. Either way no doubled brace may reach the
+        // page.
+        CHECK_FALSE(page.contains("{{"));
+        CHECK_FALSE(page.contains("<br"));
+
+        auto previous = std::string_view {};
+        auto insideFence = false;
+        for (auto const lineRange: std::views::split(std::string_view { page }, '\n'))
+        {
+            auto const line = std::string_view { lineRange.begin(), lineRange.end() };
+            INFO("line: " << line);
+            // Every heading starts its own line, or the Markdown renderer shows it as running text.
+            CHECK((!line.contains("### ") || line.starts_with("### ")));
+            // A list needs a blank line before its first item, or the renderer shows it as running text.
+            if (line.starts_with("- "))
+                CHECK((previous.empty() || previous.starts_with("- ") || previous.starts_with(" ")));
+            // So does a code fence: run into the prose before it, the fence is not recognized.
+            if (line.starts_with("```"))
+            {
+                if (!insideFence)
+                    CHECK(previous.empty());
+                insideFence = !insideFence;
+            }
+            previous = line;
+        }
+    }
+    CHECK(referenceEntry(pages.front().second, "git_drawings").contains("git_drawings"));
+}
+
+TEST_CASE("documentation headings name the keys the generated configuration spells", "[config][docs]")
+{
+    auto const generated = contour::config::defaultConfigString();
+    auto const pages = std::vector<std::pair<std::string, std::string>> {
+        { "global", contour::config::documentationGlobalConfig() },
+        { "profile", contour::config::documentationProfileConfig() },
+    };
+    for (auto const& [name, page]: pages)
+    {
+        INFO("page: " << name);
+        auto headings = 0;
+        for (auto const lineRange: std::views::split(std::string_view { page }, '\n'))
+        {
+            auto const line = std::string_view { lineRange.begin(), lineRange.end() };
+            if (!line.starts_with("### `"))
+                continue;
+            ++headings;
+            auto const key = line.substr(5, line.size() - 6);
+            INFO("heading: " << line);
+            REQUIRE_FALSE(key.empty());
+            // The key is one the configuration spells: in the entry's own YAML example, or in the file
+            // `contour generate config` writes.
+            CHECK((referenceEntry(page, key).contains(std::format("{}:", key))
+                   || generated.contains(std::format("{}:", key))));
+        }
+        CHECK(headings > 0);
+    }
+
+    // Entries whose member name differs from the key the reader accepts.
+    auto const& profile = pages.back().second;
+    CHECK(profile.contains("### `slow_scrolling_time`\n"));
+    CHECK(profile.contains("### `vi_mode_scrolloff`\n"));
+    CHECK(profile.contains("### `screen_transition`\n"));
+    CHECK_FALSE(profile.contains("### `smooth_line_scrolling`\n"));
+    CHECK_FALSE(profile.contains("### `modal_cursor_scroll_off`\n"));
+    CHECK_FALSE(profile.contains("### `screen_transition_style`\n"));
+
+    QTemporaryDir dir;
+    auto const config = loadFromYaml(dir, R"(
+default_profile: main
+profiles:
+    main:
+        shell: /bin/sh
+        slow_scrolling_time: 7
+        vi_mode_scrolloff: 3
+        screen_transition: classic
+)"sv);
+    auto const* loaded = config.profile("main");
+    REQUIRE(loaded != nullptr);
+    CHECK(loaded->smoothLineScrolling.value() == std::chrono::milliseconds { 7 });
+    CHECK(loaded->modalCursorScrollOff.value() == vtbackend::LineCount(3));
+    CHECK(loaded->screenTransitionStyle.value() == vtbackend::ScreenTransitionStyle::Classic);
+
+    // The saved hosts take their heading from the same table as every other entry.
+    CHECK(pages.front().second.contains("### `hosts`\n"));
 }

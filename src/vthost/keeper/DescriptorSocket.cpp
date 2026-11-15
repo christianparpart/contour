@@ -23,6 +23,19 @@ namespace vthost::keeper
 
 namespace
 {
+    /// Whether a failed non-blocking call only reports that it would have blocked.
+    /// @param error The errno the call left.
+    /// @return True for EAGAIN or EWOULDBLOCK. POSIX lets the two differ; on Linux they are one
+    ///         value, and comparing against both trips GCC's -Wlogical-op.
+    [[nodiscard]] constexpr bool wouldBlock(int error) noexcept
+    {
+#if EAGAIN == EWOULDBLOCK
+        return error == EAGAIN;
+#else
+        return error == EAGAIN || error == EWOULDBLOCK;
+#endif
+    }
+
     /// The most byte runs one send gathers.
     constexpr auto MaxGather = std::size_t { 64 };
 
@@ -95,7 +108,7 @@ std::expected<std::size_t, SendError> sendWithDescriptors(int socket,
             return static_cast<std::size_t>(sent);
         if (errno == EINTR)
             continue;
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        if (wouldBlock(errno))
             return std::size_t { 0 };
         if (errno == EPIPE || errno == ECONNRESET)
             return std::unexpected { SendError::PeerGone };
@@ -123,7 +136,7 @@ std::expected<Received, ReceiveError> receiveWithDescriptors(int socket, std::sp
     while (got < 0 && errno == EINTR);
     if (got < 0)
     {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        if (wouldBlock(errno))
             return std::unexpected { ReceiveError::WouldBlock };
         return std::unexpected { errno == ECONNRESET ? ReceiveError::PeerGone : ReceiveError::Broken };
     }

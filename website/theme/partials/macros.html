@@ -1,0 +1,21 @@
+{#- Shared macros. Import with context, so the url filter can resolve against the page: {% import "partials/macros.html" as m with context %}. -#}
+{%- macro rule(name) -%}── {{ name }} ──────────────{%- endmacro -%}
+{#- One link per page. The window's tab list marks it as a tab and names its group; the narrow-screen selector does not. -#}
+{%- macro link(item, group, as_tab) -%}
+<a{% if as_tab %} class="tab" data-group="{{ group }}"{% endif %} href="{{ item.url|url }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.title }}</a>
+{%- endmacro -%}
+{#- A workspace's pages. Sections become `── title ──` separators in the tab list and are flattened in the selector. -#}
+{%- macro tab_links(ws, as_tab) -%}
+{%- for item in ws.children %}
+{%- if item.is_section %}
+{%- if as_tab %}
+<div class="sep">{{ rule(item.title) }}</div>
+{%- endif %}
+{%- for child in item.children %}
+{{ link(child, item.title, as_tab) }}
+{%- endfor %}
+{%- elif item.is_page %}
+{{ link(item, "", as_tab) }}
+{%- endif %}
+{%- endfor %}
+{%- endmacro -%}

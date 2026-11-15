@@ -560,6 +560,20 @@ struct Writer
     /// @param kind The keyboard platform the document is written for: what decides whether a binding's
     ///             modifiers are spelled `Primary`.
     explicit Writer(KeyboardPlatformKind kind): keyboardPlatform { kind } {}
+    /// The YAML key the documentation entry of @p entry documents.
+    template <typename T, typename Doc>
+    [[nodiscard]] static constexpr std::string_view keyOf(ConfigEntry<T, Doc> const&)
+    {
+        return documentation::Text<Doc>::Key;
+    }
+
+    /// The YAML key the documentation entry @p Doc, which is not a ConfigEntry's, documents.
+    template <typename Doc>
+    [[nodiscard]] static constexpr std::string_view keyOf(Doc const&)
+    {
+        return documentation::Text<Doc>::Key;
+    }
+
     Writer(Writer const&) = default;
     Writer(Writer&&) = default;
     Writer& operator=(Writer const&) = default;
@@ -1197,17 +1211,17 @@ struct YAMLConfigWriter: Writer
                            val...);
     }
 
-    /// Writes the configuration entry a reflection walk reached under @p name, which is dropped: @p doc
+    /// Writes the configuration entry a reflection walk reached under @p key, which is dropped: @p doc
     /// already spells the entry's key.
     ///
     /// A function of its own, not an overload of process(): one taking the name first also takes a row
     /// whose first value is a std::string_view -- a tint's context type -- and drops that value instead.
     /// @param doc The entry's documentation, with a placeholder per value.
-    /// @param name The entry's member name.
+    /// @param key The entry's YAML key.
     /// @param val The entry's values.
     /// @return @p doc, indented and filled in.
     template <typename... T>
-    std::string processEntry(std::string_view doc, [[maybe_unused]] std::string_view name, T const&... val)
+    std::string processEntry(std::string_view doc, [[maybe_unused]] std::string_view key, T const&... val)
     {
         return process(doc, val...);
     }
@@ -1248,32 +1262,19 @@ struct DocumentationWriter: Writer
         return processEntry(doc, std::string_view { "" }, val...);
     }
 
-    /// Writes the configuration entry a reflection walk reached, headed by @p name in snake_case.
+    /// Writes the configuration entry a reflection walk reached, headed by its YAML key.
     /// @see YAMLConfigWriter::processEntry for why this is not an overload of process().
     /// @param doc The entry's documentation, with a placeholder per value.
-    /// @param name The entry's member name.
+    /// @param key The entry's YAML key, as the reader accepts it (Writer::keyOf).
     /// @param val The entry's values.
     /// @return The heading, then @p doc filled in.
     template <typename... T>
-    std::string processEntry(std::string_view doc, std::string_view name, T const&... val)
+    std::string processEntry(std::string_view doc, std::string_view key, T const&... val)
     {
-        return format(
-            "### `{}`\n"
-            "{}\n",
-            [](std::string_view name) -> std::string {
-                // camelCase into snake_case
-                auto result = std::string { name };
-                for (auto i = 0u; i < result.size(); ++i)
-                {
-                    if (std::isupper(result[i]))
-                    {
-                        result.insert(i, 1, '_');
-                        result[i + 1] = static_cast<char>(std::tolower(result[i + 1]));
-                    }
-                }
-                return result;
-            }(name),
-            format(replaceCommentPlaceholder(std::string { doc }), val...));
+        return format("### `{}`\n"
+                      "{}\n",
+                      key,
+                      format(replaceCommentPlaceholder(std::string { doc }), val...));
     }
 
     template <typename T, typename Doc>

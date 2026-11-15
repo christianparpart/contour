@@ -15,24 +15,59 @@ on:
       - 'docs/**'
       - '.github/workflows/docs.yml'
       - 'metainfo.xml'
+      - 'website/**'
+      - 'mkdocs.yml'
+      - 'src/contour/config/ConfigDocumentation.hpp'
     branches:
       - master
+  # Pull requests build and check the site but never deploy it.
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+      - 'metainfo.xml'
+      - 'website/**'
+      - 'mkdocs.yml'
+      - 'src/contour/config/ConfigDocumentation.hpp'
 
 concurrency:
   group: docs-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  mkdocs:
-    name: Deploy docs
+  # The site tooling's own tests, in a job of their own: they need no C++ build, so a failure shows within
+  # a minute, and the build and deploy below wait for it rather than spending half an hour first.
+  tests:
+    name: Website tooling tests
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
-
-      - name: Extract changes for the releases from metainfo.xml
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+      # Node comes with the ubuntu-24.04 runner image, so no setup-node step is needed.
+      - name: "Run the unit tests"
+        env:
+          # mkdocs 1.6.1 prints a loud MkDocs-2.0 warning otherwise.
+          DISABLE_MKDOCS_2_WARNING: "true"
         run: |
-          ./scripts/extract-changelog-from-metainfo.py metainfo.xml docs/release-notes.md
+          pip install -r docs/requirements.txt
+          python -m unittest discover -s website/tools
+          node --test website/tests/*.test.js
+
+  mkdocs:
+    name: Build, check and deploy docs
+    needs: tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
 
       - name: "update APT database"
         run: sudo ./scripts/apt-update.sh
@@ -80,25 +115,36 @@ jobs:
                 -D CONTOUR_EXTENSIONS_BUNDLED=OFF \
                 -D CMAKE_DISABLE_FIND_PACKAGE_Qt6=ON
       - name: "build"
-        run: cmake --build build --target contour
-      - name: "create vt-sequence directory"
-        run: mkdir docs/vt-sequence
-      - name: "Generate documentation for global config"
-        run: ./build/src/contour/contour documentation configuration global > docs/configuration/index.md
-      - name: "Generate documentation for profile config"
-        run: ./build/src/contour/contour documentation configuration profile > docs/configuration/profiles.md
-      - name: "Generate vt documentation"
-        run: ./build/src/contour/contour documentation vt > docs/vt-sequence/index.md
-      - name: "Generate key mapping documentation"
-        run: ./build/src/contour/contour documentation keys >> docs/configuration/key-mapping.md
+        # -k 0: report every compile error of a run, not just the first.
+        run: cmake --build build --target contour -- -k 0
+      # Generates the configuration, profile, vt-sequence and key-mapping references, and extracts
+      # the release notes from metainfo.xml.
+      - name: "Generate the reference pages"
+        run: ./website/tools/generate-reference.sh ./build/src/contour/contour
 
-      - name: Deploy docs
-        uses: mhausenblas/mkdocs-deploy-gh-pages@master
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+
+      - name: "Build and check the site"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CUSTOM_DOMAIN: contour-terminal.org
-          CONFIG_FILE: ./mkdocs.yml
-          EXTRA_PACKAGES: build-base
-          REQUIREMENTS: docs/requirements.txt
+          # mkdocs 1.6.1 prints a loud MkDocs-2.0 warning otherwise.
+          DISABLE_MKDOCS_2_WARNING: "true"
+        run: |
+          pip install -r docs/requirements.txt
+          mkdocs build --strict
+          python website/tools/check_site.py
 
-
+      # Publish the tree that was just built and checked, not a rebuild of it. site/CNAME comes from
+      # docs/CNAME, which must stay contour-terminal.org -- the domain the live gh-pages branch
+      # serves; check_site.py fails the build otherwise. Only master deploys: pull requests, merge
+      # groups and manual runs of other branches stop before this.
+      - name: "Deploy docs"
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          ghp-import --no-jekyll --push --force --no-history site

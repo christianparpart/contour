@@ -279,7 +279,7 @@ thinks to turn it on; the 10-second floor keeps ordinary commands quiet.
 `mm` in Vi normal mode marks the cursor line, and clears the mark again. A user mark is drawn as ◆ in
 the gutter and as a tick on the scrollbar, and `[m` / `]m` jump between marks of both kinds. Unlike a
 prompt, it never starts a command block: folding and block-wise history eviction ignore it. See
-[Line marks](line-marks.md#bookmarking-a-line-in-vi-normal-mode).
+[Line marks](../input-modes.md#bookmarking-a-line-in-vi-normal-mode).
 
 ## Daemon sessions
 

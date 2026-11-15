@@ -368,7 +368,7 @@ connects to an address on the tailnet like any other.
 
    Tailscale already encrypts and authenticates the traffic between your machines, which is what makes
    unverified TLS a reasonable choice here. For the control commands, or for defense in depth, add
-   `tls_ca` as [above](#unverified-tls-and-a-pinned-ca), with the certificate issued for
+   `tls_ca` as [above](#a-certificate-of-your-own-tls_ca), with the certificate issued for
    `homepc.tail1234.ts.net`.
 
 5. **Attach**: "Attach to Host" → `home`, or `contour client --host home`.
