@@ -2427,6 +2427,11 @@ jobs:
       - name: Install CMake
         if: matrix.os_version != '24.04'
         uses: ssrobins/install-cmake@v1
+        # Pinned: without a version the action finds the latest by scraping https://cmake.org/download/, which
+        # took this job down on 2026-11-15 when cmake.org's certificate expired. With one, it downloads straight
+        # from github.com/Kitware/CMake/releases. 4.5.0 is what "latest" resolved to before; raise it on purpose.
+        with:
+          version: 4.5.0
       - name: CMake version
         run: cmake --version
       # The Unicode database libunicode downloads from unicode.org at configure time, kept between runs: a
