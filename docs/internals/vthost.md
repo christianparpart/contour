@@ -260,9 +260,9 @@ tell the daemon is lost on the next attach, and never reaches another client. Tw
 back: `ResizeSplit` for a divider (below), and `EditTab` for how a tab is presented — its active
 pane, its zoom, its title, its colour, and which tab of the workspace is active.
 
-A tab's control-API label goes one way only: the daemon's object registry holds it, `WireTab.label` carries
-it in every `LayoutState`, and a label change re-pushes the tab's workspace. A client takes it into its
-model (`vtworkspace::Tab::label()`) and never reports it back; `vtworkspace::tabNameSourceOf` makes it name
+A tab's name goes one way only: the daemon's object registry holds it, `WireTab.name` carries
+it in every `LayoutState`, and a name change re-pushes the tab's workspace. A client takes it into its
+model (`vtworkspace::Tab::name()`) and never reports it back; `vtworkspace::tabNameSourceOf` makes it name
 the tab over its title wherever a tab is named.
 
 **`EditTab`** (tag 28, gated on `Capability::TabEdits`; without it the daemon answers
@@ -420,10 +420,10 @@ next snapshot, and every connection is pushed its layout emptied and the new pos
 the daemon's only workspace, kept empty as the one a creation naming no workspace, and an attach, land in. A
 client lists no workspace whose layout is empty. A handover drops the tabless workspaces an older release
 kept the same way.
-**`SetWorkspaceLabel`** (tag 58, same gate) sets a workspace's label through the object registry, so every
+**`SetWorkspaceName`** (tag 58, same gate) sets a workspace's name through the object registry, so every
 window hears it as a `WorkspaceMeta` delta and every control subscriber as `workspace.labelChanged`. Neither
 has a reply.
-Label changes come from the object registry's label observer (`ObjectRegistry::onLabelChanged`), which also
+Name changes come from the object registry's name observer (`ObjectRegistry::onNameChanged`), which also
 publishes the control event `workspace.labelChanged`.
 
 <a id="workspace-follow-and-switch"></a>

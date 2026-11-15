@@ -443,10 +443,11 @@ core::async::Task<std::expected<std::string, ControlClientError>> ControlClient:
 std::expected<std::shared_ptr<ITransportFactory>, ControlClientError> resolveControlEndpoint(
     ControlEndpointOptions const& options, core::Environment const& env)
 {
-    // A label names a local daemon outright, exactly as `contour client --label` resolves it.
-    if (!options.label.empty())
-        return std::make_shared<UnixTransportFactory>(muxSocketPath(socketLabelOf(options.label), {}, env),
-                                                      UnixTransportFactory::EnsureDaemon {});
+    // A daemon name picks a local daemon outright, exactly as `contour client --label` resolves it.
+    if (!options.name.empty())
+        return std::make_shared<UnixTransportFactory>(
+            muxSocketPath(daemonNameFromOption(options.name), {}, env),
+            UnixTransportFactory::EnsureDaemon {});
     auto const spec =
         !options.daemon.empty() ? options.daemon : env.get("CONTOUR_DAEMON").value_or(std::string {});
     // Never a daemon started for a control call: an empty ensureDaemon.

@@ -279,10 +279,10 @@ class ControlService final:
                                                  vtworkspace::Tab const& tab,
                                                  vtcontrol::ControlGrants grants) const;
 
-    /// Publishes `workspace.labelChanged` when @p ref is a workspace; other objects' labels have no event.
-    /// @param ref The object whose label changed.
-    /// @param label Its label now; empty when it was cleared.
-    void labelChanged(vtcontrol::ObjectRef const& ref, std::string_view label);
+    /// Publishes `workspace.labelChanged` when @p ref is a workspace; other objects' names have no event.
+    /// @param ref The object whose name changed.
+    /// @param name Its name now; empty when it was cleared.
+    void nameChanged(vtcontrol::ObjectRef const& ref, std::string_view name);
 
     /// @return The ids of @p session's pane, tab and workspace, as far as they still exist.
     [[nodiscard]] vtcontrol::EventOrigin originOf(vtworkspace::SessionId session) const;
@@ -334,8 +334,8 @@ class ControlService final:
     /// Last, so that they end first: no event reaches a service being destroyed.
     ScopedStreamSubscription _streamSubscription;
     ScopedModelSubscription _modelSubscription;
-    /// Publishes `workspace.labelChanged` for each workspace label the registry changes.
-    ObjectRegistry::Subscription _labelSubscription;
+    /// Publishes `workspace.labelChanged` for each workspace name the registry changes.
+    ObjectRegistry::Subscription _nameSubscription;
     /// Serves the host's extensions while the service lives. Last: it is what reaches the rest.
     ScopedExtensionControl _extensionControl;
 };

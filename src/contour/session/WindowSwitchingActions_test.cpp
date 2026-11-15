@@ -43,7 +43,7 @@ namespace
 
 SwitchTarget labelTarget(std::string name)
 {
-    return { .kind = SwitchDaemonKind::Label, .daemon = std::move(name), .workspace = {} };
+    return { .kind = SwitchDaemonKind::Name, .daemon = std::move(name), .workspace = {} };
 }
 
 SwitchTarget hostTarget(std::string name)

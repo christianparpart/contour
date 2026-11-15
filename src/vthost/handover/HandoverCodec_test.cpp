@@ -41,7 +41,7 @@ namespace
     auto session = HandoverSession {};
     session.id = vtworkspace::SessionId { id };
     session.uuid = uuidOf(static_cast<uint8_t>(id));
-    session.label = "shell";
+    session.name = "shell";
     session.profileName = "default";
     session.origin = SettingsOrigin::Client;
     auto settings = defaultSessionSettings();
@@ -101,8 +101,8 @@ namespace
     image.objects.tabs = { BoundObject { .id = 5, .uuid = uuidOf(0xA2) } };
     image.objects.panes = { BoundObject { .id = 1, .uuid = uuidOf(0xA3) },
                             BoundObject { .id = 2, .uuid = uuidOf(0xA4) } };
-    image.objects.labels = { LabeledObject { .ref = { vtcontrol::ObjectKind::Tab, uuidOf(0xA2) },
-                                             .label = "work" } };
+    image.objects.names = { NamedObject { .ref = { vtcontrol::ObjectKind::Tab, uuidOf(0xA2) },
+                                          .name = "work" } };
     image.sessions = { sessionOf(1), sessionOf(2) };
     image.listeners = { InheritedListener { .name = "control", .handle = vtpty::CrossingHandle { 20 } },
                         InheritedListener { .name = "native-tcp",
@@ -147,8 +147,8 @@ void requireSame(HandoverImage const& actual, HandoverImage const& expected)
     CHECK(tab.view.colors == wanted.tabs.at(0).view.colors);
     CHECK(actual.objects.workspaces.size() == 1);
     CHECK(actual.objects.panes.at(1).uuid == uuidOf(0xA4));
-    CHECK(actual.objects.labels.at(0).label == "work");
-    CHECK(actual.objects.labels.at(0).ref == expected.objects.labels.at(0).ref);
+    CHECK(actual.objects.names.at(0).name == "work");
+    CHECK(actual.objects.names.at(0).ref == expected.objects.names.at(0).ref);
     CHECK(actual.defaultColorPreference == expected.defaultColorPreference);
     CHECK(actual.cellPixelSize == expected.cellPixelSize);
     CHECK(actual.listeners.size() == 2);
@@ -165,7 +165,7 @@ void requireSame(HandoverImage const& actual, HandoverImage const& expected)
         auto const& want = expected.sessions.at(index);
         CHECK(got.id == want.id);
         CHECK(got.uuid == want.uuid);
-        CHECK(got.label == want.label);
+        CHECK(got.name == want.name);
         CHECK(got.profileName == want.profileName);
         CHECK(got.origin == want.origin);
         CHECK(got.statedSettings == want.statedSettings);
@@ -438,8 +438,8 @@ TEST_CASE("a mutated handover stream is refused or decoded, never fatal", "[hand
 namespace
 {
 
-/// An image whose every name-bearing field is set: the workspace's, the tab's and the pane's label, the tab's
-/// runtime title, and the session's label. Recorded as testing::RecordedHandoverNames.
+/// An image whose every name-bearing field is set: the workspace's, the tab's and the pane's name, the tab's
+/// runtime title, and the session's name. Recorded as testing::RecordedHandoverNames.
 [[nodiscard]] HandoverImage namedImage()
 {
     auto tab = vtworkspace::TabState {};
@@ -456,7 +456,7 @@ namespace
     auto session = HandoverSession {};
     session.id = vtworkspace::SessionId { 1 };
     session.uuid = uuidOf(0xC3);
-    session.label = "logs";
+    session.name = "logs";
     session.pty.pageSize = vtpty::PageSize { vtpty::LineCount(24), vtpty::ColumnCount(80) };
 
     auto image = HandoverImage {};
@@ -468,10 +468,10 @@ namespace
     image.objects.workspaces = { BoundObject { .id = 1, .uuid = uuidOf(0xC1) } };
     image.objects.tabs = { BoundObject { .id = 2, .uuid = uuidOf(0xC2) } };
     image.objects.panes = { BoundObject { .id = 1, .uuid = uuidOf(0xC3) } };
-    image.objects.labels = {
-        LabeledObject { .ref = { vtcontrol::ObjectKind::Workspace, uuidOf(0xC1) }, .label = "ops" },
-        LabeledObject { .ref = { vtcontrol::ObjectKind::Tab, uuidOf(0xC2) }, .label = "build" },
-        LabeledObject { .ref = { vtcontrol::ObjectKind::Pane, uuidOf(0xC3) }, .label = "logs" },
+    image.objects.names = {
+        NamedObject { .ref = { vtcontrol::ObjectKind::Workspace, uuidOf(0xC1) }, .name = "ops" },
+        NamedObject { .ref = { vtcontrol::ObjectKind::Tab, uuidOf(0xC2) }, .name = "build" },
+        NamedObject { .ref = { vtcontrol::ObjectKind::Pane, uuidOf(0xC3) }, .name = "logs" },
     };
     image.sessions = { session };
     return image;
@@ -510,14 +510,14 @@ TEST_CASE("the handover stream of a named workspace, tab and pane is pinned", "[
     CHECK(decoded->objects.workspaces.at(0).uuid == uuidOf(0xC1));
     CHECK(decoded->objects.tabs.at(0).uuid == uuidOf(0xC2));
     CHECK(decoded->objects.panes.at(0).uuid == uuidOf(0xC3));
-    REQUIRE(decoded->objects.labels.size() == image.objects.labels.size());
-    for (auto const index: std::views::iota(size_t { 0 }, image.objects.labels.size()))
+    REQUIRE(decoded->objects.names.size() == image.objects.names.size());
+    for (auto const index: std::views::iota(size_t { 0 }, image.objects.names.size()))
     {
-        CHECK(decoded->objects.labels.at(index).ref == image.objects.labels.at(index).ref);
-        CHECK(decoded->objects.labels.at(index).label == image.objects.labels.at(index).label);
+        CHECK(decoded->objects.names.at(index).ref == image.objects.names.at(index).ref);
+        CHECK(decoded->objects.names.at(index).name == image.objects.names.at(index).name);
     }
     REQUIRE(decoded->sessions.size() == 1);
     CHECK(decoded->sessions.at(0).id == vtworkspace::SessionId { 1 });
     CHECK(decoded->sessions.at(0).uuid == uuidOf(0xC3));
-    CHECK(decoded->sessions.at(0).label == "logs");
+    CHECK(decoded->sessions.at(0).name == "logs");
 }

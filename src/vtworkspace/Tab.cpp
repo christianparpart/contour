@@ -354,7 +354,7 @@ std::string Tab::title(SessionTitleResolver const& resolver) const
 {
     switch (tabNameSourceOf(nameCandidates()))
     {
-        case TabNameSource::Label: return _label;
+        case TabNameSource::Name: return _name;
         case TabNameSource::Title: return *_runtimeTitle;
         case TabNameSource::Panes: break;
     }

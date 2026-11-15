@@ -82,16 +82,16 @@ TEST_CASE("a workspace's label, control id and git state come from the metadata 
     auto const git =
         DirectoryGit { .branch = "main", .kind = vtbackend::GitHeadKind::Branch, .ahead = 1, .behind = {} };
     metadata.table[2] = WorkspaceMetadata {
-        .label = "build",
+        .name = "build",
         .controlId = { 0xAB, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02 },
         .git = git,
     };
     auto const directory = directoryFromLayouts(layouts, TableStatus {}, metadata, std::nullopt);
     REQUIRE(directory.workspaces.size() == 2);
-    CHECK(directory.workspaces[0].label.empty());
+    CHECK(directory.workspaces[0].name.empty());
     CHECK(directory.workspaces[0].controlId == std::array<uint8_t, 16> {});
     CHECK_FALSE(directory.workspaces[0].git.has_value());
-    CHECK(directory.workspaces[1].label == "build");
+    CHECK(directory.workspaces[1].name == "build");
     CHECK(directory.workspaces[1].controlId == metadata.table[2].controlId);
     CHECK(directory.workspaces[1].git == std::optional { git });
 }
@@ -120,19 +120,19 @@ TEST_CASE("status and summaries come from the lookup, keyed by daemon session id
     CHECK(known.activity == proto::OutputActivity::Output);
     REQUIRE(known.finished.has_value());
     CHECK(known.finished->exitCode == 2);
-    CHECK(tabs[0].label == "vim"); // no title of its own: the first pane's
+    CHECK(tabs[0].name == "vim"); // no title of its own: the first pane's
     // A pane nothing is known of is empty, and a tab's own title wins.
     CHECK(tabs[0].panes[1].title.empty());
     CHECK(tabs[0].panes[1].activity == proto::OutputActivity::None);
-    CHECK(tabs[1].label == "named");
+    CHECK(tabs[1].name == "named");
 }
 
 TEST_CASE("a tab's control label names it over its title and its first pane's", "[contour][directory]")
 {
     auto const layouts = std::vector { layoutOf(
         1,
-        { proto::WireTab { .tabId = 1, .title = "named", .label = "build", .root = leaf(5) },
-          proto::WireTab { .tabId = 2, .label = "logs", .root = leaf(6) },
+        { proto::WireTab { .tabId = 1, .title = "named", .name = "build", .root = leaf(5) },
+          proto::WireTab { .tabId = 2, .name = "logs", .root = leaf(6) },
           proto::WireTab { .tabId = 3, .title = "named", .root = leaf(7) } }) };
     auto status = TableStatus {};
     for (auto const session: { uint64_t { 5 }, uint64_t { 6 }, uint64_t { 7 } })
@@ -144,10 +144,10 @@ TEST_CASE("a tab's control label names it over its title and its first pane's", 
     auto const directory = directoryFromLayouts(layouts, status, TableMeta {}, std::nullopt);
     auto const& tabs = directory.workspaces.at(0).tabs;
     REQUIRE(tabs.size() == 3);
-    CHECK(tabs[0].label == "build");
+    CHECK(tabs[0].name == "build");
     CHECK(tabs[0].title == "named");
-    CHECK(tabs[1].label == "logs");
-    CHECK(tabs[2].label == "named");
+    CHECK(tabs[1].name == "logs");
+    CHECK(tabs[2].name == "named");
 }
 
 TEST_CASE("the selection is carried", "[contour][directory]")
@@ -172,7 +172,7 @@ TEST_CASE("a workspace's title is its label, else its host's 1-based number for 
     }
     SECTION("a label wins")
     {
-        workspace.label = "ops";
+        workspace.name = "ops";
         workspace.position = 2;
         CHECK(workspaceTitleOf(workspace, 1) == "ops");
     }

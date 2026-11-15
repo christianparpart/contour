@@ -27,7 +27,7 @@ namespace contour::window
 
 /// What a window lists of the workspaces it can show: every workspace, its tabs and their panes, as plain
 /// values. It is built from what the client already holds (the daemon's layouts, its status and what it
-/// states of its workspaces: label, control id, git state), so the list never depends on which workspace is
+/// states of its workspaces: name, control id, git state), so the list never depends on which workspace is
 /// mirrored.
 
 /// One pane of a tab, with what is known of it.
@@ -54,7 +54,7 @@ struct DirectoryTab
 {
     uint64_t id = 0;   ///< The tab's id within its workspace.
     std::string title; ///< The tab's own title as the daemon holds it; empty when it has none.
-    std::string label; ///< What a list shows (vtworkspace::tabNameOf): its control label, its title, its
+    std::string name;  ///< What a list shows (vtworkspace::tabNameOf): its user-given name, its title, its
                        ///< first pane's.
     std::vector<DirectoryPane> panes; ///< Depth-first.
     bool operator==(DirectoryTab const&) const = default;
@@ -73,8 +73,8 @@ struct DirectoryGit
 /// One workspace and its tabs.
 struct DirectoryWorkspace
 {
-    uint64_t id = 0;   ///< The daemon's workspace id.
-    std::string label; ///< The workspace's label; empty when it has none.
+    uint64_t id = 0;  ///< The daemon's workspace id.
+    std::string name; ///< The workspace's name; empty when it has none.
     std::vector<DirectoryTab> tabs;
     std::array<uint8_t, 16> controlId {}; ///< Its control-API UUID; all zero while the daemon stated none.
     std::optional<DirectoryGit> git {};   ///< Its git state; none when it is in no repository, or unknown.
@@ -87,13 +87,13 @@ struct DirectoryWorkspace
 
 /// @param workspace A workspace of a directory.
 /// @param listIndex Its 0-based place in that directory.
-/// @return What a window calls it: its label, or "Workspace N" -- N its 1-based place in its host's order,
+/// @return What a window calls it: its name, or "Workspace N" -- N its 1-based place in its host's order,
 ///         as `contour ls` and `workspace.list` number it, and its place in the directory while the host
 ///         stated none.
 [[nodiscard]] inline std::string workspaceTitleOf(DirectoryWorkspace const& workspace, std::size_t listIndex)
 {
-    if (!workspace.label.empty())
-        return workspace.label;
+    if (!workspace.name.empty())
+        return workspace.name;
     return std::format("Workspace {}", workspace.position.value_or(static_cast<uint32_t>(listIndex)) + 1);
 }
 
@@ -247,7 +247,7 @@ class PaneStatusLookup
 /// What a daemon states of one workspace besides its layout.
 struct WorkspaceMetadata
 {
-    std::string label;                    ///< Its label; empty when it has none.
+    std::string name;                     ///< Its name; empty when it has none.
     std::array<uint8_t, 16> controlId {}; ///< Its control-API UUID; all zero when unknown.
     std::optional<DirectoryGit> git {};   ///< Its git state; none when it is in no repository, or unknown.
     /// Its 0-based place in the daemon's workspace order, once the daemon stated it; a directory lists the
@@ -256,7 +256,7 @@ struct WorkspaceMetadata
     bool operator==(WorkspaceMetadata const&) const = default;
 };
 
-/// Where a directory gets what is stated of a workspace (its label, control id and git state) from.
+/// Where a directory gets what is stated of a workspace (its name, control id and git state) from.
 class WorkspaceMetaLookup
 {
   public:
@@ -318,7 +318,7 @@ namespace detail
 /// Describes every workspace of a daemon as the directory a window lists.
 /// @param inDaemonOrder Each workspace's layout, in the order the daemon lists them.
 /// @param status Where the status of a pane comes from.
-/// @param metadata Where the label, control id and git state of a workspace come from.
+/// @param metadata Where the name, control id and git state of a workspace come from.
 /// @param selected The workspace the window shows, if any.
 /// @return The directory.
 [[nodiscard]] inline WorkspaceDirectory directoryFromLayouts(
@@ -335,7 +335,7 @@ namespace detail
         auto workspace = DirectoryWorkspace {};
         workspace.id = layout.workspace;
         auto stated = metadata.metaOf(layout.workspace);
-        workspace.label = std::move(stated.label);
+        workspace.name = std::move(stated.name);
         workspace.controlId = stated.controlId;
         workspace.git = std::move(stated.git);
         workspace.position = stated.position;
@@ -346,8 +346,8 @@ namespace detail
             tab.id = wireTab.tabId;
             tab.title = wireTab.title;
             detail::collectPanes(wireTab.root, status, tab.panes);
-            tab.label = vtworkspace::tabNameOf(
-                { .label = wireTab.label, .title = tab.title },
+            tab.name = vtworkspace::tabNameOf(
+                { .name = wireTab.name, .title = tab.title },
                 tab.panes.empty() ? std::string_view {} : std::string_view { tab.panes.front().title });
             workspace.tabs.push_back(std::move(tab));
         }

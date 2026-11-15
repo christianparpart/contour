@@ -65,7 +65,7 @@ class IDaemonDiscovery
     DaemonCounter const& counter);
 
 /// @param socketDirectory The directory the daemons' control sockets live in (the parent of
-///        vthost::labelSocketPath("default")).
+///        vthost::namedSocketPath("default")).
 /// @param prober Asks whether a daemon serves at a socket; borrowed, outlives the discovery.
 /// @param counter Asks a running daemon for its workspaces.
 /// @param lister Lists the directory.

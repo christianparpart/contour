@@ -1984,7 +1984,7 @@ TEST_CASE("TerminalSession: a window that does not raise for its daemon shows no
     auto& manager = testApp.manager();
     // Another window on the same daemon raises: this one is quiet.
     auto daemon = contour::test::DaemonNamedBinding {
-        *factory, { .kind = vthost::proto::SwitchDaemonKind::Label, .daemon = "work", .workspace = {} }
+        *factory, { .kind = vthost::proto::SwitchDaemonKind::Name, .daemon = "work", .workspace = {} }
     };
     daemon.role = vthost::proto::RaiseRole::Quiet;
     contour::test::ScopedController const window { manager };

@@ -56,7 +56,7 @@ namespace
     {
         writeOptional(sink, identity, [](proto::Writer& out, ObjectIdentityRecord const& record) {
             out.bytes(std::as_bytes(std::span { record.uuid }));
-            writeOptional(out, record.label, writeString);
+            writeOptional(out, record.name, writeString);
         });
     }
 
@@ -158,10 +158,10 @@ namespace
                     return std::unexpected(SnapshotError::Malformed);
                 std::ranges::transform(
                     *raw, record.uuid.begin(), [](std::byte b) { return static_cast<std::uint8_t>(b); });
-                auto label = readOptional<std::string>(in, readString);
-                if (!label)
-                    return std::unexpected(label.error());
-                record.label = *std::move(label);
+                auto name = readOptional<std::string>(in, readString);
+                if (!name)
+                    return std::unexpected(name.error());
+                record.name = *std::move(name);
                 return record;
             });
     }

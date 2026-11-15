@@ -125,7 +125,7 @@ TEST_CASE("SidebarModel: a directory change keeps the selection and the collapse
     REQUIRE(t.sidebar().rowCount() == 3);
     REQUIRE(t.sidebar().currentIndex() == 2);
 
-    t.source.listed.workspaces[1].label = "documentation";
+    t.source.listed.workspaces[1].name = "documentation";
     t.sidebar().noteChanged();
     letEventLoopRun();
 
@@ -230,7 +230,7 @@ TEST_CASE("SidebarModel: a title change names every role the title is served in"
     auto t = SidebarUnderTest { { directoryWorkspaceOf(1, "billing", { directoryPaneOf(10) }) } };
     auto changed = QSignalSpy { &t.sidebar(), &QAbstractItemModel::dataChanged };
 
-    t.source.listed.workspaces[0].label = "invoices";
+    t.source.listed.workspaces[0].name = "invoices";
     t.sidebar().refreshNow();
 
     REQUIRE(changed.count() == 1);

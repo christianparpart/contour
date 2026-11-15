@@ -121,7 +121,7 @@ std::vector<ConnectRow> connectRows(ConnectListInputs const& inputs, std::string
     // The other daemons running here, by label; the default one is the row above.
     for (auto const& daemon: inputs.labelled)
     {
-        if (daemon.label == vthost::DefaultSocketLabel)
+        if (daemon.label == vthost::DefaultDaemonName)
             continue;
         auto const target =
             config::LaunchTarget { .kind = config::LaunchTargetKind::LocalDaemon, .name = daemon.label };

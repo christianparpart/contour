@@ -1379,7 +1379,7 @@ TEST_CASE(
     auto app = appWithTaskbar(std::move(sink));
     auto& manager = app.manager();
     auto factory = contour::test::MockPtySessionFactory {};
-    auto const target = contour::session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Label,
+    auto const target = contour::session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Name,
                                                          .daemon = "work",
                                                          .workspace = {} };
     // Two windows on one daemon, each counting the workspaces it does not display from its own directory --
@@ -1435,7 +1435,7 @@ TEST_CASE(
     auto& manager = app.manager();
     auto factory = contour::test::MockPtySessionFactory {};
     auto daemon = contour::test::DaemonNamedBinding {
-        factory, { .kind = vthost::proto::SwitchDaemonKind::Label, .daemon = "work", .workspace = {} }
+        factory, { .kind = vthost::proto::SwitchDaemonKind::Name, .daemon = "work", .workspace = {} }
     };
     contour::test::ScopedController const window { manager };
     manager.bindWindow(window.id, daemon);
@@ -4881,7 +4881,7 @@ TEST_CASE("TerminalSessionManager: New Window opens on the daemon only from a wi
     auto& manager = app.manager();
     auto factory = contour::test::MockPtySessionFactory {};
     auto daemon = contour::test::DaemonNamedBinding {
-        factory, { .kind = vthost::proto::SwitchDaemonKind::Label, .daemon = "work", .workspace = {} }
+        factory, { .kind = vthost::proto::SwitchDaemonKind::Name, .daemon = "work", .workspace = {} }
     };
     auto const onDaemon = contour::test::ScopedController { manager };
     manager.bindWindow(onDaemon.id, daemon);
@@ -5380,8 +5380,8 @@ class BellingSource final: public contour::window::IWorkspaceDirectorySource
         pane.bell = vthost::proto::PaneBell::Rang;
         pane.bellSerial = 1;
         return { .workspaces = { { .id = 99,
-                                   .label = {},
-                                   .tabs = { { .id = 1, .title = {}, .label = {}, .panes = { pane } } } } },
+                                   .name = {},
+                                   .tabs = { { .id = 1, .title = {}, .name = {}, .panes = { pane } } } } },
                  .selected = std::nullopt };
     }
 
@@ -5859,12 +5859,12 @@ TEST_CASE("TerminalSessionManager: a closed window's workspace labels are forgot
     auto& manager = app.manager();
     auto const window = std::make_unique<contour::test::ScopedController>(manager);
     auto const workspace = window->id;
-    manager.setWorkspaceLabel(workspace, "scratch");
-    REQUIRE(window->controller->directorySource()->directory().workspaces.at(0).label == "scratch");
+    manager.setWorkspaceName(workspace, "scratch");
+    REQUIRE(window->controller->directorySource()->directory().workspaces.at(0).name == "scratch");
 
-    auto const* const labels = &manager.workspaceLabels();
+    auto const* const labels = &manager.workspaceNames();
     manager.removeWindowController(window->windowId);
-    CHECK(labels->labelOf(workspace).empty());
+    CHECK(labels->nameOf(workspace).empty());
 }
 
 // }}}
@@ -5894,13 +5894,13 @@ TEST_CASE(
     CHECK(manager.model().workspace(shown)->tabCount() == 1);
     REQUIRE(factory->requestedCwds.size() == 1);
     CHECK(factory->requestedCwds[0] == std::optional { (root / "repo" / "src").string() });
-    CHECK(manager.workspaceLabels().labelOf(shown) == "repo");
+    CHECK(manager.workspaceNames().nameOf(shown) == "repo");
 
     // A folder that is no repository is named after itself; an unknown one names nothing.
     manager.newWorkspaceStartingIn(*acting, (root / "elsewhere").string());
-    CHECK(manager.workspaceLabels().labelOf(window.controller->displayedWorkspace()) == "elsewhere");
+    CHECK(manager.workspaceNames().nameOf(window.controller->displayedWorkspace()) == "elsewhere");
     manager.newWorkspaceStartingIn(*acting, ".");
-    CHECK(manager.workspaceLabels().labelOf(window.controller->displayedWorkspace()).empty());
+    CHECK(manager.workspaceNames().nameOf(window.controller->displayedWorkspace()).empty());
     std::filesystem::remove_all(root);
 }
 
@@ -5958,15 +5958,15 @@ TEST_CASE("TerminalSessionManager: an in-process window renames its workspaces",
 
     auto const directory = f.controller().directorySource()->directory();
     REQUIRE(directory.workspaces.size() == 2);
-    CHECK(directory.workspaces[1].label == "ops");
+    CHECK(directory.workspaces[1].name == "ops");
     CHECK(changed.count() >= 1);
 
     // An empty label clears it; a workspace the window does not own is left alone.
     f.manager().renameWorkspace(f.controller(), f.second.value, "");
-    CHECK(f.controller().directorySource()->directory().workspaces[1].label.empty());
+    CHECK(f.controller().directorySource()->directory().workspaces[1].name.empty());
     auto const stranger = contour::test::ScopedController { f.manager() };
     f.manager().renameWorkspace(f.controller(), stranger.id.value, "nope");
-    CHECK(f.manager().workspaceLabels().labelOf(stranger.id).empty());
+    CHECK(f.manager().workspaceNames().nameOf(stranger.id).empty());
 }
 
 TEST_CASE("TerminalSessionManager: an in-process window reorders its workspaces", "[manager][workspace]")
@@ -6005,7 +6005,7 @@ TEST_CASE("TerminalSessionManager: an in-process window lists the title a pane's
     drainPosted();
 
     CHECK(changed.count() >= 1);
-    CHECK(f.controller().directorySource()->directory().workspaces.front().tabs.front().label == "build");
+    CHECK(f.controller().directorySource()->directory().workspaces.front().tabs.front().name == "build");
 }
 
 TEST_CASE("TerminalSessionManager: an in-process window moves a tab into another workspace",
@@ -6117,7 +6117,7 @@ TEST_CASE("TerminalSessionManager: closing a workspace that runs a program asks 
     auto f = TwoWorkspaces {};
     auto asked = QSignalSpy { &f.controller(),
                               &contour::window::WindowController::closeWorkspaceConfirmationRequested };
-    f.manager().setWorkspaceLabel(f.first, "build");
+    f.manager().setWorkspaceName(f.first, "build");
     auto const shell = f.controller().activeSession()->profile().shell.value().program;
     for (auto& pty: f.factory->createdPtys)
         pty->setForegroundProcessName(shell);
@@ -6218,7 +6218,7 @@ class DaemonDirectorySource final: public contour::window::IWorkspaceDirectorySo
         // The daemon holds a tabless workspace ahead of these and another between them (an older release kept
         // one whose last session ended).
         build.position = 1;
-        build.label = "build";
+        build.name = "build";
         build.tabs = { tab(100, 1000), tab(101, 1001) };
         auto other = DirectoryWorkspace {};
         other.id = 20;
@@ -6344,7 +6344,7 @@ TEST_CASE("TerminalSessionManager: an in-process window's sidebar reaches the wo
 
     // The row's editor renames the workspace, the shown workspace's tab and the hidden workspace's tab.
     sidebar.rename(sidebarRowOf(sidebar, SidebarRowKind::Workspace, f.second.value), "ops");
-    CHECK(f.controller().directorySource()->directory().workspaces[1].label == "ops");
+    CHECK(f.controller().directorySource()->directory().workspaces[1].name == "ops");
     sidebar.rename(sidebarRowOf(sidebar, SidebarRowKind::Tab, f.first.value, firstTabs[0]), "edit");
     CHECK(model.workspace(f.first)->tabAt(0)->runtimeTitle() == std::optional<std::string> { "edit" });
     sidebar.rename(sidebarRowOf(sidebar, SidebarRowKind::Tab, f.second.value, secondTab.value), "logs");
@@ -6965,7 +6965,7 @@ namespace
 {
 [[nodiscard]] contour::session::SwitchTarget chipLabelTarget(std::string label)
 {
-    return { .kind = vthost::proto::SwitchDaemonKind::Label, .daemon = std::move(label), .workspace = {} };
+    return { .kind = vthost::proto::SwitchDaemonKind::Name, .daemon = std::move(label), .workspace = {} };
 }
 } // namespace
 
@@ -6976,7 +6976,7 @@ TEST_CASE("TerminalSessionManager: daemonNameOf names the daemon the chip shows"
     auto factory = contour::test::MockPtySessionFactory {};
     auto onDefault =
         contour::test::DaemonNamedBinding { factory,
-                                            chipLabelTarget(std::string(vthost::DefaultSocketLabel)) };
+                                            chipLabelTarget(std::string(vthost::DefaultDaemonName)) };
     auto onWork = contour::test::DaemonNamedBinding { factory, chipLabelTarget("work"), "work" };
     auto onHost = contour::test::DaemonNamedBinding {
         factory,
@@ -7109,7 +7109,7 @@ TEST_CASE("TerminalSessionManager: the default daemon raises no band notice whil
     auto factory = contour::test::MockPtySessionFactory {};
     auto onDefault =
         contour::test::DaemonNamedBinding { factory,
-                                            chipLabelTarget(std::string(vthost::DefaultSocketLabel)) };
+                                            chipLabelTarget(std::string(vthost::DefaultDaemonName)) };
     contour::test::ScopedController const window { manager };
     manager.bindWindow(window.id, onDefault);
     CHECK(hostNoticeOf(hostChipPresence(manager.chromeLabelOf(window.id)), HostChipState::Reconnecting)
@@ -7129,7 +7129,7 @@ TEST_CASE(
     auto factory = contour::test::MockPtySessionFactory {};
     auto onDefault =
         contour::test::DaemonNamedBinding { factory,
-                                            chipLabelTarget(std::string(vthost::DefaultSocketLabel)) };
+                                            chipLabelTarget(std::string(vthost::DefaultDaemonName)) };
     auto onWork = contour::test::DaemonNamedBinding { factory, chipLabelTarget("work"), "work" };
     contour::test::ScopedController const defaultWindow { manager };
     contour::test::ScopedController const workWindow { manager };

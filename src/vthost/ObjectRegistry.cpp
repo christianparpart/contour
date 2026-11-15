@@ -16,7 +16,7 @@ using vtcontrol::ObjectRef;
 using vtcontrol::Uuid;
 
 ObjectRegistry::ObjectRegistry(std::shared_ptr<vtcontrol::UuidSource> uuids):
-    _uuids { std::move(uuids) }, _labelObservers { std::make_shared<LabelObservers>() }
+    _uuids { std::move(uuids) }, _nameObservers { std::make_shared<NameObservers>() }
 {
 }
 
@@ -51,7 +51,7 @@ void ObjectRegistry::forgetIn(Table& table, ObjectKind kind, uint64_t id)
     auto const known = table.byId.find(id);
     if (known == table.byId.end())
         return;
-    _labels.erase(ObjectRef { .kind = kind, .uuid = known->second });
+    _names.erase(ObjectRef { .kind = kind, .uuid = known->second });
     table.byUuid.erase(known->second);
     table.byId.erase(known);
 }
@@ -123,14 +123,14 @@ std::optional<ObjectRegistry::Handle> ObjectRegistry::find(ObjectRef const& ref)
     return Handle { vtworkspace::SessionId { known->second } };
 }
 
-/// The label observers of a registry, by subscription id in subscription order.
-struct ObjectRegistry::LabelObservers
+/// The name observers of a registry, by subscription id in subscription order.
+struct ObjectRegistry::NameObservers
 {
-    std::vector<std::pair<uint64_t, LabelObserver>> entries;
+    std::vector<std::pair<uint64_t, NameObserver>> entries;
     uint64_t nextId = 1;
 };
 
-ObjectRegistry::Subscription::Subscription(std::weak_ptr<LabelObservers> observers, uint64_t id) noexcept:
+ObjectRegistry::Subscription::Subscription(std::weak_ptr<NameObservers> observers, uint64_t id) noexcept:
     _observers(std::move(observers)), _id(id)
 {
 }
@@ -163,28 +163,28 @@ void ObjectRegistry::Subscription::unsubscribe() noexcept
     _observers.reset();
 }
 
-ObjectRegistry::Subscription ObjectRegistry::onLabelChanged(LabelObserver observer)
+ObjectRegistry::Subscription ObjectRegistry::onNameChanged(NameObserver observer)
 {
-    auto const id = _labelObservers->nextId++;
-    _labelObservers->entries.emplace_back(id, std::move(observer));
-    return Subscription { _labelObservers, id };
+    auto const id = _nameObservers->nextId++;
+    _nameObservers->entries.emplace_back(id, std::move(observer));
+    return Subscription { _nameObservers, id };
 }
 
-void ObjectRegistry::setLabel(ObjectRef const& ref, std::string label)
+void ObjectRegistry::setName(ObjectRef const& ref, std::string name)
 {
-    if (!find(ref) || labelOf(ref) == label)
+    if (!find(ref) || nameOf(ref) == name)
         return;
-    if (label.empty())
-        _labels.erase(ref);
+    if (name.empty())
+        _names.erase(ref);
     else
-        _labels.insert_or_assign(ref, std::move(label));
+        _names.insert_or_assign(ref, std::move(name));
     // Who is told was settled before the first is: an observer may unsubscribe, or subscribe, as it is told.
     // Each is called through a copy, so one that unsubscribes itself is not destroyed while it runs.
-    auto const ids = std::ranges::to<std::vector>(_labelObservers->entries | std::views::keys);
-    auto const now = std::string { labelOf(ref) };
+    auto const ids = std::ranges::to<std::vector>(_nameObservers->entries | std::views::keys);
+    auto const now = std::string { nameOf(ref) };
     for (auto const id: ids)
     {
-        auto const& entries = _labelObservers->entries;
+        auto const& entries = _nameObservers->entries;
         auto const found =
             std::ranges::find_if(entries, [id](auto const& entry) { return entry.first == id; });
         if (found == entries.end())
@@ -194,9 +194,9 @@ void ObjectRegistry::setLabel(ObjectRef const& ref, std::string label)
     }
 }
 
-std::string_view ObjectRegistry::labelOf(ObjectRef const& ref) const
+std::string_view ObjectRegistry::nameOf(ObjectRef const& ref) const
 {
-    if (auto const known = _labels.find(ref); known != _labels.end())
+    if (auto const known = _names.find(ref); known != _names.end())
         return known->second;
     return {};
 }
@@ -221,10 +221,10 @@ ObjectRegistrySnapshot ObjectRegistry::snapshot() const
         .workspaces = boundIn(_workspaces.byId),
         .tabs = boundIn(_tabs.byId),
         .panes = boundIn(_panes.byId),
-        .labels = std::ranges::to<std::vector>(_labels | std::views::transform([](auto const& entry) {
-                                                   return LabeledObject { .ref = entry.first,
-                                                                          .label = entry.second };
-                                               })),
+        .names =
+            std::ranges::to<std::vector>(_names | std::views::transform([](auto const& entry) {
+                                             return NamedObject { .ref = entry.first, .name = entry.second };
+                                         })),
     };
 }
 
@@ -233,16 +233,16 @@ void ObjectRegistry::restore(ObjectRegistrySnapshot const& snapshot)
     _workspaces = {};
     _tabs = {};
     _panes = {};
-    _labels.clear();
+    _names.clear();
     for (auto const& workspace: snapshot.workspaces)
         bind(vtworkspace::WorkspaceId { workspace.id }, workspace.uuid);
     for (auto const& tab: snapshot.tabs)
         bind(vtworkspace::TabId { tab.id }, tab.uuid);
     for (auto const& pane: snapshot.panes)
         bind(vtworkspace::SessionId { pane.id }, pane.uuid);
-    // After the binds: a label of an object not bound is ignored.
-    for (auto const& labeled: snapshot.labels)
-        setLabel(labeled.ref, labeled.label);
+    // After the binds: a name of an object not bound is ignored.
+    for (auto const& named: snapshot.names)
+        setName(named.ref, named.name);
 }
 
 } // namespace vthost

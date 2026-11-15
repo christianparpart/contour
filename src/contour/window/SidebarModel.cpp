@@ -615,10 +615,10 @@ void SidebarModel::announceNewNeeds(WorkspaceDirectory const& directory)
                 if (baseline || !rose || _activity != WindowActivity::Active
                     || directory.selected == workspace.id)
                     continue;
-                auto const& title = !pane.title.empty() ? pane.title : tab.label;
+                auto const& title = !pane.title.empty() ? pane.title : tab.name;
                 _announcer.announce(
                     tr("%1 in %2 needs you")
-                        .arg(qs(title), workspace.label.empty() ? tr("a workspace") : qs(workspace.label)),
+                        .arg(qs(title), workspace.name.empty() ? tr("a workspace") : qs(workspace.name)),
                     QAccessible::AnnouncementPoliteness::Polite);
             }
     _paneUrgency = std::move(urgencies);

@@ -555,7 +555,7 @@ TEST_CASE("Switcher: New Daemon shows the verdict, the equivalent command and on
 
     typeLabel("a b");
     CHECK(text("switcherLabelVerdict").toStdString()
-          == vthost::describe(vthost::SocketLabelError::InvalidCharacter));
+          == vthost::describe(vthost::DaemonNameError::InvalidCharacter));
     CHECK(text("switcherLabelCommand").isEmpty());
     CHECK(f.switcher->rowCount() == 0);
     CHECK(f.warnings.count(test::isQmlDiagnostic) == 0);

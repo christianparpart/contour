@@ -56,14 +56,14 @@ TEST_CASE("an object registry snapshot restores every binding and label", "[vtho
     source.bind(vtworkspace::SessionId { 2 }, other);
     auto const paneRef = vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Pane, .uuid = pane };
     auto const tabRef = vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab, .uuid = tab };
-    source.setLabel(paneRef, "build");
-    source.setLabel(tabRef, "work");
+    source.setName(paneRef, "build");
+    source.setName(tabRef, "work");
 
     auto const snapshot = source.snapshot();
     REQUIRE(snapshot.panes.size() == 2);
     CHECK(snapshot.panes[0].id == 2); // by id ascending
     CHECK(snapshot.panes[1].id == 9);
-    CHECK(snapshot.labels.size() == 2);
+    CHECK(snapshot.names.size() == 2);
 
     // Restored into a registry that held something else: exactly the snapshot, nothing of what was there.
     auto target = ObjectRegistry { std::make_shared<vtcontrol::testing::SequentialUuidSource>() };
@@ -74,10 +74,10 @@ TEST_CASE("an object registry snapshot restores every binding and label", "[vtho
     CHECK(target.uuidOf(vtworkspace::SessionId { 9 }) == pane);
     CHECK(target.uuidOf(vtworkspace::SessionId { 2 }) == other);
     CHECK_FALSE(target.uuidOf(vtworkspace::SessionId { 7 }).has_value());
-    CHECK(target.labelOf(paneRef) == "build");
-    CHECK(target.labelOf(tabRef) == "work");
+    CHECK(target.nameOf(paneRef) == "build");
+    CHECK(target.nameOf(tabRef) == "work");
     CHECK(target.snapshot().panes.size() == snapshot.panes.size());
-    CHECK(target.snapshot().labels.size() == snapshot.labels.size());
+    CHECK(target.snapshot().names.size() == snapshot.names.size());
 }
 
 #ifndef _WIN32
@@ -153,8 +153,8 @@ TEST_CASE("capture holds every session with its pty descriptors and ids", "[vtho
         [&] { return h.pageText(ids[0]).contains("ready") && h.pageText(ids[1]).contains("ready"); }));
     auto const paneUuid = h.host.objects().uuidOf(ids[1]);
     REQUIRE(paneUuid.has_value());
-    h.host.objects().setLabel(vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Pane, .uuid = *paneUuid },
-                              "logs");
+    h.host.objects().setName(vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Pane, .uuid = *paneUuid },
+                             "logs");
 
     h.settle();
     auto const image = h.capture();
@@ -197,8 +197,8 @@ TEST_CASE("capture holds every session with its pty descriptors and ids", "[vtho
         CHECK(captured.child.executable == "/bin/sh");
         CHECK_FALSE(captured.terminalState.empty());
     }
-    CHECK(image->sessions[0].label.empty());
-    CHECK(image->sessions[1].label == "logs");
+    CHECK(image->sessions[0].name.empty());
+    CHECK(image->sessions[1].name == "logs");
 
     // The image survives its own encoding.
     auto const decoded = decodeHandover(encodeHandover(*image));

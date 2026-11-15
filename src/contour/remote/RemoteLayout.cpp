@@ -546,8 +546,8 @@ namespace
             edit.session = session->value;
             std::ignore = vthost::applyTabEdit(model, edit);
         }
-        // The label is the daemon's alone (the control API sets it), so it is taken, never reported back.
-        model.setTabLabel(local.id(), wire.label);
+        // The name is the daemon's alone (the control API sets it), so it is taken, never reported back.
+        model.setTabName(local.id(), wire.name);
     }
 
     /// Closes every pane of @p window whose remote session no layout of @p alive names: a pane closed on the

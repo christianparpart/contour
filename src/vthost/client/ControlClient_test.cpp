@@ -318,13 +318,14 @@ TEST_CASE("resolveControlEndpoint precedence", "[vthost][client][control]")
 
     SECTION("a label names the local daemon of that label, over the environment")
     {
-        auto const labelled = [&](std::string_view label) {
+        auto const named = [&](std::string_view name) {
             return std::format(
-                "unix:{}", core::pathToUtf8(vthost::muxSocketPath(vthost::socketLabelOf(label), {}, empty)));
+                "unix:{}",
+                core::pathToUtf8(vthost::muxSocketPath(vthost::daemonNameFromOption(name), {}, empty)));
         };
-        CHECK(describe({ .label = "work" }, empty) == labelled("work"));
-        CHECK(describe({ .label = "work" }, withDaemon) == labelled("work"));
-        CHECK(describe({ .label = "work" }, empty) != describe({}, empty));
+        CHECK(describe({ .name = "work" }, empty) == named("work"));
+        CHECK(describe({ .name = "work" }, withDaemon) == named("work"));
+        CHECK(describe({ .name = "work" }, empty) != describe({}, empty));
     }
     SECTION("a TCP endpoint carries the CA, and so is verified")
     {

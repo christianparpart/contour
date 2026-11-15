@@ -14,13 +14,13 @@ enum class TabNameSource : uint8_t
 {
     Panes, ///< Its panes, as the place naming the tab names a tab after them (a title, a template).
     Title, ///< Its own title: the rename the user gave it.
-    Label, ///< Its control-API label (`contour label tab:… NAME`).
+    Name,  ///< Its user-given name (`contour label tab:… NAME`).
 };
 
 /// What a tab could be named by besides its panes; an empty one names nothing.
 struct TabNameCandidates
 {
-    std::string_view label {}; ///< Its control-API label.
+    std::string_view name {};  ///< Its user-given name.
     std::string_view title {}; ///< Its own title, a rename.
 };
 
@@ -34,12 +34,12 @@ struct TabNameRule
 /// The sources that name a tab over its panes, in precedence order: the first that names something wins, and
 /// where none does, its panes name it. A new source is a row here.
 constexpr auto TabNamePrecedence = std::array {
-    TabNameRule { .source = TabNameSource::Label, .text = &TabNameCandidates::label },
+    TabNameRule { .source = TabNameSource::Name, .text = &TabNameCandidates::name },
     TabNameRule { .source = TabNameSource::Title, .text = &TabNameCandidates::title },
 };
 
 /// @param candidates What the tab could be named by besides its panes.
-/// @return The source that names the tab: a label over a title, either over its panes.
+/// @return The source that names the tab: a name over a title, either over its panes.
 [[nodiscard]] constexpr TabNameSource tabNameSourceOf(TabNameCandidates const& candidates) noexcept
 {
     for (auto const& rule: TabNamePrecedence)

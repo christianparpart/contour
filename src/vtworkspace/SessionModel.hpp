@@ -334,11 +334,11 @@ class SessionModel
     void setTabTitle(TabId tab, std::string title);
     void resetTabTitle(TabId tab);
 
-    /// Sets @p tab's control-API label (Tab::label()), which names it over its title, and tells the observers
-    /// as a title change (ModelEvents::tabTitleChanged) when it changed. An empty label clears it.
+    /// Sets @p tab's user-given name (Tab::name()), which names it over its title, and tells the observers
+    /// as a title change (ModelEvents::tabTitleChanged) when it changed. An empty name clears it.
     /// @param tab The tab.
-    /// @param label Its label, as the daemon holds it.
-    void setTabLabel(TabId tab, std::string label);
+    /// @param name Its name, as the daemon holds it.
+    void setTabName(TabId tab, std::string name);
 
     /// Assigns @p tab's color on behalf of @p source. Sources are independent and ranked, so a user's
     /// choice and an application's DECAC color coexist; see TabColorSource.

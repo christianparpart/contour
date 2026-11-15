@@ -101,7 +101,7 @@ enum class PduType : uint8_t
     AuthChallenge = 55,
     WorkspaceMeta = 56,
     MoveWorkspace = 57,
-    SetWorkspaceLabel = 58,
+    SetWorkspaceName = 58,
     CloseWorkspace = 59,
     Goodbye = 60,
     OpenFirstTab = 61,
@@ -696,9 +696,9 @@ struct SessionState
     /// shell (the host keeps it until the session's next command starts); empty means none. Untrusted text:
     /// it came from a snapshot's OSC 133 command line, and a receiver bounds it before use.
     std::string interruptedCommand = {};
-    /// The application's tab name (OSC 30) as the host's terminal holds it; empty means none set. Appended by
-    /// a later version, so an older sender's body ends before it.
-    std::string tabName = {};
+    /// The application's tab title (OSC 30) as the host's terminal holds it; empty means none set. Appended
+    /// by a later version, so an older sender's body ends before it.
+    std::string programTabTitle = {};
     bool operator==(SessionState const&) const = default;
 };
 
@@ -965,11 +965,11 @@ struct Delta
     /// Host ids this connection was told about that the host no longer holds — a prompt discarded by
     /// the next one, the oldest evicted by the bound, a reset — ascending.
     std::vector<uint32_t> retiredCommandBlocks = {};
-    /// Set (1) when the application's tab name (OSC 30) changed in this batch; `tabName` then holds it, and
-    /// empty means the application cleared it. Appended by a later version, so an older sender's body ends
-    /// before both, which reads as unchanged.
-    uint8_t tabNameChanged = 0;
-    std::string tabName = {};
+    /// Set (1) when the application's tab title (OSC 30) changed in this batch; `programTabTitle` then holds
+    /// it, and empty means the application cleared it. Appended by a later version, so an older sender's body
+    /// ends before both, which reads as unchanged.
+    uint8_t programTabTitleChanged = 0;
+    std::string programTabTitle = {};
     /// The soft-glyph cells of this delta's rows (Capability::SoftFonts), in the shape @ref imageCells has: a
     /// row's entries travel with the row, and the receiver clears a row's before it takes the entries.
     /// Appended by a later version, so an older sender's body ends before it, which reads as none.
@@ -993,7 +993,7 @@ struct Delta
                || cwdChanged != 0 || colorsChanged != 0 || statusChanged != 0 || statusLinesChanged != 0
                || kittyKeyboardChanged != 0 || modifyOtherKeysChanged != 0 || mouseChanged != 0
                || progressChanged != 0 || contextChanged != 0 || !contexts.empty() || !commandBlocks.empty()
-               || !retiredCommandBlocks.empty() || tabNameChanged != 0;
+               || !retiredCommandBlocks.empty() || programTabTitleChanged != 0;
     }
 
     /// @return Where this PDU sits in its snapshot, or `Whole` for anything that is not part of a
@@ -1230,7 +1230,7 @@ struct WireTab
     uint64_t activePane = 0;
     uint64_t zoomedPane = 0; ///< 0 = not zoomed.
     std::string title = {};  ///< The runtime-title override; empty if none.
-    std::string label = {};  ///< The control-API label, which names the tab over its title; empty if none.
+    std::string name = {};   ///< The user-given name, which names the tab over its title; empty if none.
     uint8_t hasColor = 0;
     uint32_t color = 0; ///< 0xRRGGBB tab color when hasColor.
     WirePane root;
@@ -1782,15 +1782,15 @@ struct WireGitInfo
 /// Server→client (Capability::WorkspaceMeta): what the daemon states of a workspace besides its layout.
 ///
 /// The daemon sends every field after the hello, and for a workspace created since, once its layout went out;
-/// after that a delta for each change. Absent optionals mean "unchanged": an empty @ref label clears the
-/// label, and a @ref git of kind GitHeadKindWire::None says the workspace is in no repository anymore, which
+/// after that a delta for each change. Absent optionals mean "unchanged": an empty @ref name clears the
+/// name, and a @ref git of kind GitHeadKindWire::None says the workspace is in no repository anymore, which
 /// an absent one does not. A workspace's removal is told by its layout disappearing, not here.
 struct WorkspaceMeta
 {
-    uint64_t workspace = 0;                          ///< The daemon's workspace id.
-    std::array<uint8_t, 16> controlId = {};          ///< Its control-API UUID; all zero when unbound.
-    std::optional<std::string> label = std::nullopt; ///< Its label, if it changed; empty clears it.
-    std::optional<WireGitInfo> git = std::nullopt;   ///< Its git state, if it changed.
+    uint64_t workspace = 0;                         ///< The daemon's workspace id.
+    std::array<uint8_t, 16> controlId = {};         ///< Its control-API UUID; all zero when unbound.
+    std::optional<std::string> name = std::nullopt; ///< Its name, if it changed; empty clears it.
+    std::optional<WireGitInfo> git = std::nullopt;  ///< Its git state, if it changed.
     /// Its 0-based place in the daemon's workspace order, if it changed. The daemon sends it with the full
     /// meta and again, for every workspace that shifted, after a reorder, a creation or a removal: a client
     /// lists its workspaces by it, not by the order layouts happen to arrive or by id.
@@ -1841,15 +1841,15 @@ struct OpenFirstTab
     bool operator==(OpenFirstTab const&) const = default;
 };
 
-/// Client→server (Capability::WorkspaceMeta): set a workspace's label, which is what the sidebar's rename
+/// Client→server (Capability::WorkspaceMeta): set a workspace's name, which is what the sidebar's rename
 /// does. The daemon applies it to the object registry, so every client is told through WorkspaceMeta, and
-/// every control-API subscriber through `workspace.labelChanged`. An empty label clears it; an unknown
+/// every control-API subscriber through `workspace.labelChanged`. An empty name clears it; an unknown
 /// workspace changes nothing.
-struct SetWorkspaceLabel
+struct SetWorkspaceName
 {
     uint64_t workspace = 0; ///< The daemon's workspace id.
-    std::string label = {}; ///< The new label.
-    bool operator==(SetWorkspaceLabel const&) const = default;
+    std::string name = {};  ///< The new name.
+    bool operator==(SetWorkspaceName const&) const = default;
 };
 
 /// @param summary A pane's summary.
@@ -1863,7 +1863,7 @@ struct SetWorkspaceLabel
 enum class SwitchDaemonKind : uint8_t
 {
     Same = 0, ///< The daemon the request travels on.
-    Label,    ///< A local daemon, by its label.
+    Name,     ///< A local daemon, by its name.
     Host,     ///< A saved host, by its name.
 };
 
@@ -1871,8 +1871,8 @@ enum class SwitchDaemonKind : uint8_t
 struct SwitchTargetWire
 {
     SwitchDaemonKind kind = SwitchDaemonKind::Same; ///< How `daemon` is read.
-    std::string daemon = {};                        ///< The local label or the saved host; empty for Same.
-    /// A workspace spec (uuid, label, position or suffix) the client resolves against the target daemon;
+    std::string daemon = {};                        ///< The local name or the saved host; empty for Same.
+    /// A workspace spec (uuid, name, position or suffix) the client resolves against the target daemon;
     /// empty lets the client decide.
     std::string workspace = {};
     bool operator==(SwitchTargetWire const&) const = default;
@@ -2009,7 +2009,7 @@ using DecodedPdu = std::variant<Invalid,
                                 AuthChallenge,
                                 WorkspaceMeta,
                                 MoveWorkspace,
-                                SetWorkspaceLabel,
+                                SetWorkspaceName,
                                 CloseWorkspace,
                                 Goodbye,
                                 OpenFirstTab>;

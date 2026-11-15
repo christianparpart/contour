@@ -51,7 +51,7 @@ inline constexpr uint32_t OldestReadableHandoverFormat = 2;
 
 // The object registry's own vocabulary (@see ObjectRegistry::snapshot()), named here as the image names it.
 using vthost::BoundObject;
-using vthost::LabeledObject;
+using vthost::NamedObject;
 using vthost::ObjectRegistrySnapshot;
 
 /// A TLS certificate and its private key, both PEM-encoded.
@@ -107,7 +107,7 @@ struct HandoverSession
 {
     vtworkspace::SessionId id {};                    ///< Its id in the model.
     vtcontrol::Uuid uuid {};                         ///< Its UUID.
-    std::string label;                               ///< Its label.
+    std::string name;                                ///< Its name.
     std::string profileName;                         ///< The profile it was spawned under; empty for none.
     SettingsOrigin origin = SettingsOrigin::Profile; ///< Where its settings came from.
     /// The emulation settings a client stated for it, as that client stated them: what the new image builds a
@@ -138,7 +138,7 @@ struct HandoverSession
     {
         visitor(1, self.id);
         visitor(2, self.uuid);
-        visitor(3, self.label);
+        visitor(3, self.name);
         visitor(4, self.profileName);
         visitor(5, self.origin);
         visitor(7, self.pty);

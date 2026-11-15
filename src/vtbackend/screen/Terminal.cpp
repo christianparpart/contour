@@ -7784,33 +7784,34 @@ std::string Terminal::encodeTitleForReport(std::string_view title) const
     return hex;
 }
 
-void Terminal::setTabName(string_view title)
+void Terminal::setProgramTabTitle(string_view title)
 {
     // Parser-thread path (SETTABNAME escape sequence, OSC 30): writeToScreen() already holds _stateMutex
-    // across the whole parse, so _tabName is written under the lock here. An empty name clears it: "no
-    // name" and "an empty name" are one state, so the tab shows what it shows without one rather than going
-    // blank, and a daemon client mirroring it as a plain string loses nothing.
+    // across the whole parse, so _programTabTitle is written under the lock here. An empty title clears it:
+    // "no title" and "an empty title" are one state, so the tab shows what it shows without one rather than
+    // going blank, and a daemon client mirroring it as a plain string loses nothing.
     if (title.empty())
-        _tabName.reset();
+        _programTabTitle.reset();
     else
-        _tabName = title;
-    _eventListener.setTabName(title);
+        _programTabTitle = title;
+    _eventListener.setProgramTabTitle(title);
 }
 
-std::optional<std::string> const& Terminal::tabName() const noexcept
+std::optional<std::string> const& Terminal::programTabTitle() const noexcept
 {
-    return _tabName;
+    return _programTabTitle;
 }
 
-std::optional<std::string> Terminal::resolvedTabName() const
+std::optional<std::string> Terminal::resolvedProgramTabTitle() const
 {
-    // Single lock hold for the whole resolution: _tabName/_windowTitle are written on the parser thread
-    // under _stateMutex (setTabName()/setWindowTitle()), and this runs on the GUI thread, so reading them
-    // unlocked (or across three separate locked accessor calls) would race the writer. getTabsNamingMode()
-    // reads _settings, which is not mutated by the parser thread, so it needs no extra protection.
+    // Single lock hold for the whole resolution: _programTabTitle/_windowTitle are written on the parser
+    // thread under _stateMutex (setProgramTabTitle()/setWindowTitle()), and this runs on the GUI thread, so
+    // reading them unlocked (or across three separate locked accessor calls) would race the writer.
+    // getTabsNamingMode() reads _settings, which is not mutated by the parser thread, so it needs no extra
+    // protection.
     auto const l = std::lock_guard { *this };
-    if (_tabName)
-        return _tabName;
+    if (_programTabTitle)
+        return _programTabTitle;
     if (_settings.tabNamingMode == TabsNamingMode::Title)
         return _windowTitle;
     return std::nullopt;

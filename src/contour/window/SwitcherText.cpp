@@ -288,7 +288,7 @@ SwitcherLabelState switcherLabelState(std::string_view label,
             state.subject = SwitcherHintSubject::SwitchToRunning;
             break;
         case LabelVerdict::Invalid:
-            state.message = vthost::describe(vthost::validateSocketLabel(label).error());
+            state.message = vthost::describe(vthost::validateDaemonName(label).error());
             break;
     }
     return state;

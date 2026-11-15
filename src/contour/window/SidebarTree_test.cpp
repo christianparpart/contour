@@ -67,20 +67,20 @@ DirectoryPane paneOf(uint64_t key, std::string title = {}, std::vector<ProgramSt
     return pane;
 }
 
-DirectoryTab tabOf(uint64_t id, std::string label, std::vector<DirectoryPane> panes)
+DirectoryTab tabOf(uint64_t id, std::string name, std::vector<DirectoryPane> panes)
 {
     auto tab = DirectoryTab {};
     tab.id = id;
-    tab.label = std::move(label);
+    tab.name = std::move(name);
     tab.panes = std::move(panes);
     return tab;
 }
 
-DirectoryWorkspace workspaceOf(uint64_t id, std::string label, std::vector<DirectoryTab> tabs)
+DirectoryWorkspace workspaceOf(uint64_t id, std::string name, std::vector<DirectoryTab> tabs)
 {
     auto workspace = DirectoryWorkspace {};
     workspace.id = id;
-    workspace.label = std::move(label);
+    workspace.name = std::move(name);
     workspace.tabs = std::move(tabs);
     return workspace;
 }

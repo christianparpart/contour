@@ -29,7 +29,7 @@ constexpr auto Now = std::chrono::sys_days { std::chrono::year { 2026 } / std::c
 
 [[nodiscard]] SwitchTarget label(std::string name)
 {
-    return SwitchTarget { .kind = SwitchDaemonKind::Label, .daemon = std::move(name), .workspace = {} };
+    return SwitchTarget { .kind = SwitchDaemonKind::Name, .daemon = std::move(name), .workspace = {} };
 }
 
 [[nodiscard]] SwitcherStatus statusOf(Urgency urgency, std::string git, ReasonParts reason = {})
@@ -416,7 +416,7 @@ TEST_CASE("switcherLabelState judges the label as it is typed", "[switcher]")
 
     CHECK(switcherLabelState("a b", running, style)
           == SwitcherLabelState { .verdict = LabelVerdict::Invalid,
-                                  .message = vthost::describe(vthost::SocketLabelError::InvalidCharacter),
+                                  .message = vthost::describe(vthost::DaemonNameError::InvalidCharacter),
                                   .actionTitle = {},
                                   .equivalentCommand = {},
                                   .subject = SwitcherHintSubject::None });

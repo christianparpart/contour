@@ -157,33 +157,33 @@ class SessionSnapshotStore
     std::filesystem::path _path;
 };
 
-/// @param label A daemon's label.
+/// @param name A daemon's name.
 /// @return Whether it can name a file beneath a directory: not empty, and holding none of `/`, `\`, `:`,
 ///         NUL or `..`, which would leave the directory (`:` on Windows, where `C:x` replaces the whole
 ///         path it is appended to) or end the name.
-[[nodiscard]] bool isFileNameLabel(std::string_view label);
+[[nodiscard]] bool isValidDaemonName(std::string_view name);
 
-/// `<stateDirectory>/sessions/<label>.snapshot`.
+/// `<stateDirectory>/sessions/<name>.snapshot`.
 /// @param stateDirectory The daemon's state directory (`daemonStateDirectory(...)`, StatePath.hpp).
-/// @param label The session label.
-/// @return The path; nullopt for a label that is empty or holds `/`, `\`, `:`, NUL or `..`.
+/// @param name The daemon's name.
+/// @return The path; nullopt for a name that is empty or holds `/`, `\`, `:`, NUL or `..`.
 [[nodiscard]] std::optional<std::filesystem::path> sessionSnapshotPath(
-    std::filesystem::path const& stateDirectory, std::string_view label);
+    std::filesystem::path const& stateDirectory, std::string_view name);
 
-/// The snapshot file of the daemon labelled @p label that listens on @p socket: its label's own
-/// (sessionSnapshotPath) when @p socket is the one its label would run on, else
-/// `<stateDirectory>/sessions/<label>@<hash>.snapshot`, the hash being the 16 hex digits of the FNV-1a 64 of
-/// the socket's path. A daemon at a socket of its own, beside the one its label runs, so never restores or
+/// The snapshot file of the daemon named @p name that listens on @p socket: its name's own
+/// (sessionSnapshotPath) when @p socket is the one its name would run on, else
+/// `<stateDirectory>/sessions/<name>@<hash>.snapshot`, the hash being the 16 hex digits of the FNV-1a 64 of
+/// the socket's path. A daemon at a socket of its own, beside the one its name runs, so never restores or
 /// overwrites that one's workspace.
 /// @param stateDirectory The daemon's state directory.
-/// @param label The session label.
-/// @param socket The socket the daemon listens on; canonical, as @p labelSocket.
-/// @param labelSocket The socket its label would run on (labelSocketPath, SocketPath.hpp).
+/// @param name The daemon's name.
+/// @param socket The socket the daemon listens on; canonical, as @p namedSocket.
+/// @param namedSocket The socket its name would run on (namedSocketPath, SocketPath.hpp).
 /// @return The path; nullopt where sessionSnapshotPath gives none.
 [[nodiscard]] std::optional<std::filesystem::path> daemonSnapshotPath(
     std::filesystem::path const& stateDirectory,
-    std::string_view label,
+    std::string_view name,
     std::filesystem::path const& socket,
-    std::filesystem::path const& labelSocket);
+    std::filesystem::path const& namedSocket);
 
 } // namespace vthost

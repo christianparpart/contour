@@ -416,7 +416,7 @@ enum class LabelVerdict : uint8_t
     Empty = 0, ///< Nothing typed yet.
     Available, ///< A valid label no running daemon has: a daemon can start under it.
     Running,   ///< A daemon of that label runs already: Return switches to it.
-    Invalid,   ///< Not a label a daemon can have (vthost::validateSocketLabel).
+    Invalid,   ///< Not a label a daemon can have (vthost::validateDaemonName).
 };
 
 /// @param label What the user typed.

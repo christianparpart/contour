@@ -142,7 +142,7 @@ void RemoteScreen::apply(proto::SessionState const& state)
     cursorLine = state.cursorLine;
     cursorColumn = state.cursorColumn;
     title = state.title;
-    tabName = state.tabName;
+    programTabTitle = state.programTabTitle;
     cursorShape = state.cursorShape;
     cwd = state.cwd;
     defaultForeground = state.defaultForeground;
@@ -235,8 +235,8 @@ void RemoteScreen::apply(proto::Delta const& delta)
     setAnsiModes = delta.setAnsiModes;
     if (delta.titleChanged != 0)
         title = delta.title; // keep it current so a later fullReplay re-titles correctly
-    if (delta.tabNameChanged != 0)
-        tabName = delta.tabName; // likewise for the tab name
+    if (delta.programTabTitleChanged != 0)
+        programTabTitle = delta.programTabTitle; // likewise for the program tab title
     if (delta.cursorShapeChanged != 0)
         cursorShape = delta.cursorShape;
     if (delta.cwdChanged != 0)
@@ -668,9 +668,9 @@ Delivery NativeClient::closeWorkspace(uint64_t workspace)
     return Delivery::Sent;
 }
 
-Delivery NativeClient::setWorkspaceLabel(uint64_t workspace, std::string label)
+Delivery NativeClient::setWorkspaceName(uint64_t workspace, std::string name)
 {
-    auto request = proto::SetWorkspaceLabel { .workspace = workspace, .label = std::move(label) };
+    auto request = proto::SetWorkspaceName { .workspace = workspace, .name = std::move(name) };
     if (!shares(proto::Capability::WorkspaceMeta) || send(proto::DecodedPdu { std::move(request) }) == 0)
         return Delivery::Unsupported;
     return Delivery::Sent;

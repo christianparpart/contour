@@ -83,7 +83,7 @@ std::vector<DiscoveredDaemon> filterDiscovered(
     // `default` first: it is the daemon a plain launch uses.
     std::ranges::sort(found, [](DiscoveredDaemon const& a, DiscoveredDaemon const& b) {
         auto const isDefault = [](DiscoveredDaemon const& daemon) {
-            return daemon.label == vthost::DefaultSocketLabel;
+            return daemon.label == vthost::DefaultDaemonName;
         };
         return std::pair { !isDefault(a), a.label } < std::pair { !isDefault(b), b.label };
     });

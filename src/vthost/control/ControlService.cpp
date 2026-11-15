@@ -183,8 +183,8 @@ ControlService::ControlService(SessionHost& host, ControlServiceConfig config):
     _waiters(_config.maxWaitsPerConnection),
     _streamSubscription(makeScopedStreamSubscription(host, *this)),
     _modelSubscription(makeScopedModelSubscription(host, *this)),
-    _labelSubscription(host.objects().onLabelChanged(
-        [this](ObjectRef const& ref, std::string_view label) { labelChanged(ref, label); })),
+    _nameSubscription(host.objects().onNameChanged(
+        [this](ObjectRef const& ref, std::string_view name) { nameChanged(ref, name); })),
     _extensionControl(makeScopedExtensionControl(host, *this))
 {
 }
@@ -206,7 +206,7 @@ std::vector<TargetCandidate> ControlService::paneCandidates() const
             {
                 auto const ref = ObjectRef { .kind = ObjectKind::Pane, .uuid = *uuid };
                 candidates.push_back(TargetCandidate { .ref = ref,
-                                                       .label = std::string { _host.objects().labelOf(ref) },
+                                                       .name = std::string { _host.objects().nameOf(ref) },
                                                        .position = std::nullopt });
             }
         });
@@ -226,7 +226,7 @@ std::vector<TargetCandidate> ControlService::tabCandidates(WorkspaceId positione
         if (workspace.id() == positioned)
             position = static_cast<uint32_t>(workspace.indexOf(tab.id()) + 1);
         candidates.push_back(TargetCandidate {
-            .ref = ref, .label = std::string { _host.objects().labelOf(ref) }, .position = position });
+            .ref = ref, .name = std::string { _host.objects().nameOf(ref) }, .position = position });
     });
     return candidates;
 }
@@ -243,7 +243,7 @@ std::vector<TargetCandidate> ControlService::workspaceCandidates() const
             continue;
         auto const ref = ObjectRef { .kind = ObjectKind::Workspace, .uuid = *uuid };
         candidates.push_back(TargetCandidate { .ref = ref,
-                                               .label = std::string { _host.objects().labelOf(ref) },
+                                               .name = std::string { _host.objects().nameOf(ref) },
                                                .position = static_cast<uint32_t>(index + 1) });
     }
     return candidates;
@@ -352,7 +352,7 @@ vtcontrol::PaneInfo ControlService::paneInfoOf(SessionId session,
     auto const ref = ObjectRef { .kind = ObjectKind::Pane, .uuid = uuid };
     auto info = vtcontrol::PaneInfo {};
     info.id = vtcontrol::toString(ref);
-    info.label = std::string { _host.objects().labelOf(ref) };
+    info.label = std::string { _host.objects().nameOf(ref) };
     info.isActive = tab.activePane() != nullptr && tab.activePane()->session() == session;
     if (auto const* terminal = _host.terminal(session))
     {
@@ -384,7 +384,7 @@ vtcontrol::WorkspaceInfo ControlService::workspaceInfoOf(vtworkspace::Workspace 
                     .uuid = _host.objects().uuidOf(workspace.id()).value_or(vtcontrol::Uuid {}) };
     auto info = vtcontrol::WorkspaceInfo {};
     info.id = vtcontrol::toString(workspaceRef);
-    info.label = std::string { _host.objects().labelOf(workspaceRef) };
+    info.label = std::string { _host.objects().nameOf(workspaceRef) };
     info.position = position;
     info.native = std::to_string(workspace.id().value);
     info.visibility = std::string { nameOf(_host.visibility(workspace.id().value)) };
@@ -410,7 +410,7 @@ vtcontrol::WorkspaceInfo ControlService::workspaceInfoOf(vtworkspace::Workspace 
                         .uuid = _host.objects().uuidOf(tab->id()).value_or(vtcontrol::Uuid {}) };
         auto tabInfo = vtcontrol::TabInfo {};
         tabInfo.id = vtcontrol::toString(tabRef);
-        tabInfo.label = std::string { _host.objects().labelOf(tabRef) };
+        tabInfo.label = std::string { _host.objects().nameOf(tabRef) };
         tabInfo.title = vtcontrol::toValidUtf8(tab->title(titleOf));
         tabInfo.position = static_cast<uint32_t>(index + 1);
         tabInfo.isActive = workspace.activeTab() == tab;
@@ -560,7 +560,7 @@ void ControlService::handle(vtcontrol::CallContext& context,
                             vtcontrol::Completion<vtcontrol::EmptyReply> done)
 {
     done(resolveObject(context, request.object).transform([&](ObjectRef const& ref) {
-        _host.objects().setLabel(ref, request.label);
+        _host.objects().setName(ref, request.label);
         return vtcontrol::EmptyReply {};
     }));
 }
@@ -875,9 +875,9 @@ void ControlService::handle(vtcontrol::CallContext& /*context*/,
         return;
     }
     auto const uuid = _host.objects().uuidOf(workspace->id()).value_or(vtcontrol::Uuid {});
-    // A label stated outright replaces the default one.
+    // A name stated outright replaces the default one.
     if (!request.label.empty())
-        _host.objects().setLabel(ObjectRef { .kind = ObjectKind::Workspace, .uuid = uuid }, request.label);
+        _host.objects().setName(ObjectRef { .kind = ObjectKind::Workspace, .uuid = uuid }, request.label);
     auto const* tab = workspace->activeTab();
     done(vtcontrol::CreateWorkspaceReply {
         .workspace = idOf(ObjectKind::Workspace, uuid),
@@ -893,7 +893,7 @@ void ControlService::handle(vtcontrol::CallContext& context,
 {
     // object.setLabel on a workspace, which publishes workspace.labelChanged and tells every window.
     done(resolveWorkspace(context, request.workspace).transform([&](WorkspaceId workspace) {
-        _host.objects().setLabel(
+        _host.objects().setName(
             ObjectRef { .kind = ObjectKind::Workspace,
                         .uuid = _host.objects().uuidOf(workspace).value_or(vtcontrol::Uuid {}) },
             request.label);
@@ -1076,7 +1076,7 @@ namespace
     {
         auto target = proto::SwitchTargetWire { .workspace = request.toWorkspace };
         if (!request.toLabel.empty())
-            target = proto::SwitchTargetWire { .kind = proto::SwitchDaemonKind::Label,
+            target = proto::SwitchTargetWire { .kind = proto::SwitchDaemonKind::Name,
                                                .daemon = request.toLabel,
                                                .workspace = request.toWorkspace };
         else if (!request.toHost.empty())
@@ -1194,7 +1194,7 @@ std::expected<vtcontrol::CreateTabReply, ControlError> ControlService::createTab
     auto const workspaceId = _host.model().workspaceOfTab(tab->id());
     auto const tabRef = ObjectRef { .kind = ObjectKind::Tab, .uuid = *_host.objects().uuidOf(tab->id()) };
     if (!request.label.empty())
-        _host.objects().setLabel(tabRef, request.label);
+        _host.objects().setName(tabRef, request.label);
     return vtcontrol::CreateTabReply {
         .workspace =
             idOf(ObjectKind::Workspace, _host.objects().uuidOf(workspaceId).value_or(vtcontrol::Uuid {})),
@@ -1239,7 +1239,7 @@ std::expected<vtcontrol::SplitReply, ControlError> ControlService::split(
     auto const created = tab->activePane()->session();
     auto const paneRef = ObjectRef { .kind = ObjectKind::Pane, .uuid = *_host.objects().uuidOf(created) };
     if (!request.label.empty())
-        _host.objects().setLabel(paneRef, request.label);
+        _host.objects().setName(paneRef, request.label);
     if (request.focus == vtcontrol::FocusPolicy::Keep)
         _host.model().setActivePane(tab->id(), previous);
     return vtcontrol::SplitReply {
@@ -1433,13 +1433,13 @@ void ControlService::sinkClosed(vtcontrol::EventSink& sink)
     std::erase_if(_switchCalls->waiting, [&sink](auto const& call) { return call.second == &sink; });
 }
 
-void ControlService::labelChanged(ObjectRef const& ref, std::string_view label)
+void ControlService::nameChanged(ObjectRef const& ref, std::string_view name)
 {
     if (ref.kind != ObjectKind::Workspace)
         return;
     _hub.publish(vtcontrol::Event {
         .origin = { .workspace = idOf(ObjectKind::Workspace, ref.uuid), .tab = {}, .pane = {} },
-        .payload = vtcontrol::WorkspaceLabelChangedEvent { .label = vtcontrol::toValidUtf8(label) } });
+        .payload = vtcontrol::WorkspaceLabelChangedEvent { .label = vtcontrol::toValidUtf8(name) } });
 }
 
 vtcontrol::EventOrigin ControlService::originOf(SessionId session) const

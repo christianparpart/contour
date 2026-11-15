@@ -1568,7 +1568,7 @@ std::expected<std::unique_ptr<ControlChannel>, ExitStatus> openControlChannel(CL
     }
     auto const transport = vthost::client::resolveControlEndpoint(
         vthost::client::ControlEndpointOptions { .daemon = f.text("daemon"),
-                                                 .label = f.text("label"),
+                                                 .name = f.text("label"),
                                                  .token = cleanToken(*token),
                                                  .tlsCaPem = *authority,
                                                  .daemonFingerprint = f.text("daemon-fingerprint"),

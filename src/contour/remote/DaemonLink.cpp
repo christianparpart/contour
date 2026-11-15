@@ -95,7 +95,7 @@ namespace
         for (auto const& workspace: directory.workspaces)
             for (auto const& tab: workspace.tabs)
                 if (std::ranges::contains(tab.panes, window::PaneKey { pane }, &window::DirectoryPane::key))
-                    return tab.label;
+                    return tab.name;
         return {};
     }
 
@@ -261,7 +261,7 @@ std::string_view DaemonLink::chromeLabel() const noexcept
         return _hostLabel;
     // A local daemon says its label, unless it is the one a plain launch uses.
     auto const& daemon = address();
-    if (daemon.kind != vthost::proto::SwitchDaemonKind::Label || daemon.name == vthost::DefaultSocketLabel)
+    if (daemon.kind != vthost::proto::SwitchDaemonKind::Name || daemon.name == vthost::DefaultDaemonName)
         return {};
     return daemon.name;
 }

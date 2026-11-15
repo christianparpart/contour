@@ -23,7 +23,7 @@ namespace
     /// @return A local daemon's address, with @p workspace.
     [[nodiscard]] session::SwitchTarget labelled(std::string label, session::WorkspaceTarget workspace = {})
     {
-        return session::SwitchTarget { .kind = SwitchDaemonKind::Label,
+        return session::SwitchTarget { .kind = SwitchDaemonKind::Name,
                                        .daemon = std::move(label),
                                        .workspace = std::move(workspace) };
     }
@@ -302,7 +302,7 @@ void SwitcherController::mergeLocalDaemons(std::vector<cli::DiscoveredDaemon> co
     // then every other label discovery found, in its order (`default` first); the saved hosts last.
     for (auto& daemon: _daemons)
         if (daemon.address.kind == SwitchDaemonKind::Same
-            || (isAt(daemon, own) && own.kind == SwitchDaemonKind::Label))
+            || (isAt(daemon, own) && own.kind == SwitchDaemonKind::Name))
         {
             auto taken = std::exchange(daemon, SwitcherDaemon {});
             merged.push_back(std::move(taken));
@@ -310,7 +310,7 @@ void SwitcherController::mergeLocalDaemons(std::vector<cli::DiscoveredDaemon> co
     for (auto const& each: found)
     {
         auto const address = labelled(each.label);
-        if (own.kind == SwitchDaemonKind::Label && own.daemon == each.label)
+        if (own.kind == SwitchDaemonKind::Name && own.daemon == each.label)
             continue; // listed first already
         if (auto const existing =
                 std::ranges::find_if(_daemons, [&](auto const& known) { return isAt(known, address); });
@@ -329,7 +329,7 @@ void SwitcherController::mergeLocalDaemons(std::vector<cli::DiscoveredDaemon> co
                                               .workspaces = {} });
     }
     for (auto& daemon: _daemons)
-        if (daemon.address.kind == SwitchDaemonKind::Label && !daemon.address.daemon.empty())
+        if (daemon.address.kind == SwitchDaemonKind::Name && !daemon.address.daemon.empty())
             merged.push_back(std::move(daemon));
     for (auto& daemon: _daemons)
         if (daemon.address.kind == SwitchDaemonKind::Host)
@@ -341,7 +341,7 @@ void SwitcherController::mergeLocalDaemons(std::vector<cli::DiscoveredDaemon> co
     // Every local daemon is listed now, so typing finds their workspaces; a saved host waits to be drilled
     // into (connecting may ask for credentials, which no keystroke may trigger).
     for (auto const index: std::views::iota(std::size_t { 0 }, _daemons.size()))
-        if (index != _windowDaemon && _daemons[index].address.kind == SwitchDaemonKind::Label)
+        if (index != _windowDaemon && _daemons[index].address.kind == SwitchDaemonKind::Name)
             listDaemon(index);
     rebuild(keep);
 }

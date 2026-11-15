@@ -1062,7 +1062,7 @@ TEST_CASE("--daemon and --label exclude each other, and --label names a local da
               == 4);
         INFO(run.err.str());
         CHECK(run.err.str().contains(
-            core::pathToUtf8(vthost::muxSocketPath(vthost::socketLabelOf("work"), {}, run.env))));
+            core::pathToUtf8(vthost::muxSocketPath(vthost::daemonNameFromOption("work"), {}, run.env))));
     }
 }
 
@@ -1098,6 +1098,6 @@ TEST_CASE("--label picks the daemon and --name names what a creating verb makes"
         CHECK(contour::cli::runControlVerb(verbNamed(row.path), flags, run.io()) == 4);
         INFO(run.err.str());
         CHECK(run.err.str().contains(
-            core::pathToUtf8(vthost::muxSocketPath(vthost::socketLabelOf("work"), {}, run.env))));
+            core::pathToUtf8(vthost::muxSocketPath(vthost::daemonNameFromOption("work"), {}, run.env))));
     }
 }

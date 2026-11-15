@@ -225,13 +225,13 @@ struct ServiceBackendServices
 [[nodiscard]] std::expected<CommandOutcome, ServiceError> runServiceCommand(
     CommandRunner& commands, std::vector<std::string> const& argv, std::string_view context);
 
-/// The registration name for a daemon serving socket label @p label.
+/// The registration name for a daemon named @p name.
 ///
-/// Labels already distinguish daemon instances, so they distinguish their registrations too;
-/// without that, installing a second labelled daemon would silently overwrite the first.
-/// @param label The socket label (DefaultSocketLabel for the unnamed one).
-/// @return `contour-daemon` for the default label, else `contour-daemon-<label>`.
-[[nodiscard]] std::string serviceNameForLabel(std::string_view label);
+/// Names already distinguish daemon instances, so they distinguish their registrations too;
+/// without that, installing a second named daemon would silently overwrite the first.
+/// @param name The daemon's name (DefaultDaemonName for the unnamed one).
+/// @return `contour-daemon` for the default name, else `contour-daemon-<name>`.
+[[nodiscard]] std::string serviceNameFor(std::string_view name);
 
 /// The names a Task Scheduler task for the registration @p name may carry.
 ///
@@ -239,7 +239,7 @@ struct ServiceBackendServices
 /// refused, or, elevated, replace the first account's task. A task is named for its user, with @p userKey
 /// (the account's SID) appended; the machine-wide name of the releases before that is still looked up, so
 /// such a task is found, started and removed.
-/// @param name The registration name (@see serviceNameForLabel).
+/// @param name The registration name (@see serviceNameFor).
 /// @param userKey The account the task belongs to; empty for none (every other backend is per-user already).
 /// @return The name to create first, then the machine-wide one where it differs.
 [[nodiscard]] std::vector<std::string> taskNamesFor(std::string_view name, std::string_view userKey);
@@ -268,10 +268,10 @@ using VariableExpander = std::function<std::string(std::string_view)>;
 /// @return @p arguments with what the style needs added; unchanged where it needs nothing or has it.
 [[nodiscard]] std::string argumentsForLaunchStyle(std::string_view arguments, DaemonLaunchStyle style);
 
-/// Every name a daemon serving @p label may be registered under.
-/// @param label The socket label.
-/// @return The current name first, then the pre-phase-2 `contour-daemon-<label>` where it differs, so a
+/// Every name a daemon serving @p name may be registered under.
+/// @param name The daemon's name.
+/// @return The current name first, then the pre-phase-2 `contour-daemon-<name>` where it differs, so a
 ///         registration made by an older release can still be found, stopped and uninstalled.
-[[nodiscard]] std::vector<std::string> registrationNamesForLabel(std::string_view label);
+[[nodiscard]] std::vector<std::string> registrationNamesFor(std::string_view name);
 
 } // namespace vthost

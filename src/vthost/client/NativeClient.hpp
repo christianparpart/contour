@@ -97,8 +97,8 @@ struct RemoteScreen
     int32_t cursorLine = 0;
     int32_t cursorColumn = 0;
     std::string title;
-    std::string tabName;     ///< The host's OSC 30 tab name; empty means none set.
-    uint8_t cursorShape = 0; ///< DECSCUSR Ps (0 = unknown/default); re-emitted as CSI Ps SP q.
+    std::string programTabTitle; ///< The host's OSC 30 tab title; empty means none set.
+    uint8_t cursorShape = 0;     ///< DECSCUSR Ps (0 = unknown/default); re-emitted as CSI Ps SP q.
     /// The OSC 7 working-directory URL, as the host's terminal holds it; handed to the mirror's terminal
     /// directly (vtbackend::Terminal::setCurrentWorkingDirectory), not re-emitted as OSC 7.
     std::string cwd;
@@ -571,12 +571,12 @@ class NativeClient final
     /// @return Sent, or Unsupported -- nothing written -- unless the daemon shares Capability::WorkspaceMeta.
     [[nodiscard]] Delivery closeWorkspace(uint64_t workspace);
 
-    /// Asks the daemon to set a workspace's label. The daemon answers every client with the label
-    /// (proto::WorkspaceMeta::label).
+    /// Asks the daemon to set a workspace's name. The daemon answers every client with the name
+    /// (proto::WorkspaceMeta::name).
     /// @param workspace The daemon's workspace id.
-    /// @param label The new label; empty clears it.
+    /// @param name The new name; empty clears it.
     /// @return Sent, or Unsupported -- nothing written -- unless the daemon shares Capability::WorkspaceMeta.
-    [[nodiscard]] Delivery setWorkspaceLabel(uint64_t workspace, std::string label);
+    [[nodiscard]] Delivery setWorkspaceName(uint64_t workspace, std::string name);
 
     /// Asks the daemon to set the axis of the split above a pane. The daemon answers with the layout push
     /// alone; a stale session is ignored there.

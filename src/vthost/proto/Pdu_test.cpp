@@ -361,7 +361,7 @@ TEST_CASE("every catalog PDU round-trips", "[vthost][proto]")
                            .commandBlocksFloor = 0xFFFFFFFF,
                            .commandBlocks = { sampleBlock() },
                            .interruptedCommand = "make test",
-                           .tabName = "build" },
+                           .programTabTitle = "build" },
             Delta { .session = 9,
                     .generation = 2,
                     .seqno = 1234,
@@ -409,8 +409,8 @@ TEST_CASE("every catalog PDU round-trips", "[vthost][proto]")
                     .stableIdGeneration = 0x1'0000'0002,
                     .commandBlocks = { sampleBlock() },
                     .retiredCommandBlocks = { 3, 0xFFFFFFFF },
-                    .tabNameChanged = 1,
-                    .tabName = "build" },
+                    .programTabTitleChanged = 1,
+                    .programTabTitle = "build" },
         SessionBell { .session = 4 },
         SessionNotify { .session = 4, .title = "Build finished", .body = "3 warnings, 0 errors" },
         SessionClipboard { .session = 4, .selection = "c", .data = "copied text" },
@@ -421,7 +421,7 @@ TEST_CASE("every catalog PDU round-trips", "[vthost][proto]")
                                     .activePane = 12,
                                     .zoomedPane = 0,
                                     .title = "editor",
-                                    .label = "build",
+                                    .name = "build",
                                     .hasColor = 1,
                                     .color = 0x336699,
                                     .root =
@@ -1803,7 +1803,7 @@ TEST_CASE("Delta::hasChanges answers for every gated field", "[vthost][proto]")
         &Delta::snapshot,           &Delta::titleChanged,         &Delta::cursorShapeChanged,
         &Delta::cwdChanged,         &Delta::colorsChanged,        &Delta::statusChanged,
         &Delta::statusLinesChanged, &Delta::kittyKeyboardChanged, &Delta::modifyOtherKeysChanged,
-        &Delta::mouseChanged,       &Delta::progressChanged,      &Delta::tabNameChanged,
+        &Delta::mouseChanged,       &Delta::progressChanged,      &Delta::programTabTitleChanged,
     };
     for (auto const gate: gates)
     {
@@ -2351,7 +2351,7 @@ TEST_CASE("PanesReprojected round-trips, and a newer peer's appended bytes do no
 
 TEST_CASE("the workspace select, focus, role and switch PDUs round-trip", "[vthost][pdu][workspace-follow]")
 {
-    for (auto const kind: { SwitchDaemonKind::Same, SwitchDaemonKind::Label, SwitchDaemonKind::Host })
+    for (auto const kind: { SwitchDaemonKind::Same, SwitchDaemonKind::Name, SwitchDaemonKind::Host })
     {
         auto const request =
             SwitchRequest { .request = 4,
@@ -2569,7 +2569,7 @@ TEST_CASE("WorkspaceMeta round-trips with all fields", "[vthost][pdu][workspace-
     auto const meta = WorkspaceMeta {
         .workspace = 3,
         .controlId = controlIdFrom(0xA0),
-        .label = "ops",
+        .name = "ops",
         .git = WireGitInfo { .branch = "main", .kind = GitHeadKindWire::Branch, .ahead = 2, .behind = 7 },
     };
     CHECK(roundTrip(DecodedPdu { meta }) == DecodedPdu { meta });
@@ -2577,7 +2577,7 @@ TEST_CASE("WorkspaceMeta round-trips with all fields", "[vthost][pdu][workspace-
 
 TEST_CASE("WorkspaceMeta round-trips with each optional absent", "[vthost][pdu][workspace-meta]")
 {
-    auto const labels = std::vector<std::optional<std::string>> { std::nullopt, "", "ops" };
+    auto const names = std::vector<std::optional<std::string>> { std::nullopt, "", "ops" };
     auto const gits = std::vector<std::optional<WireGitInfo>> {
         std::nullopt,
         WireGitInfo {
@@ -2588,11 +2588,11 @@ TEST_CASE("WorkspaceMeta round-trips with each optional absent", "[vthost][pdu][
         WireGitInfo {
             .branch = "main", .kind = GitHeadKindWire::Branch, .ahead = 0xFFFFFFFF, .behind = 0xFFFFFFFF },
     };
-    for (auto const& label: labels)
+    for (auto const& name: names)
         for (auto const& git: gits)
         {
             auto const meta =
-                WorkspaceMeta { .workspace = 9, .controlId = controlIdFrom(1), .label = label, .git = git };
+                WorkspaceMeta { .workspace = 9, .controlId = controlIdFrom(1), .name = name, .git = git };
             CHECK(roundTrip(DecodedPdu { meta }) == DecodedPdu { meta });
         }
 }
@@ -2618,7 +2618,7 @@ TEST_CASE(
         auto const decoded = decodeAs<WorkspaceMeta>(frameOf(PduType::WorkspaceMeta, body.view()));
         CHECK(decoded.workspace == 4);
         CHECK(decoded.controlId == id);
-        CHECK(decoded.label == std::optional<std::string> { "ops" });
+        CHECK(decoded.name == std::optional<std::string> { "ops" });
         REQUIRE(decoded.git.has_value());
         CHECK(decoded.git->kind == GitHeadKindWire::OtherRef);
         CHECK(decoded.git->branch == "feature");
@@ -2696,7 +2696,7 @@ TEST_CASE("a SwitchRequest from a daemon that states no deadline reads as statin
     auto request = Writer {};
     request.u32(1);
     request.varint(2);
-    request.u8(std::to_underlying(SwitchDaemonKind::Label));
+    request.u8(std::to_underlying(SwitchDaemonKind::Name));
     request.string("work");
     request.string("");
     auto const decoded = decodeAs<SwitchRequest>(frameOf(PduType::SwitchRequest, request.view()));
@@ -3274,7 +3274,7 @@ TEST_CASE("a key proof larger than its caps is refused", "[vthost][pdu][auth]")
 namespace
 {
 
-/// A LayoutState of one tab whose name-bearing fields are both set: the label the user gave it and the
+/// A LayoutState of one tab whose name-bearing fields are both set: the name the user gave it and the
 /// runtime title. Recorded as testing::RecordedWireTabNames.
 [[nodiscard]] LayoutState namedLayout()
 {
@@ -3282,7 +3282,7 @@ namespace
                                .activePane = 3,
                                .zoomedPane = 0,
                                .title = "edited {Cwd}",
-                               .label = "build",
+                               .name = "build",
                                .hasColor = 0,
                                .color = 0,
                                .root = WirePane { .paneId = 3, .session = 1 } };
@@ -3317,7 +3317,7 @@ TEST_CASE("the LayoutState of a named and titled tab is pinned", "[vthost][pdu][
         decodeAs<LayoutState>(std::as_bytes(std::span { vthost::testing::RecordedWireTabNames }));
     CHECK(decoded == layout);
     REQUIRE(decoded.tabs.size() == 1);
-    CHECK(decoded.tabs.at(0).label == "build");
+    CHECK(decoded.tabs.at(0).name == "build");
     CHECK(decoded.tabs.at(0).title == "edited {Cwd}");
 }
 
@@ -3352,7 +3352,7 @@ TEST_CASE("the WorkspaceMeta of a named workspace is pinned", "[vthost][pdu][enc
     auto const meta = WorkspaceMeta {
         .workspace = 3,
         .controlId = controlIdFrom(0xA0),
-        .label = "ops",
+        .name = "ops",
         .git = WireGitInfo { .branch = "main", .kind = GitHeadKindWire::Branch, .ahead = 2, .behind = 7 },
         .position = 5,
     };
@@ -3361,6 +3361,6 @@ TEST_CASE("the WorkspaceMeta of a named workspace is pinned", "[vthost][pdu][enc
     auto const decoded =
         decodeAs<WorkspaceMeta>(std::as_bytes(std::span { vthost::testing::RecordedWorkspaceMetaName }));
     CHECK(decoded == meta);
-    CHECK(decoded.label == "ops");
+    CHECK(decoded.name == "ops");
     CHECK(decoded.position == 5);
 }

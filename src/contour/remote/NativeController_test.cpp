@@ -2011,7 +2011,7 @@ TEST_CASE("a tab's control label names it in the window, over its title, until i
     auto const labelTab = [&](std::string const& label) {
         std::ignore = daemon.onDaemon([&] {
             auto const* tab = daemon.host->model().workspace(daemon.host->workspaceId())->tabAt(0);
-            daemon.host->objects().setLabel(
+            daemon.host->objects().setName(
                 vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab,
                                        .uuid = *daemon.host->objects().uuidOf(tab->id()) },
                 label);
@@ -2023,9 +2023,9 @@ TEST_CASE("a tab's control label names it in the window, over its title, until i
         return waitUntil([&] {
             gui.reconcile();
             auto const directory = gui.controller->directory();
-            return gui.tab().label() == label && gui.window->tabTitleOf(gui.tab().id()) == name
+            return gui.tab().name() == label && gui.window->tabTitleOf(gui.tab().id()) == name
                    && !directory.workspaces.empty() && !directory.workspaces.front().tabs.empty()
-                   && directory.workspaces.front().tabs.front().label == name;
+                   && directory.workspaces.front().tabs.front().name == name;
         });
     };
     REQUIRE(shows("renamed", ""));
@@ -4605,7 +4605,7 @@ vtcontrol::Uuid labelOnDaemon(DaemonFixture& daemon, uint64_t workspace, std::st
 {
     return daemon.onDaemon([&] {
         auto const uuid = *daemon.host->objects().uuidOf(vtworkspace::WorkspaceId { workspace });
-        daemon.host->objects().setLabel(
+        daemon.host->objects().setName(
             vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace, .uuid = uuid }, label);
         return uuid;
     });
@@ -4627,13 +4627,13 @@ TEST_CASE("directory carries label and control id from WorkspaceMeta", "[attach]
     auto const stopOnExit = StopOnExit { controller };
     requireConnected(controller);
 
-    REQUIRE(waitUntil([&] { return workspaceOf(controller, second.id).label == "ops"; }));
+    REQUIRE(waitUntil([&] { return workspaceOf(controller, second.id).name == "ops"; }));
     CHECK(workspaceOf(controller, second.id).controlId == uuid.bytes);
     CHECK_FALSE(workspaceOf(controller, second.id).git.has_value());
 
     // And one stated since reaches it as it changes.
     std::ignore = labelOnDaemon(daemon, second.id, "build");
-    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).label == "build"; }));
+    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).name == "build"; }));
 }
 
 TEST_CASE("a workspace the daemon moved is listed in its new place", "[attach][controller][directory]")
@@ -4686,8 +4686,8 @@ TEST_CASE("a window's move and rename of a workspace reach the daemon and come b
 
     CHECK(controller.requestRemoteRenameWorkspace(second.id, "ops")
           == contour::session::RemoteRouting::Routed);
-    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).label == "ops"; }));
-    CHECK(workspaceOf(controller, first).label.empty());
+    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).name == "ops"; }));
+    CHECK(workspaceOf(controller, first).name.empty());
 }
 
 TEST_CASE("a window titles a tab of a workspace it does not show, and the directory follows",
@@ -4751,7 +4751,7 @@ TEST_CASE("the metadata of a removed workspace is pruned", "[attach][controller]
     auto& controller = *controllerOwned;
     auto const stopOnExit = StopOnExit { controller };
     requireConnected(controller);
-    REQUIRE(waitUntil([&] { return workspaceOf(controller, second.id).label == "ops"; }));
+    REQUIRE(waitUntil([&] { return workspaceOf(controller, second.id).name == "ops"; }));
     REQUIRE(contour::remote::NativeControllerTestAccess::workspaceMetaCount(controller) == 2);
 
     // Its one pane ends, and the daemon removes the workspace.
@@ -4797,7 +4797,7 @@ TEST_CASE("a labelled workspace that held no tab is stated in full once it holds
     });
 
     REQUIRE(waitUntil([&] { return !workspaceOf(controller, empty).tabs.empty(); }));
-    CHECK(waitUntil([&] { return workspaceOf(controller, empty).label == "ops"; }));
+    CHECK(waitUntil([&] { return workspaceOf(controller, empty).name == "ops"; }));
     CHECK(workspaceOf(controller, empty).controlId == uuid.bytes);
 }
 
@@ -4813,11 +4813,11 @@ TEST_CASE("an empty label clears it", "[attach][controller][directory]")
     auto& controller = *controllerOwned;
     auto const stopOnExit = StopOnExit { controller };
     requireConnected(controller);
-    REQUIRE(waitUntil([&] { return workspaceOf(controller, first).label == "ops"; }));
+    REQUIRE(waitUntil([&] { return workspaceOf(controller, first).name == "ops"; }));
 
     std::ignore = labelOnDaemon(daemon, first, "");
 
-    REQUIRE(waitUntil([&] { return workspaceOf(controller, first).label.empty(); }));
+    REQUIRE(waitUntil([&] { return workspaceOf(controller, first).name.empty(); }));
     // The control id stays: clearing a label changes nothing else.
     CHECK(workspaceOf(controller, first).controlId == uuid.bytes);
 }

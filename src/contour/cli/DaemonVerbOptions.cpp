@@ -86,7 +86,7 @@ DaemonVerbOptions readDaemonVerbOptions(core::cli::FlagStore const& parameters)
 
 DaemonLaunch DaemonLaunch::resolve(DaemonVerbOptions given, std::string const& configuredSocket)
 {
-    auto socketPath = vthost::muxSocketPath(vthost::socketLabelOf(given.label),
+    auto socketPath = vthost::muxSocketPath(vthost::daemonNameFromOption(given.label),
                                             resolveSocketOption(given.socket, configuredSocket));
     return DaemonLaunch { std::move(given), std::move(socketPath) };
 }

@@ -1072,13 +1072,13 @@ TEST_CASE("SETTABNAME: OSC 30 names the tab, and an empty name clears it", "[scr
     // empty name that blanks it. That also makes "empty" and "none" one state, which the daemon wire relies
     // on to carry the name losslessly (issue #2170).
     auto mock = MockTerm { PageSize { LineCount(3), ColumnCount(20) } };
-    CHECK_FALSE(mock.terminal.tabName().has_value());
+    CHECK_FALSE(mock.terminal.programTabTitle().has_value());
 
     mock.writeToScreen("\033]30;build\033\\");
-    CHECK(mock.terminal.tabName() == std::optional<std::string> { "build" });
+    CHECK(mock.terminal.programTabTitle() == std::optional<std::string> { "build" });
 
     mock.writeToScreen("\033]30;\033\\");
-    CHECK_FALSE(mock.terminal.tabName().has_value());
+    CHECK_FALSE(mock.terminal.programTabTitle().has_value());
 }
 
 TEST_CASE("OSC.code_past_16_bits_names_no_function", "[OSC]")

@@ -70,17 +70,17 @@ namespace
 /// Daemon A, which the window starts on, by label.
 [[nodiscard]] DaemonAddress daemonA()
 {
-    return DaemonAddress { .kind = SwitchDaemonKind::Label, .name = "a" };
+    return DaemonAddress { .kind = SwitchDaemonKind::Name, .name = "a" };
 }
 /// Daemon B, which a cross-daemon switch goes to, by label.
 [[nodiscard]] DaemonAddress daemonB()
 {
-    return DaemonAddress { .kind = SwitchDaemonKind::Label, .name = "b" };
+    return DaemonAddress { .kind = SwitchDaemonKind::Name, .name = "b" };
 }
 /// A daemon whose socket nobody serves.
 [[nodiscard]] DaemonAddress unreachable()
 {
-    return DaemonAddress { .kind = SwitchDaemonKind::Label, .name = "down" };
+    return DaemonAddress { .kind = SwitchDaemonKind::Name, .name = "down" };
 }
 
 /// @return A target on daemon @p daemon, naming @p workspace (empty to decide).
@@ -158,7 +158,7 @@ class FixtureLister final: public contour::remote::IWorkspaceLister
                     .kind = vtcontrol::ObjectKind::Workspace,
                     .uuid = daemon.host->objects().uuidOf(workspace->id()).value_or(vtcontrol::Uuid {})
                 };
-                daemon.host->objects().setLabel(ref, label);
+                daemon.host->objects().setName(ref, label);
                 return ref;
             });
         QMetaObject::invokeMethod(
@@ -1712,7 +1712,7 @@ TEST_CASE("WindowSwitcher: a workspace that cannot be created is said in the win
     auto const before = rig.windowSessions();
     auto told = Told {};
     // A daemon the fixture's lister knows nothing of: `workspace.create` cannot reach it.
-    auto const nowhere = DaemonAddress { .kind = SwitchDaemonKind::Label, .name = "nowhere" };
+    auto const nowhere = DaemonAddress { .kind = SwitchDaemonKind::Name, .name = "nowhere" };
     rig.switcher->createWorkspace(rig.shown(), to(nowhere), "q", SwitchMode::Switch, told.completion());
     REQUIRE(waitUntil([&] { return told.outcome.has_value(); }, 2000));
     CHECK_FALSE(told.outcome->has_value());
@@ -1937,7 +1937,7 @@ TEST_CASE("WindowSwitcher: a switch for a workspace no window here shows fails, 
             clients.front(),
             vtworkspace::WorkspaceId { rig.aWorkspaces[1] },
             vthost::proto::SwitchTargetWire {
-                .kind = SwitchDaemonKind::Label, .daemon = "b", .workspace = "2" },
+                .kind = SwitchDaemonKind::Name, .daemon = "b", .workspace = "2" },
             [replies](vthost::proto::SwitchReply const& reply) { replies->push_back(reply); });
         return 0;
     });

@@ -32,13 +32,13 @@
 namespace contour::remote
 {
 
-/// A daemon as a switch names it: a local daemon by its socket label, or a saved host by its name.
+/// A daemon as a switch names it: a local daemon by its name, or a saved host by its name.
 struct DaemonAddress
 {
-    /// Label or Host; Same for a daemon no switch can name (`--connect-tcp`, a socket outside the label
+    /// Name or Host; Same for a daemon no switch can name (`--connect-tcp`, a socket outside the label
     /// directory).
     vthost::proto::SwitchDaemonKind kind {};
-    std::string name; ///< The label or the host's name; empty for Same.
+    std::string name; ///< The local daemon's or the host's name; empty for Same.
     bool operator==(DaemonAddress const&) const = default;
 };
 
@@ -48,13 +48,13 @@ struct DaemonAddress
 /// "default", which would make an unrelated `default` daemon look like this window's.
 /// @param controlPath The control socket the launch resolved.
 /// @param labelDirectory The directory discovery lists the labelled daemons' sockets from.
-/// @return The Label address of the socket's file name when it sits in @p labelDirectory, else Same.
+/// @return The Name address of the socket's file name when it sits in @p labelDirectory, else Same.
 [[nodiscard]] inline DaemonAddress launchDaemonAddress(std::filesystem::path const& controlPath,
                                                        std::filesystem::path const& labelDirectory)
 {
     auto const normal = controlPath.lexically_normal();
     if (normal.parent_path() == labelDirectory.lexically_normal())
-        return DaemonAddress { .kind = vthost::proto::SwitchDaemonKind::Label,
+        return DaemonAddress { .kind = vthost::proto::SwitchDaemonKind::Name,
                                .name = normal.filename().string() };
     return DaemonAddress { .kind = vthost::proto::SwitchDaemonKind::Same, .name = {} };
 }

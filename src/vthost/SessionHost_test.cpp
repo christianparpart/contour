@@ -4148,13 +4148,13 @@ TEST_CASE("preset ids and labels are honoured", "[vthost][host][ids]")
     auto const tabId = seq(101);
     auto* tab = h.host.createTab(vthost::SessionSpawnRequest {
         .presetIds =
-            vthost::PresetObjectIds { .pane = pane, .tab = tabId, .paneLabel = "logs", .tabLabel = "ops" } });
+            vthost::PresetObjectIds { .pane = pane, .tab = tabId, .paneName = "logs", .tabName = "ops" } });
     REQUIRE(tab != nullptr);
 
     CHECK(h.host.objects().uuidOf(tab->rootPane()->session()) == pane);
     CHECK(h.host.objects().uuidOf(tab->id()) == tabId);
-    CHECK(h.host.objects().labelOf(vtcontrol::ObjectRef { vtcontrol::ObjectKind::Pane, pane }) == "logs");
-    CHECK(h.host.objects().labelOf(vtcontrol::ObjectRef { vtcontrol::ObjectKind::Tab, tabId }) == "ops");
+    CHECK(h.host.objects().nameOf(vtcontrol::ObjectRef { vtcontrol::ObjectKind::Pane, pane }) == "logs");
+    CHECK(h.host.objects().nameOf(vtcontrol::ObjectRef { vtcontrol::ObjectKind::Tab, tabId }) == "ops");
     CHECK(h.seen.back().env.at("CONTOUR_PANE")
           == vtcontrol::toString(vtcontrol::ObjectRef { vtcontrol::ObjectKind::Pane, pane }));
 
@@ -5811,7 +5811,7 @@ TEST_CASE("requestSwitch completes with the client's reply, or fails", "[vthost]
     auto const record = [&](vthost::proto::SwitchReply const& reply) {
         outcomes.push_back(reply);
     };
-    auto const target = vthost::proto::SwitchTargetWire { .kind = vthost::proto::SwitchDaemonKind::Label,
+    auto const target = vthost::proto::SwitchTargetWire { .kind = vthost::proto::SwitchDaemonKind::Name,
                                                           .daemon = "admin",
                                                           .workspace = "w2" };
     auto const shown = vtworkspace::WorkspaceId { 4 };
@@ -5930,12 +5930,12 @@ struct NamedFolders
         std::filesystem::temp_directory_path() / std::format("contour-workspace-name-{}", ::getpid());
 };
 
-/// @return The label of the workspace @p workspace of @p host.
-std::string labelOfWorkspace(SessionHost const& host, vtworkspace::WorkspaceId workspace)
+/// @return The name of the workspace @p workspace of @p host.
+std::string nameOfWorkspace(SessionHost const& host, vtworkspace::WorkspaceId workspace)
 {
     auto const uuid = host.objects().uuidOf(workspace);
     REQUIRE(uuid.has_value());
-    return std::string { host.objects().labelOf(
+    return std::string { host.objects().nameOf(
         vtcontrol::ObjectRef { vtcontrol::ObjectKind::Workspace, *uuid }) };
 }
 
@@ -5956,18 +5956,18 @@ TEST_CASE("a created workspace gets its default label once and keeps it after a 
     auto h = HostHarness {};
     auto const* const workspace = h.host.createWorkspace(startingIn(folders.root / "repo" / "src"));
     REQUIRE(workspace != nullptr);
-    CHECK(labelOfWorkspace(h.host, workspace->id()) == "repo");
+    CHECK(nameOfWorkspace(h.host, workspace->id()) == "repo");
 
     // The shell moves on: the name was written once, at creation.
     auto* const terminal = h.host.terminal(workspace->activeTab()->activePane()->session());
     REQUIRE(terminal != nullptr);
     terminal->writeToScreen(
         std::format("\033]7;{}\033\\", vtbackend::test::fileUrlOf(folders.root / "plain")));
-    CHECK(labelOfWorkspace(h.host, workspace->id()) == "repo");
+    CHECK(nameOfWorkspace(h.host, workspace->id()) == "repo");
 
     auto const* const plain = h.host.createWorkspace(startingIn(folders.root / "plain"));
     REQUIRE(plain != nullptr);
-    CHECK(labelOfWorkspace(h.host, plain->id()) == "plain");
+    CHECK(nameOfWorkspace(h.host, plain->id()) == "plain");
 }
 
 TEST_CASE("a preset label wins over the default", "[vthost][host][workspace-name]")
@@ -5975,10 +5975,10 @@ TEST_CASE("a preset label wins over the default", "[vthost][host][workspace-name
     auto const folders = NamedFolders {};
     auto h = HostHarness {};
     auto request = startingIn(folders.root / "repo");
-    request.presetIds = vthost::PresetObjectIds { .workspaceLabel = "restored" };
+    request.presetIds = vthost::PresetObjectIds { .workspaceName = "restored" };
     auto const* const workspace = h.host.createWorkspace(request);
     REQUIRE(workspace != nullptr);
-    CHECK(labelOfWorkspace(h.host, workspace->id()) == "restored");
+    CHECK(nameOfWorkspace(h.host, workspace->id()) == "restored");
 }
 
 TEST_CASE("a workspace made from a session starts in that session's cwd", "[vthost][host][workspace-name]")
@@ -5999,7 +5999,7 @@ TEST_CASE("a workspace made from a session starts in that session's cwd", "[vtho
 
     REQUIRE(created != nullptr);
     CHECK(h.seen.back().workingDirectory == folders.root / "repo" / "src");
-    CHECK(labelOfWorkspace(h.host, created->id()) == "repo");
+    CHECK(nameOfWorkspace(h.host, created->id()) == "repo");
 }
 
 TEST_CASE("a start directory that is no directory here names no workspace", "[vthost][host][workspace-name]")
@@ -6010,5 +6010,5 @@ TEST_CASE("a start directory that is no directory here names no workspace", "[vt
     auto const* const workspace = h.host.createWorkspace(startingIn(folders.root / "not" / "here" / "repo"));
     REQUIRE(workspace != nullptr);
     CHECK(h.seen.back().workingDirectory.empty());
-    CHECK(labelOfWorkspace(h.host, workspace->id()).empty());
+    CHECK(nameOfWorkspace(h.host, workspace->id()).empty());
 }

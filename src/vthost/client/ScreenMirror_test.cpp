@@ -2517,9 +2517,9 @@ TEST_CASE("a live window-title change reaches the mirror", "[vthost][mirror]")
     h.loop.blockOn(drive(&h, std::move(scenario)));
 }
 
-TEST_CASE("an OSC 30 tab name reaches the mirror, live and on attach", "[vthost][mirror]")
+TEST_CASE("an OSC 30 tab title reaches the mirror, live and on attach", "[vthost][mirror]")
 {
-    // Issue #2170: the client's tab bar and indicator line read the mirror's tab name.
+    // Issue #2170: the client's tab bar and indicator line read the mirror's program tab title.
     auto h = MirrorHarness {};
     auto const session = newSession(h.host);
     h.serverTerminal(session)->writeToScreen("\033]30;before-attach\033\\work");
@@ -2528,24 +2528,25 @@ TEST_CASE("an OSC 30 tab name reaches the mirror, live and on attach", "[vthost]
         co_await waitUntil(&h->loop, [&] {
             return h->mirror->primaryScreen().grid().renderMainPageText().contains("work");
         });
-        CHECK(h->mirror->tabName() == std::optional<std::string> { "before-attach" }); // the snapshot
+        CHECK(h->mirror->programTabTitle() == std::optional<std::string> { "before-attach" }); // the snapshot
 
         serverWrites(h, session, "\033]30;live\033\\"); // a name-only delta must still push
-        co_await waitUntil(&h->loop,
-                           [&] { return h->mirror->tabName() == std::optional<std::string> { "live" }; });
-        CHECK(h->mirror->tabName() == std::optional<std::string> { "live" });
+        co_await waitUntil(
+            &h->loop, [&] { return h->mirror->programTabTitle() == std::optional<std::string> { "live" }; });
+        CHECK(h->mirror->programTabTitle() == std::optional<std::string> { "live" });
 
         // A name that changes in the batch that flips the screen arrives in the resync snapshot's
         // SessionState, not as a delta, and must still replace the one the mirror holds.
         serverWrites(h, session, "\033]30;flipped\033\\\033[?1049h");
-        co_await waitUntil(&h->loop,
-                           [&] { return h->mirror->tabName() == std::optional<std::string> { "flipped" }; });
-        CHECK(h->mirror->tabName() == std::optional<std::string> { "flipped" });
+        co_await waitUntil(&h->loop, [&] {
+            return h->mirror->programTabTitle() == std::optional<std::string> { "flipped" };
+        });
+        CHECK(h->mirror->programTabTitle() == std::optional<std::string> { "flipped" });
 
         // An empty OSC 30 clears the name on both ends.
         serverWrites(h, session, "\033]30;\033\\");
-        co_await waitUntil(&h->loop, [&] { return !h->mirror->tabName().has_value(); });
-        CHECK_FALSE(h->mirror->tabName().has_value());
+        co_await waitUntil(&h->loop, [&] { return !h->mirror->programTabTitle().has_value(); });
+        CHECK_FALSE(h->mirror->programTabTitle().has_value());
 
         h->client->detach();
     }(&h, session);

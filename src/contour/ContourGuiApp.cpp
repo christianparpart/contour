@@ -386,7 +386,7 @@ namespace
                                                       vthost::nativeServiceBackendFactory(services),
                                                       contour::cli::nativeRepairInputs(services.fileSystem),
                                                       vthost::RegistrationUse::Start),
-                vthost::labelSocketPath(label, services.environment),
+                vthost::namedSocketPath(label, services.environment),
                 vthost::OnDemandSpawn { .endpoint = endpoint,
                                         .spawner = *spawner,
                                         .binary = *binary,
@@ -1178,10 +1178,10 @@ std::expected<remote::DaemonLinkConfig, std::string> ContourGuiApp::linkConfigFo
     }();
     switch (daemon.kind)
     {
-        case SwitchDaemonKind::Label: {
+        case SwitchDaemonKind::Name: {
             // A label comes from a program or another daemon as well as from the user: it is joined into a
             // socket path only once it is one a daemon of its own could have.
-            if (auto const valid = vthost::validateSocketLabel(daemon.name); !valid)
+            if (auto const valid = vthost::validateDaemonName(daemon.name); !valid)
                 return std::unexpected(
                     std::format("\"{}\" names no daemon: {}", daemon.name, vthost::describe(valid.error())));
             // A running daemon only: a switch starts none (New daemon… does, before it switches). Local, but
@@ -1189,7 +1189,7 @@ std::expected<remote::DaemonLinkConfig, std::string> ContourGuiApp::linkConfigFo
             // serve the launch's daemon alone, and a restart relaunches this process onto that one -- unless
             // its socket is the launch's (which --socket and $CONTOUR_MUX may move off the label's).
             auto const controlPath =
-                vthost::muxSocketPath(vthost::socketLabelOf(daemon.name),
+                vthost::muxSocketPath(vthost::daemonNameFromOption(daemon.name),
                                       cli::resolveSocketOption("", _config.daemon.value().socket));
             auto config =
                 daemonLinkConfig(std::make_shared<vthost::UnixTransportFactory>(controlPath, nullptr),
@@ -1869,7 +1869,7 @@ std::expected<void, std::string> ContourGuiApp::startNativeAttach()
     else
     {
         // The local daemon: its socket and size policy are the client's options, else the `daemon:` section.
-        auto const socketLabel = vthost::socketLabelOf(_clientRequest ? _clientRequest->label : "");
+        auto const socketLabel = vthost::daemonNameFromOption(_clientRequest ? _clientRequest->label : "");
         auto const& label = socketLabel.name;
         auto const controlPath = vthost::muxSocketPath(
             socketLabel,
@@ -1894,7 +1894,7 @@ std::expected<void, std::string> ContourGuiApp::startNativeAttach()
             .sizePolicy = *sizePolicy,
         };
         locality = window::DaemonLocality::Local;
-        address = remote::launchDaemonAddress(controlPath, vthost::labelSocketDirectory());
+        address = remote::launchDaemonAddress(controlPath, vthost::namedSocketDirectory());
         _launchControlPath = controlPath;
         _restartDaemon = [this, label, controlPath, daemonOptions] {
             return restartLocalDaemon(label, controlPath, daemonOptions);
@@ -4377,7 +4377,7 @@ std::shared_ptr<cli::IDaemonDiscovery> ContourGuiApp::localDaemonDiscovery()
     {
         _daemonSpawner = vthost::makeNativeDaemonSpawner();
         _localDaemonDiscovery = cli::makeLocalDaemonDiscovery(
-            vthost::labelSocketDirectory(), *_daemonSpawner, cli::nativeWorkspaceCounter());
+            vthost::namedSocketDirectory(), *_daemonSpawner, cli::nativeWorkspaceCounter());
     }
     return _localDaemonDiscovery;
 }
@@ -4551,7 +4551,7 @@ window::SwitcherServices ContourGuiApp::switcherServices()
                 // Read here, on the GUI thread; the job holds copies, and a start of its own, so it outlives
                 // nothing it uses.
                 auto const socket =
-                    vthost::muxSocketPath(vthost::socketLabelOf(label),
+                    vthost::muxSocketPath(vthost::daemonNameFromOption(label),
                                           cli::resolveSocketOption("", _config.daemon.value().socket));
                 auto options = vthost::DaemonSpawnOptions {
                     .filter = {},

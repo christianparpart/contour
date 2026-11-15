@@ -46,7 +46,7 @@ namespace
             std::ranges::to<std::vector>(rows | std::views::transform([](auto const& row) {
                                              return vtcontrol::TargetCandidate {
                                                  .ref = row.ref,
-                                                 .label = row.label,
+                                                 .name = row.label,
                                                  .position = row.position,
                                              };
                                          }));
@@ -143,7 +143,7 @@ std::vector<WorkspaceRow> workspaceRowsOf(std::span<vtcontrol::WorkspaceInfo con
             .position = info.position,
             .name = workspaceDisplayName(
                 info.label,
-                active != info.tabs.end() ? vtworkspace::tabNameOf({ .label = active->label }, active->title)
+                active != info.tabs.end() ? vtworkspace::tabNameOf({ .name = active->label }, active->title)
                                           : "",
                 info.position),
             .visibility = visibility != Visibilities.end() ? *visibility : WorkspaceVisibility::Hidden,
@@ -169,9 +169,9 @@ std::vector<WorkspaceRow> workspaceRowsOf(window::WorkspaceDirectory const& dire
                        ? vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace,
                                                 .uuid = vtcontrol::Uuid { .bytes = workspace.controlId } }
                        : localRefOf(workspace.id),
-            .label = workspace.label,
+            .label = workspace.name,
             .position = position,
-            .name = workspaceDisplayName(workspace.label, workspace.tabs.front().label, position),
+            .name = workspaceDisplayName(workspace.name, workspace.tabs.front().name, position),
             .visibility = shown ? vthost::WorkspaceVisibility::Shown : vthost::WorkspaceVisibility::Hidden,
             .tabs = workspace.tabs.size(),
             .shownByWindowHere = shown,
@@ -220,7 +220,7 @@ bool resolvesFromDirectory(session::WorkspaceTarget const& workspace,
             candidates.push_back(vtcontrol::TargetCandidate {
                 .ref = vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace,
                                               .uuid = vtcontrol::Uuid { .bytes = listed.controlId } },
-                .label = listed.label,
+                .name = listed.name,
                 .position = static_cast<uint32_t>(index + 1),
             });
     // Only an id the directory carries resolves here; one it does not yet (a reconnect's empty directory, a

@@ -29,9 +29,9 @@ namespace
     return { view.begin(), view.end() };
 }
 
-[[nodiscard]] ObjectIdentityRecord identityOf(std::string label)
+[[nodiscard]] ObjectIdentityRecord identityOf(std::string name)
 {
-    auto record = ObjectIdentityRecord { .label = std::move(label) };
+    auto record = ObjectIdentityRecord { .name = std::move(name) };
     std::ranges::generate(record.uuid, [next = std::uint8_t { 1 }]() mutable { return next++; });
     return record;
 }
@@ -224,7 +224,7 @@ TEST_CASE("a workspace round-trips through the codec", "[vthost][snapshot]")
     CHECK(tab.zoom == TabZoom::Zoomed);
     CHECK(tab.root.split == vtworkspace::SplitState::Vertical);
     CHECK(tab.root.ratio == 0.3);
-    CHECK(tab.identity.value().label == "build-tab");
+    CHECK(tab.identity.value().name == "build-tab");
     CHECK(tab.identity->uuid.front() == 1);
     CHECK(tab.identity->uuid.back() == 16);
 
@@ -466,7 +466,7 @@ TEST_CASE("a pane whose history does not decode loses only its history", "[vthos
 namespace
 {
 
-/// A snapshot whose every name-bearing field is set: the workspace's, the tab's and the pane's label, and the
+/// A snapshot whose every name-bearing field is set: the workspace's, the tab's and the pane's name, and the
 /// tab's runtime title. Recorded as testing::RecordedSnapshotNames.
 [[nodiscard]] WorkspaceSnapshot namedSnapshot()
 {
@@ -506,9 +506,9 @@ TEST_CASE("the snapshot file of a named workspace, tab and pane is pinned",
     CHECK(decoded->snapshot == snapshot);
     REQUIRE(decoded->snapshot.workspaces.size() == 1);
     auto const& workspace = decoded->snapshot.workspaces.at(0);
-    CHECK(workspace.identity.value().label == "ops");
+    CHECK(workspace.identity.value().name == "ops");
     REQUIRE(workspace.tabs.size() == 1);
-    CHECK(workspace.tabs.at(0).identity.value().label == "build");
+    CHECK(workspace.tabs.at(0).identity.value().name == "build");
     CHECK(workspace.tabs.at(0).title == "edited {Cwd}");
-    CHECK(workspace.tabs.at(0).root.pane.identity.value().label == "logs");
+    CHECK(workspace.tabs.at(0).root.pane.identity.value().name == "logs");
 }

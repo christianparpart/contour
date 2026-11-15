@@ -873,7 +873,7 @@ command::DaemonRowsState WindowController::daemonRows() const
     state.switching = command::DaemonSwitching::Available;
 
     using Kind = vthost::proto::SwitchDaemonKind;
-    if (target->kind == Kind::Label)
+    if (target->kind == Kind::Name)
         state.current = actions::DaemonRef { actions::DaemonRefKind::Label, target->daemon };
     else if (target->kind == Kind::Host)
         state.current = actions::DaemonRef { actions::DaemonRefKind::Host, target->daemon };
@@ -1211,7 +1211,7 @@ QString WindowController::resolvedTabLabel(vtworkspace::Tab* tab,
     auto templ = std::string_view {};
     switch (vtworkspace::tabNameSourceOf(names))
     {
-        case vtworkspace::TabNameSource::Label: return QString::fromStdString(tab->label());
+        case vtworkspace::TabNameSource::Name: return QString::fromStdString(tab->name());
         case vtworkspace::TabNameSource::Title: templ = names.title; break;
         case vtworkspace::TabNameSource::Panes:
             if (tab->usesMultiplePanesLabel())

@@ -1215,12 +1215,12 @@ void SessionModel::resetTabTitle(TabId tabId)
     _events.tabTitleChanged(tabId);
 }
 
-void SessionModel::setTabLabel(TabId tabId, std::string label)
+void SessionModel::setTabName(TabId tabId, std::string name)
 {
     auto* tab = findTab(tabId);
-    if (tab == nullptr || tab->label() == label)
+    if (tab == nullptr || tab->name() == name)
         return;
-    tab->setLabel(std::move(label));
+    tab->setName(std::move(name));
     _events.tabTitleChanged(tabId);
 }
 

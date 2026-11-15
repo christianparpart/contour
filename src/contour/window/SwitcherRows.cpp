@@ -323,7 +323,7 @@ namespace
                 return;
             add(plainRow(SwitcherRowKind::LabelAction,
                          switcherLabelActionTitle(_view.filter, verdict),
-                         session::SwitchTarget { .kind = SwitchDaemonKind::Label,
+                         session::SwitchTarget { .kind = SwitchDaemonKind::Name,
                                                  .daemon = std::string { _view.filter },
                                                  .workspace = session::AnyWorkspace {} }),
                 SwitcherGroup::None,
@@ -351,7 +351,7 @@ LabelVerdict switcherLabelVerdict(std::string_view label, std::span<std::string 
 {
     if (label.empty())
         return LabelVerdict::Empty;
-    if (!vthost::validateSocketLabel(label))
+    if (!vthost::validateDaemonName(label))
         return LabelVerdict::Invalid;
     return std::ranges::find(runningLabels, label) != runningLabels.end() ? LabelVerdict::Running
                                                                           : LabelVerdict::Available;
@@ -361,7 +361,7 @@ std::vector<std::string> switcherRunningLabels(SwitcherInputs const& inputs)
 {
     auto labels = std::vector<std::string> {};
     for (auto const& daemon: inputs.daemons)
-        if (daemon.address.kind == SwitchDaemonKind::Label)
+        if (daemon.address.kind == SwitchDaemonKind::Name)
             labels.push_back(daemon.address.daemon);
     return labels;
 }

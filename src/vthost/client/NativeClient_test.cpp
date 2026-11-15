@@ -3223,9 +3223,9 @@ TEST_CASE("the workspace verbs reach the daemon when it shares WorkspaceMeta",
         deliveries->push_back(h->client->moveWorkspace(second, 0));
         co_await core::net::testing::waitUntil(
             &h->loop, [h, second] { return h->host.model().workspaceAt(0)->id().value == second; });
-        deliveries->push_back(h->client->setWorkspaceLabel(second, "ops"));
+        deliveries->push_back(h->client->setWorkspaceName(second, "ops"));
         co_await core::net::testing::waitUntil(&h->loop, [h, second] {
-            return h->host.objects().labelOf(vtcontrol::ObjectRef {
+            return h->host.objects().nameOf(vtcontrol::ObjectRef {
                        .kind = vtcontrol::ObjectKind::Workspace,
                        .uuid = *h->host.objects().uuidOf(vtworkspace::WorkspaceId { second }) })
                    == "ops";
@@ -3257,7 +3257,7 @@ TEST_CASE("the workspace verbs are Unsupported, and nothing is written, without 
                        std::vector<vthost::client::Delivery>* deliveries) -> Task<void> {
         co_await core::net::testing::waitUntil(&h->loop, [h] { return !h->layouts.empty(); });
         deliveries->push_back(h->client->moveWorkspace(second, 0));
-        deliveries->push_back(h->client->setWorkspaceLabel(second, "ops"));
+        deliveries->push_back(h->client->setWorkspaceName(second, "ops"));
         deliveries->push_back(h->client->closeWorkspace(first));
         h->client->detach();
         co_return;

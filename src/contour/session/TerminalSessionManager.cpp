@@ -342,7 +342,7 @@ window::WindowController* TerminalSessionManager::createWindowController(
     QQmlEngine::setObjectOwnership(controller, QQmlEngine::CppOwnership);
     _controllersByWindow[windowId] = controller;
     _inProcessDirectories[windowId] = std::make_unique<InProcessDirectory>(
-        *_model, *controller, *_paneStatus, _workspaceLabels, _gitTracker.get(), [controller] {
+        *_model, *controller, *_paneStatus, _workspaceNames, _gitTracker.get(), [controller] {
             emit controller->workspaceDirectoryChanged();
         });
     updateDirectorySource(*controller);
@@ -1529,7 +1529,7 @@ std::expected<vtworkspace::WorkspaceId, NewWorkspaceError> TerminalSessionManage
     if (!made)
         return std::unexpected(NewWorkspaceError::FirstShellFailed);
     if (!label.empty())
-        setWorkspaceLabel(*made, std::move(label));
+        setWorkspaceName(*made, std::move(label));
     return *made;
 }
 
@@ -1544,9 +1544,9 @@ std::string TerminalSessionManager::defaultWorkspaceName(std::filesystem::path c
     return vtbackend::defaultWorkspaceName(vtbackend::NativeGitFileSystem { _app.fileSystem() }, directory);
 }
 
-void TerminalSessionManager::setWorkspaceLabel(vtworkspace::WorkspaceId workspace, std::string label)
+void TerminalSessionManager::setWorkspaceName(vtworkspace::WorkspaceId workspace, std::string name)
 {
-    _workspaceLabels.set(workspace, std::move(label));
+    _workspaceNames.set(workspace, std::move(name));
     notifyDirectoriesChanged();
 }
 
@@ -1596,7 +1596,7 @@ void TerminalSessionManager::renameWorkspace(window::WindowController& window,
         return;
     }
     if (ownsWorkspace(window, vtworkspace::WorkspaceId { workspace }))
-        setWorkspaceLabel(vtworkspace::WorkspaceId { workspace }, std::move(label));
+        setWorkspaceName(vtworkspace::WorkspaceId { workspace }, std::move(label));
 }
 
 void TerminalSessionManager::renameTab(window::WindowController& window, uint64_t tab, std::string title)
@@ -1963,7 +1963,7 @@ void TerminalSessionManager::nameNewWorkspace(vtworkspace::WorkspaceId workspace
 {
     // Named after the folder -- once: a later cd renames nothing.
     if (auto name = defaultWorkspaceName(directory); !name.empty())
-        setWorkspaceLabel(workspace, std::move(name));
+        setWorkspaceName(workspace, std::move(name));
 }
 
 void TerminalSessionManager::closeWorkspace(window::WindowController& window, uint64_t workspace)
@@ -1979,7 +1979,7 @@ void TerminalSessionManager::closeWorkspace(window::WindowController& window, ui
         auto const* const listed = window::findWorkspace(directory, workspace);
         if (listed == nullptr || directory.workspaces.size() < 2)
             return;
-        label = listed->label;
+        label = listed->name;
         // A daemon's pane runs a program this process cannot name: it may be running vim.
         activities.assign(window::sessionsOf(listed->tabs).size(), window::PaneActivity::Unknown);
     }
@@ -1989,7 +1989,7 @@ void TerminalSessionManager::closeWorkspace(window::WindowController& window, ui
         auto const* const held = _model->workspace(id);
         if (held == nullptr || !ownsWorkspace(window, id) || ownsOneWorkspaceOnly(window))
             return;
-        label = std::string { _workspaceLabels.labelOf(id) };
+        label = std::string { _workspaceNames.nameOf(id) };
         for (auto const* const session: sessionsInWorkspace(*held))
         {
             auto const activity = session->paneActivity();
@@ -2037,7 +2037,7 @@ void TerminalSessionManager::confirmCloseWorkspace(window::WindowController& win
 
 void TerminalSessionManager::forgetDirectoryState(vtworkspace::WorkspaceId workspace)
 {
-    _workspaceLabels.forget(workspace);
+    _workspaceNames.forget(workspace);
     if (_gitTracker)
         _gitTracker->forget(workspace);
 }
@@ -2152,7 +2152,7 @@ void TerminalSessionManager::cycleWorkspace(TerminalSession const& acting, actio
         for (auto const& [position, listed]: window::switchableWorkspacesOf(directory))
             workspaces.push_back(KnownWorkspace {
                 .position = position,
-                .name = listed->label,
+                .name = listed->name,
                 .role = directory.selected == listed->id ? WorkspaceRole::Current : WorkspaceRole::Other });
     }
     else

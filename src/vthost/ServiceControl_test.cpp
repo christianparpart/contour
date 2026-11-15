@@ -50,19 +50,19 @@ TEST_CASE("an unknown start mode is rejected rather than defaulted", "[vthost][s
 
 TEST_CASE("the registration name is derived from the socket label", "[vthost][service]")
 {
-    // Labels already distinguish daemon instances; without carrying that into the registration
-    // name, installing a second labelled daemon would overwrite the first's registration.
-    CHECK(serviceNameForLabel("default") == "contour-daemon");
-    CHECK(serviceNameForLabel("work") == "contour-daemon-work");
-    CHECK(serviceNameForLabel("default") != serviceNameForLabel("work"));
+    // Names already distinguish daemon instances; without carrying that into the registration
+    // name, installing a second named daemon would overwrite the first's registration.
+    CHECK(serviceNameFor("default") == "contour-daemon");
+    CHECK(serviceNameFor("work") == "contour-daemon-work");
+    CHECK(serviceNameFor("default") != serviceNameFor("work"));
 }
 
 TEST_CASE("a registration is looked up under its current name, then its pre-phase-2 one", "[vthost][service]")
 {
     // An existing Windows `contour-daemon-default` task must stay findable, stoppable and removable.
-    CHECK(registrationNamesForLabel("default")
+    CHECK(registrationNamesFor("default")
           == std::vector<std::string> { "contour-daemon", "contour-daemon-default" });
-    CHECK(registrationNamesForLabel("work") == std::vector<std::string> { "contour-daemon-work" });
+    CHECK(registrationNamesFor("work") == std::vector<std::string> { "contour-daemon-work" });
 }
 
 TEST_CASE("a service error reports its cause, not just that one occurred", "[vthost][service]")

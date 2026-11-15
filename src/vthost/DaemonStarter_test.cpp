@@ -145,7 +145,7 @@ TEST_CASE("a registered service is not started for a socket it does not serve", 
 {
     auto log = FakeServiceLog {};
     auto fixture = OnDemandFixture {};
-    // $CONTOUR_MUX or --socket points elsewhere than the label's default the service serves.
+    // $CONTOUR_MUX or --socket points elsewhere than the name's default the service serves.
     auto starter = vthost::chooseDaemonStarter(
         registered(std::make_unique<FakeServiceBackend>(ServiceRunState::Stopped, log)),
         "/nonexistent/contour/default",

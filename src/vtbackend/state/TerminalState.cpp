@@ -430,7 +430,7 @@ TerminalState Terminal::captureState() const
     state.titles = TitlesState { .windowTitle = _windowTitle,
                                  .iconTitle = _iconTitle,
                                  .savedTitles = _savedTitles,
-                                 .tabName = _tabName,
+                                 .programTabTitle = _programTabTitle,
                                  .titleModes = static_cast<uint8_t>(_titleModes.to_ulong()) };
 
     state.profile = ProfileState { .terminalId = _terminalId,
@@ -757,7 +757,7 @@ void Terminal::commitRestore(TerminalState const& state,
     _windowTitle = state.titles.windowTitle;
     _iconTitle = state.titles.iconTitle;
     _savedTitles = state.titles.savedTitles;
-    _tabName = state.titles.tabName;
+    _programTabTitle = state.titles.programTabTitle;
     _titleModes = std::bitset<TitleModeFeatureCount>(state.titles.titleModes);
 
     _terminalId = state.profile.terminalId;
@@ -937,8 +937,8 @@ void Terminal::announceRestoredState()
         [](Terminal& terminal) { terminal._eventListener.setWindowTitle(terminal._windowTitle); },
         [](Terminal& terminal) { terminal._eventListener.setIconTitle(terminal._iconTitle); },
         [](Terminal& terminal) {
-            if (terminal._tabName)
-                terminal._eventListener.setTabName(*terminal._tabName);
+            if (terminal._programTabTitle)
+                terminal._eventListener.setProgramTabTitle(*terminal._programTabTitle);
         },
         [](Terminal& terminal) { terminal._eventListener.bufferChanged(terminal._currentScreenType); },
         [](Terminal& terminal) { terminal._eventListener.setPointerShape(terminal._pointerShapes.back()); },

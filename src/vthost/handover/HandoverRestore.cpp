@@ -279,8 +279,8 @@ void SessionHost::adoptHandoverSession(HandoverSession& session)
                                                                    .uuid = session.uuid });
         auto const uuid = session.uuid == vtcontrol::Uuid {} || known ? _objects.mint() : session.uuid;
         _objects.bind(id, uuid);
-        _objects.setLabel(vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Pane, .uuid = uuid },
-                          session.label);
+        _objects.setName(vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Pane, .uuid = uuid },
+                         session.name);
     }
 
     // A session the tree does not lay out still is a program: it gets a tab of its own.

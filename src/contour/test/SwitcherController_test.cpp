@@ -117,7 +117,7 @@ struct Switcher
         return switcherWaitUntil([this] {
             return !controller->isDiscovering()
                    && std::ranges::all_of(controller->daemons(), [&](window::SwitcherDaemon const& each) {
-                          return each.address.kind != SwitchDaemonKind::Label
+                          return each.address.kind != SwitchDaemonKind::Name
                                  || std::ranges::contains(world.heldBack, each.address.daemon)
                                  || each.listing == window::SwitcherListing::Listed
                                  || each.listing == window::SwitcherListing::Failed;

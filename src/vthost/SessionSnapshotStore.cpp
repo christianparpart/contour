@@ -220,30 +220,30 @@ std::expected<void, StoreFailure> SessionSnapshotStore::confirmRestored() const
     return failedAt(StoreStep::Replace, _fileSystem.remove(sibling(".restored"))).transform([](bool) {});
 }
 
-bool isFileNameLabel(std::string_view label)
+bool isValidDaemonName(std::string_view name)
 {
     constexpr auto Refused = std::string_view { "/\\:\0", 4 };
-    return !label.empty() && label.find_first_of(Refused) == std::string_view::npos && !label.contains("..");
+    return !name.empty() && name.find_first_of(Refused) == std::string_view::npos && !name.contains("..");
 }
 
 std::optional<std::filesystem::path> sessionSnapshotPath(std::filesystem::path const& stateDirectory,
-                                                         std::string_view label)
+                                                         std::string_view name)
 {
-    if (!isFileNameLabel(label))
+    if (!isValidDaemonName(name))
         return std::nullopt;
-    return stateDirectory / "sessions" / std::format("{}.snapshot", label);
+    return stateDirectory / "sessions" / std::format("{}.snapshot", name);
 }
 
 std::optional<std::filesystem::path> daemonSnapshotPath(std::filesystem::path const& stateDirectory,
-                                                        std::string_view label,
+                                                        std::string_view name,
                                                         std::filesystem::path const& socket,
-                                                        std::filesystem::path const& labelSocket)
+                                                        std::filesystem::path const& namedSocket)
 {
     auto const normal = socket.lexically_normal();
-    if (normal == labelSocket.lexically_normal())
-        return sessionSnapshotPath(stateDirectory, label);
+    if (normal == namedSocket.lexically_normal())
+        return sessionSnapshotPath(stateDirectory, name);
     auto const text = core::pathToUtf8(normal);
-    auto const keyed = std::format("{}@{:016x}", label, fnv1a64(std::as_bytes(std::span { text })));
+    auto const keyed = std::format("{}@{:016x}", name, fnv1a64(std::as_bytes(std::span { text })));
     return sessionSnapshotPath(stateDirectory, keyed);
 }
 

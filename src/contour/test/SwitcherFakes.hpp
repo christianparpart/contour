@@ -61,7 +61,7 @@ template <typename Predicate>
 [[nodiscard]] inline session::SwitchTarget switcherLabelled(std::string name,
                                                             session::WorkspaceTarget workspace = {})
 {
-    return session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Label,
+    return session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Name,
                                    .daemon = std::move(name),
                                    .workspace = std::move(workspace) };
 }

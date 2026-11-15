@@ -351,7 +351,7 @@ TEST_CASE("a same-daemon switch naming a control id resolves from the directory 
 {
     auto const tabbed = [](uint64_t id, std::array<uint8_t, 16> controlId) {
         return contour::window::DirectoryWorkspace { .id = id,
-                                                     .label = {},
+                                                     .name = {},
                                                      .tabs = { contour::window::DirectoryTab {} },
                                                      .controlId = controlId,
                                                      .git = {} };
@@ -419,7 +419,7 @@ TEST_CASE("a switch naming a control id the directory does not carry goes to the
         auto const directory = contour::window::WorkspaceDirectory {
             .workspaces = { contour::window::DirectoryWorkspace {
                 .id = 1,
-                .label = {},
+                .name = {},
                 .tabs = { contour::window::DirectoryTab {} },
                 .controlId = known,
                 .git = {} } },
@@ -468,7 +468,7 @@ TEST_CASE(
     using vthost::proto::SwitchDaemonKind;
     auto const dir = std::filesystem::path { "/run/user/1000/contour" };
     auto const labelled = [](std::string name) {
-        return DaemonAddress { .kind = SwitchDaemonKind::Label, .name = std::move(name) };
+        return DaemonAddress { .kind = SwitchDaemonKind::Name, .name = std::move(name) };
     };
 
     SECTION("--socket outside the label directory is no label's daemon")
@@ -581,12 +581,12 @@ TEST_CASE("an in-process window's rows name each workspace it owns and resolve a
     using contour::remote::SwitchNoop;
     using contour::remote::SwitchTo;
     auto const tabOf = [](uint64_t id) {
-        return contour::window::DirectoryTab { .id = id, .title = {}, .label = "sh", .panes = {} };
+        return contour::window::DirectoryTab { .id = id, .title = {}, .name = "sh", .panes = {} };
     };
     auto const directory = contour::window::WorkspaceDirectory {
-        .workspaces = { contour::window::DirectoryWorkspace { .id = 4, .label = "one", .tabs = { tabOf(1) } },
+        .workspaces = { contour::window::DirectoryWorkspace { .id = 4, .name = "one", .tabs = { tabOf(1) } },
                         contour::window::DirectoryWorkspace {
-                            .id = 9, .label = "two", .tabs = { tabOf(1), tabOf(2) } } },
+                            .id = 9, .name = "two", .tabs = { tabOf(1), tabOf(2) } } },
         .selected = std::nullopt,
     };
     auto const window = vtworkspace::WorkspaceId { 4 };

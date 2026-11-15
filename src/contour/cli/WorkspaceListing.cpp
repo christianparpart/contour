@@ -48,7 +48,7 @@ std::expected<uint64_t, std::string> resolveWorkspaceSpec(
     auto const candidates = std::ranges::to<std::vector>(
         workspaces | std::views::transform([&](vtcontrol::WorkspaceInfo const& info) {
             return vtcontrol::TargetCandidate { .ref = refOf(info),
-                                                .label = info.label,
+                                                .name = info.label,
                                                 .position = info.position };
         }));
     auto const resolved = vtcontrol::resolveTarget(vtcontrol::ObjectKind::Workspace, spec, candidates);

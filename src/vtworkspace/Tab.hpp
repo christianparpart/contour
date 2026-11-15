@@ -276,25 +276,25 @@ class Tab
     [[nodiscard]] bool usesMultiplePanesLabel() const noexcept { return hasMultiplePanes() && !_zoomed; }
 
     /// The resolved title, in precedence order (tabNameSourceOf()):
-    ///   1. the control-API label, if set;
+    ///   1. the user-given name, if set;
     ///   2. the runtime title override (rename), if set;
     ///   3. "Multiple panes" if usesMultiplePanesLabel();
     ///   4. the active leaf session's own title, via @p resolver.
     [[nodiscard]] std::string title(SessionTitleResolver const& resolver) const;
 
-    /// @return The tab's control-API label, which names it over everything else; empty when it has none.
-    [[nodiscard]] std::string const& label() const noexcept { return _label; }
+    /// @return The tab's user-given name, which names it over everything else; empty when it has none.
+    [[nodiscard]] std::string const& name() const noexcept { return _name; }
 
     /// @return What names the tab besides its panes, for tabNameSourceOf(); valid while the tab is unchanged.
     [[nodiscard]] TabNameCandidates nameCandidates() const noexcept
     {
-        return { .label = _label,
+        return { .name = _name,
                  .title = _runtimeTitle ? std::string_view { *_runtimeTitle } : std::string_view {} };
     }
 
-    /// Sets the tab's control-API label; an empty one clears it.
-    /// @param label The label, as the daemon holds it.
-    void setLabel(std::string label) { _label = std::move(label); }
+    /// Sets the tab's user-given name; an empty one clears it.
+    /// @param name The name, as the daemon holds it.
+    void setName(std::string name) { _name = std::move(name); }
 
     [[nodiscard]] std::optional<std::string> const& runtimeTitle() const noexcept { return _runtimeTitle; }
 
@@ -347,7 +347,7 @@ class Tab
     std::vector<PaneId> _mru; //!< Most-recently-used leaf ids, front = most recent.
     std::optional<std::string> _runtimeTitle;
     /// Not part of the view state: a daemon holds it in its object registry and states it with every layout.
-    std::string _label;
+    std::string _name;
     std::array<std::optional<vtbackend::RGBColor>, TabColorSourceCount> _colors {};
 
     void touchMru(PaneId id);

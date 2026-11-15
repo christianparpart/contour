@@ -131,7 +131,7 @@ struct DirectoryRig
     FakeLister* lister = nullptr;
     std::vector<LinkedDaemon> linked {
         LinkedDaemon { .link = DaemonLinkId { 1 },
-                       .address = { .kind = SwitchDaemonKind::Label, .name = "admin" },
+                       .address = { .kind = SwitchDaemonKind::Name, .name = "admin" },
                        .transport = nullptr,
                        .windows = { WindowOnDaemon { .window = WorkspaceId { 10 }, .workspace = 7 } } },
         LinkedDaemon { .link = DaemonLinkId { 2 },

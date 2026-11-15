@@ -109,7 +109,7 @@ namespace
 
     /// Serializes the host workspace's whole tab/pane layout for the LayoutState PDU.
     /// @param workspace The workspace.
-    /// @param objects Where its tabs' control-API labels are.
+    /// @param objects Where its tabs' names are.
     [[nodiscard]] proto::LayoutState serializeLayout(vtworkspace::Workspace& workspace,
                                                      ObjectRegistry const& objects)
     {
@@ -130,7 +130,7 @@ namespace
             if (auto const& title = tab->runtimeTitle())
                 wireTab.title = *title;
             if (auto const uuid = objects.uuidOf(tab->id()))
-                wireTab.label = objects.labelOf(
+                wireTab.name = objects.nameOf(
                     vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab, .uuid = *uuid });
             if (auto const color = tab->color())
             {
@@ -666,7 +666,7 @@ void NativeSession::announceWorkspaceMeta(vtworkspace::Workspace const& workspac
     send(0,
          proto::DecodedPdu { proto::WorkspaceMeta { .workspace = workspace.id().value,
                                                     .controlId = uuid.bytes,
-                                                    .label = std::string { _host.objects().labelOf(ref) },
+                                                    .name = std::string { _host.objects().nameOf(ref) },
                                                     .git = std::move(git),
                                                     .position = position } });
 }
@@ -712,16 +712,16 @@ void NativeSession::forgetRemovedWorkspaceMeta()
     });
 }
 
-void NativeSession::labelChanged(vtcontrol::ObjectRef const& ref, std::string_view label)
+void NativeSession::nameChanged(vtcontrol::ObjectRef const& ref, std::string_view name)
 {
     switch (ref.kind)
     {
         case vtcontrol::ObjectKind::Workspace:
             if (sharesWorkspaceMeta())
-                workspaceLabelChanged(ref, label);
+                workspaceNameChanged(ref, name);
             return;
         case vtcontrol::ObjectKind::Tab:
-            // A tab's label travels in its workspace's layout, which names the tab by it.
+            // A tab's name travels in its workspace's layout, which names the tab by it.
             if (auto const handle = _host.objects().find(ref))
                 layoutChanged(_host.model().workspaceOfTab(std::get<vtworkspace::TabId>(*handle)));
             return;
@@ -729,7 +729,7 @@ void NativeSession::labelChanged(vtcontrol::ObjectRef const& ref, std::string_vi
     }
 }
 
-void NativeSession::workspaceLabelChanged(vtcontrol::ObjectRef const& ref, std::string_view label)
+void NativeSession::workspaceNameChanged(vtcontrol::ObjectRef const& ref, std::string_view name)
 {
     if (ref.kind != vtcontrol::ObjectKind::Workspace || _phase != ConnectionPhase::Viewing || _closed)
         return;
@@ -737,13 +737,13 @@ void NativeSession::workspaceLabelChanged(vtcontrol::ObjectRef const& ref, std::
     if (!handle)
         return;
     auto const workspace = std::get<vtworkspace::WorkspaceId>(*handle).value;
-    // A workspace not announced yet is told its label in full with its layout.
+    // A workspace not announced yet is told its name in full with its layout.
     if (!_announcedMeta.contains(workspace))
         return;
     send(0,
          proto::DecodedPdu { proto::WorkspaceMeta { .workspace = workspace,
                                                     .controlId = ref.uuid.bytes,
-                                                    .label = std::string { label },
+                                                    .name = std::string { name },
                                                     .git = std::nullopt } });
 }
 
@@ -761,7 +761,7 @@ void NativeSession::sendWorkspaceGit(uint64_t workspace, std::optional<proto::Wi
          proto::DecodedPdu { proto::WorkspaceMeta {
              .workspace = workspace,
              .controlId = controlIdOf(vtworkspace::WorkspaceId { workspace }),
-             .label = std::nullopt,
+             .name = std::nullopt,
              // None, not absent: absent says nothing changed, None that the repository is gone.
              .git = git.value_or(proto::WireGitInfo {}) } });
 }
@@ -1423,18 +1423,19 @@ void NativeSession::collectLiveState(vtbackend::Terminal& terminal,
         follow.lastTitle = title;
     }
 
-    // Live tab name (OSC 30): pulled and diffed like the title -- as a string_view, so an unchanged name
-    // allocates nothing -- and stated in SessionState on a snapshot. Empty stands for "none set" on the wire;
-    // Terminal::setTabName() folds an empty name into none, so the two are one state on both ends.
-    auto const& tabName = terminal.tabName();
-    if (auto const current = tabName ? std::string_view { *tabName } : std::string_view {};
-        current != follow.lastTabName)
+    // Live program tab title (OSC 30): pulled and diffed like the title -- as a string_view, so an unchanged
+    // title allocates nothing -- and stated in SessionState on a snapshot. Empty stands for "none set" on the
+    // wire; Terminal::setProgramTabTitle() folds an empty title into none, so the two are one state on both
+    // ends.
+    auto const& programTabTitle = terminal.programTabTitle();
+    if (auto const current = programTabTitle ? std::string_view { *programTabTitle } : std::string_view {};
+        current != follow.lastProgramTabTitle)
     {
-        follow.lastTabName = current;
+        follow.lastProgramTabTitle = current;
         if (!snapshot)
         {
-            delta.tabNameChanged = 1;
-            delta.tabName = follow.lastTabName;
+            delta.programTabTitleChanged = 1;
+            delta.programTabTitle = follow.lastProgramTabTitle;
         }
     }
 
@@ -1618,7 +1619,7 @@ void NativeSession::collectLiveState(vtbackend::Terminal& terminal,
         snap.cursorLine = delta.cursorLine;
         snap.cursorColumn = delta.cursorColumn;
         snap.title = terminal.windowTitle();
-        snap.tabName = terminal.tabName().value_or(std::string {});
+        snap.programTabTitle = terminal.programTabTitle().value_or(std::string {});
         snap.cursorShape = cursorPs;
         snap.cwd = terminal.currentWorkingDirectory();
         // Stated outright, including when EMPTY: a snapshot routes this through SessionState rather
@@ -2507,20 +2508,20 @@ NativeSession::TabVerb NativeSession::serveWorkspaceVerb(proto::DecodedFrame con
             errorLog()("{}: not closing workspace {}: {}", _id, close->workspace, describe(closed.error()));
         return TabVerb::Served;
     }
-    if (auto const* set = std::get_if<proto::SetWorkspaceLabel>(&frame.pdu))
+    if (auto const* set = std::get_if<proto::SetWorkspaceName>(&frame.pdu))
     {
         if (!_negotiated->shared.contains(proto::Capability::WorkspaceMeta))
         {
             refuse(frame);
             return TabVerb::Served;
         }
-        // Set on the object registry, whose label observers tell every client and every control subscriber.
+        // Set on the object registry, whose name observers tell every client and every control subscriber.
         auto const uuid = _host.objects().uuidOf(vtworkspace::WorkspaceId { set->workspace });
         if (!uuid)
             errorLog()("{}: ignoring {}: there is no such workspace", _id, proto::describe(frame.pdu));
         else
-            _host.objects().setLabel(
-                vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace, .uuid = *uuid }, set->label);
+            _host.objects().setName(
+                vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace, .uuid = *uuid }, set->name);
         return TabVerb::Served;
     }
     if (std::holds_alternative<proto::ReportFocus>(frame.pdu))
@@ -3015,8 +3016,8 @@ void NativeSession::attachClient(uint64_t serial,
     _clientTicket = _services.daemon.get().admitClient();
     _streamSubscription.emplace(_host, *this, &SessionHost::subscribeStream, &SessionHost::unsubscribeStream);
     _layoutSubscription.emplace(_host, _layoutObserver, &SessionHost::subscribe, &SessionHost::unsubscribe);
-    _labelSubscription.emplace(_host.objects().onLabelChanged(
-        [this](vtcontrol::ObjectRef const& ref, std::string_view label) { labelChanged(ref, label); }));
+    _nameSubscription.emplace(_host.objects().onNameChanged(
+        [this](vtcontrol::ObjectRef const& ref, std::string_view name) { nameChanged(ref, name); }));
 
     // Adopted BEFORE the spawn below: that session exists because THIS client attached, so it
     // inherits this client's profile like any tab the client goes on to open. A profile the host

@@ -464,12 +464,12 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     [[nodiscard]] std::expected<vtworkspace::WorkspaceId, NewWorkspaceError> newWorkspaceFor(
         vtworkspace::WorkspaceId window, std::string label);
 
-    /// (In-process) Labels @p workspace, which the in-process directory of its window lists
-    /// (InProcessDirectory); an empty label removes it. Not for a daemon's workspace, whose label is its
+    /// (In-process) Names @p workspace, which the in-process directory of its window lists
+    /// (InProcessDirectory); an empty name removes it. Not for a daemon's workspace, whose name is its
     /// daemon's.
     /// @param workspace The workspace.
-    /// @param label Its label.
-    void setWorkspaceLabel(vtworkspace::WorkspaceId workspace, std::string label);
+    /// @param name Its name.
+    void setWorkspaceName(vtworkspace::WorkspaceId workspace, std::string name);
 
     /// Renames the workspace @p workspace that @p window lists: in its daemon for a window a daemon serves
     /// (the daemon's WorkspaceMeta then reaches every window), in this process otherwise. A workspace the
@@ -544,8 +544,8 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     /// @param workspace The workspace's id, as the window's directory lists it.
     void confirmCloseWorkspace(window::WindowController& window, uint64_t workspace);
 
-    /// @return The labels of the in-process workspaces.
-    [[nodiscard]] WorkspaceLabels const& workspaceLabels() const noexcept { return _workspaceLabels; }
+    /// @return The names of the in-process workspaces.
+    [[nodiscard]] WorkspaceNames const& workspaceNames() const noexcept { return _workspaceNames; }
 
     /// Tells the windows bound to @p binding that what its directory lists changed
     /// (window::WindowController::workspaceDirectoryChanged), as a daemon's connection announces it. GUI
@@ -2547,7 +2547,7 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     // What an in-process window lists of its workspaces (InProcessDirectory): their labels, the status of
     // their panes' sessions and their git state, which one tracker looks up for every window. The directories
     // come last, so that they go before what they read.
-    WorkspaceLabels _workspaceLabels;
+    WorkspaceNames _workspaceNames;
     std::unique_ptr<window::PaneStatusLookup> _paneStatus;
     std::unique_ptr<vthost::WorkspaceGitTracker> _gitTracker; ///< Null where git is not tracked.
     std::unordered_map<window::WindowId, std::unique_ptr<InProcessDirectory>> _inProcessDirectories;

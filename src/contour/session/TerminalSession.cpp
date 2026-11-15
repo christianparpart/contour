@@ -3079,7 +3079,7 @@ void TerminalSession::postToManager(Change change)
 
 void TerminalSession::refreshGuiTabInfoForStatusLine()
 {
-    // setWindowTitle()/setTabName() are invoked on the parser thread while _stateMutex is held (ESU
+    // setWindowTitle()/setProgramTabTitle() are invoked on the parser thread while _stateMutex is held (ESU
     // path), so we must not call _manager->update() directly: it rebuilds the tab info from every
     // session and would re-lock that non-recursive mutex (the deadlock scheduleRedraw() was changed to
     // avoid). Post the refresh to the GUI thread instead, where it runs free of the parser-thread lock.
@@ -3105,7 +3105,7 @@ void TerminalSession::setWindowTitle(string_view title)
     refreshGuiTabInfoForStatusLine();
 }
 
-void TerminalSession::setTabName(string_view name)
+void TerminalSession::setProgramTabTitle(string_view name)
 {
     // A tab-name change (via the tab-naming escape sequence) feeds the indicator status-line tab label;
     // refresh it on the GUI thread since scheduleRedraw() no longer does (see
@@ -7602,7 +7602,7 @@ namespace
     [[nodiscard]] SwitchTarget switchTargetOf(actions::DaemonRef const& daemon)
     {
         return { .kind = daemon.kind == actions::DaemonRefKind::Host ? vthost::proto::SwitchDaemonKind::Host
-                                                                     : vthost::proto::SwitchDaemonKind::Label,
+                                                                     : vthost::proto::SwitchDaemonKind::Name,
                  .daemon = daemon.name,
                  .workspace = {} };
     }

@@ -111,7 +111,7 @@ std::string daemonPhrase(vthost::proto::SwitchDaemonKind kind,
     {
         case vthost::proto::SwitchDaemonKind::Host: return std::format("the host {}", shown);
         case vthost::proto::SwitchDaemonKind::Same:
-        case vthost::proto::SwitchDaemonKind::Label: break;
+        case vthost::proto::SwitchDaemonKind::Name: break;
     }
     return std::format("the daemon {}", shown);
 }
@@ -173,7 +173,7 @@ PermissionPrompt switchWindowPrompt(SwitchTarget const& target,
                                     std::string_view sourceDaemon,
                                     SwitchRemembering remembering)
 {
-    auto const source = daemonPhrase(vthost::proto::SwitchDaemonKind::Label, sourceDaemon, "this daemon");
+    auto const source = daemonPhrase(vthost::proto::SwitchDaemonKind::Name, sourceDaemon, "this daemon");
     auto const destination = target.kind == vthost::proto::SwitchDaemonKind::Same
                                  ? std::string { "the daemon it is on" }
                                  : daemonPhrase(target.kind, target.daemon, "another daemon");

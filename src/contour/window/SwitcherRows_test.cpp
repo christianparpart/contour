@@ -55,7 +55,7 @@ namespace
 
 [[nodiscard]] SwitchTarget label(std::string name, contour::session::WorkspaceTarget workspace = {})
 {
-    return SwitchTarget { .kind = SwitchDaemonKind::Label,
+    return SwitchTarget { .kind = SwitchDaemonKind::Name,
                           .daemon = std::move(name),
                           .workspace = std::move(workspace) };
 }

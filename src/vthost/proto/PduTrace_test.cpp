@@ -116,7 +116,7 @@ TEST_CASE("summarize renders each PDU's identifying fields", "[vthost][proto]")
     SECTION("SessionState sizes the tab name, never transcribing it")
     {
         auto state = SessionState {};
-        state.tabName = "secret";
+        state.programTabTitle = "secret";
         auto const text = summarize(DecodedPdu { state });
         CHECK(text.contains("tabname=6ch"));
         CHECK_FALSE(text.contains("secret"));
@@ -158,7 +158,7 @@ TEST_CASE("the PDU trace never reveals payload contents", "[vthost][proto]")
         CHECK_FALSE(text.contains("hi!"));               // Input keystrokes
         CHECK_FALSE(text.contains("secret-project"));    // the window title
         CHECK_FALSE(text.contains("/home/user/secret")); // the OSC 7 working directory
-        // NOT the bare word "body": SessionNotify's own summary labels a field that way, so a
+        // NOT the bare word "body": SessionNotify's own summary names a field that way, so a
         // sentinel has to be one no field NAME can match.
         CHECK_FALSE(text.contains("secret-title"));       // a desktop notification's title
         CHECK_FALSE(text.contains("secret-body"));        // a desktop notification's body
@@ -168,7 +168,7 @@ TEST_CASE("the PDU trace never reveals payload contents", "[vthost][proto]")
         // The daemon's machine id and host name: they say which machine a session runs on.
         CHECK_FALSE(text.contains("secret-machine-id"));
         CHECK_FALSE(text.contains("secret-host"));
-        // A workspace's label and the branch its repository is on: the user's words.
+        // A workspace's name and the branch its repository is on: the user's words.
         CHECK_FALSE(text.contains("secret-label"));
         CHECK_FALSE(text.contains("secret-branch"));
     }
@@ -383,9 +383,9 @@ TEST_CASE("the trace names the new PDUs without revealing a title", "[vthost][pr
     CHECK_FALSE(proven.contains("SECRET"));
     CHECK(toString(PduType::WorkspaceMeta) == "WorkspaceMeta");
     CHECK(summarize(DecodedPdu { WorkspaceMeta { .workspace = 2 } }) == "workspace=2");
-    // The label and the branch are told by presence only: both are the user's words.
+    // The name and the branch are told by presence only: both are the user's words.
     CHECK(summarize(DecodedPdu { WorkspaceMeta { .workspace = 2,
-                                                 .label = "secret",
+                                                 .name = "secret",
                                                  .git = WireGitInfo { .branch = "secret",
                                                                       .kind = GitHeadKindWire::Branch,
                                                                       .ahead = 1,

@@ -58,7 +58,7 @@ namespace contour::window
             group.tabs.push_back(command::TabChoice {
                 .workspace = static_cast<std::uint32_t>(workspaceIndex + 1),
                 .tab = static_cast<std::uint32_t>(tabIndex + 1),
-                .title = tab.label.empty() ? std::format("Tab {}", tabIndex + 1) : tab.label });
+                .title = tab.name.empty() ? std::format("Tab {}", tabIndex + 1) : tab.name });
         }
         if (!group.tabs.empty())
             groups.push_back(std::move(group));

@@ -111,21 +111,21 @@ struct FakeSidebarHost final: window::ISidebarHost
 }
 
 /// @param id The workspace's id.
-/// @param label Its label.
+/// @param name Its name.
 /// @param panes Its panes, one tab each, the tab's id the pane's key.
 /// @return The workspace.
 [[nodiscard]] inline window::DirectoryWorkspace directoryWorkspaceOf(uint64_t id,
-                                                                     std::string label,
+                                                                     std::string name,
                                                                      std::vector<window::DirectoryPane> panes)
 {
     auto workspace = window::DirectoryWorkspace {};
     workspace.id = id;
-    workspace.label = std::move(label);
+    workspace.name = std::move(name);
     for (auto& pane: panes)
     {
         auto tab = window::DirectoryTab {};
         tab.id = pane.key.value;
-        tab.label = pane.title;
+        tab.name = pane.title;
         tab.panes.push_back(std::move(pane));
         workspace.tabs.push_back(std::move(tab));
     }

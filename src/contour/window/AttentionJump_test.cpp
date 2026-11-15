@@ -36,10 +36,10 @@ DirectoryPane paneOf(uint64_t key, std::vector<ProgramStatusRecord> records = {}
 /// One workspace per list, one tab per pane, in the order given.
 WorkspaceDirectory directoryOf(std::vector<DirectoryPane> panes)
 {
-    auto workspace = DirectoryWorkspace { .id = 1, .label = {}, .tabs = {} };
+    auto workspace = DirectoryWorkspace { .id = 1, .name = {}, .tabs = {} };
     for (auto& pane: panes)
         workspace.tabs.push_back(
-            DirectoryTab { .id = pane.key.value, .title = {}, .label = {}, .panes = { pane } });
+            DirectoryTab { .id = pane.key.value, .title = {}, .name = {}, .panes = { pane } });
     return WorkspaceDirectory { .workspaces = { std::move(workspace) }, .selected = std::nullopt };
 }
 } // namespace

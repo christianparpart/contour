@@ -136,9 +136,9 @@ using SavedHostResolver = std::function<std::expected<std::shared_ptr<ITransport
 struct ControlEndpointOptions
 {
     std::string daemon {}; ///< `--daemon`: a socket path, `HOST:PORT`, or a saved host; empty for none.
-    /// `--label`: a local daemon by its socket label, as `contour client --label` reads it; empty for none.
+    /// `--label`: a local daemon by its socket name, as `contour client --label` reads it; empty for none.
     /// It names the endpoint, so it wins over `$CONTOUR_DAEMON`, and is not combined with @ref daemon.
-    std::string label {};
+    std::string name {};
     std::string token {};    ///< The token a TCP endpoint is sent.
     std::string tlsCaPem {}; ///< The CA certificate (PEM) a TCP endpoint is verified against; empty for none.
     /// `--daemon-fingerprint`: the fingerprint a TCP endpoint without a CA must present on first contact;
@@ -159,7 +159,7 @@ struct ControlEndpointOptions
 
 /// Picks the daemon a control client talks to.
 ///
-/// An `options.label` names the local daemon of that label (vthost::muxSocketPath) and nothing else is read.
+/// An `options.name` names the local daemon of that name (vthost::muxSocketPath) and nothing else is read.
 /// Otherwise the spec is the first non-empty of `options.daemon`, `$CONTOUR_DAEMON`, and the default socket.
 /// A spec starting with `/` or `.` is a socket path even with a colon in it; a `HOST:PORT` spec is TCP+TLS
 /// with the options' token and CA; one holding `://`, or a bare word, goes to the saved-host resolver when

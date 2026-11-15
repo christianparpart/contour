@@ -26,11 +26,11 @@ namespace vthost
 /// An opaque 128-bit object id. The snapshot keeps raw bytes, so it names no id type of a later phase.
 using ObjectUuid = std::array<std::uint8_t, 16>;
 
-/// The identity of a workspace, tab or pane: its id and its label.
+/// The identity of a workspace, tab or pane: its id and its name.
 struct ObjectIdentityRecord
 {
     ObjectUuid uuid {};
-    std::optional<std::string> label {};
+    std::optional<std::string> name {};
 
     bool operator==(ObjectIdentityRecord const&) const = default;
 };

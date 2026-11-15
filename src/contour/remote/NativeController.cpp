@@ -1227,8 +1227,8 @@ void NativeController::onWorkspaceMeta(vthost::proto::WorkspaceMeta const& meta)
     // Field by field: an absent one is unchanged, an empty label clears it, and a git state of kind None says
     // the workspace is in no repository anymore.
     stated.controlId = meta.controlId;
-    if (meta.label)
-        stated.label = *meta.label;
+    if (meta.name)
+        stated.name = *meta.name;
     if (meta.git)
         stated.git = directoryGitOf(*meta.git);
     if (meta.position)
@@ -1546,7 +1546,7 @@ contour::session::RemoteRouting NativeController::requestRemoteRenameWorkspace(u
     // The client's send verbs must run on the reactor thread that owns it.
     _reactor.post([this, workspace, label = std::string { label }]() mutable {
         if (_client != nullptr)
-            std::ignore = _client->setWorkspaceLabel(workspace, std::move(label));
+            std::ignore = _client->setWorkspaceName(workspace, std::move(label));
     });
     return contour::session::RemoteRouting::Routed;
 }

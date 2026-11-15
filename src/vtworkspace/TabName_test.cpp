@@ -9,33 +9,33 @@
 using vtworkspace::TabNameCandidates;
 using vtworkspace::TabNameSource;
 
-TEST_CASE("TabName: a label names a tab over its title, either over its panes", "[tab][name]")
+TEST_CASE("TabName: a name wins over a tab's title, either over its panes", "[tab][name]")
 {
     struct Row
     {
-        std::string_view label;
+        std::string_view name;
         std::string_view title;
         TabNameSource source;
-        std::string_view name;
+        std::string_view expected;
     };
     constexpr auto Panes = std::string_view { "zsh" };
     auto const rows = std::array {
-        Row { .label = "", .title = "", .source = TabNameSource::Panes, .name = Panes },
-        Row { .label = "", .title = "renamed", .source = TabNameSource::Title, .name = "renamed" },
-        Row { .label = "build", .title = "", .source = TabNameSource::Label, .name = "build" },
-        Row { .label = "build", .title = "renamed", .source = TabNameSource::Label, .name = "build" },
+        Row { .name = "", .title = "", .source = TabNameSource::Panes, .expected = Panes },
+        Row { .name = "", .title = "renamed", .source = TabNameSource::Title, .expected = "renamed" },
+        Row { .name = "build", .title = "", .source = TabNameSource::Name, .expected = "build" },
+        Row { .name = "build", .title = "renamed", .source = TabNameSource::Name, .expected = "build" },
     };
     for (auto const& row: rows)
     {
-        INFO("label '" << row.label << "', title '" << row.title << "'");
-        auto const candidates = TabNameCandidates { .label = row.label, .title = row.title };
+        INFO("name '" << row.name << "', title '" << row.title << "'");
+        auto const candidates = TabNameCandidates { .name = row.name, .title = row.title };
         CHECK(vtworkspace::tabNameSourceOf(candidates) == row.source);
-        CHECK(vtworkspace::tabNameOf(candidates, Panes) == row.name);
+        CHECK(vtworkspace::tabNameOf(candidates, Panes) == row.expected);
     }
 }
 
 TEST_CASE("TabName: the decision is a constant expression", "[tab][name]")
 {
-    STATIC_CHECK(vtworkspace::tabNameSourceOf({ .label = "a", .title = "b" }) == TabNameSource::Label);
+    STATIC_CHECK(vtworkspace::tabNameSourceOf({ .name = "a", .title = "b" }) == TabNameSource::Name);
     STATIC_CHECK(vtworkspace::tabNameOf({}, "pane") == "pane");
 }

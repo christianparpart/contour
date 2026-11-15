@@ -239,11 +239,11 @@ struct ColorsState
 /// The titles.
 struct TitlesState
 {
-    std::string windowTitle {};              ///< OSC 2.
-    std::string iconTitle {};                ///< OSC 1.
-    std::vector<SavedTitles> savedTitles {}; ///< XTPUSHTITLE, deepest first.
-    std::optional<std::string> tabName {};   ///< The tab's name.
-    uint8_t titleModes = 0;                  ///< XTSMTITLE, a bit per feature.
+    std::string windowTitle {};                    ///< OSC 2.
+    std::string iconTitle {};                      ///< OSC 1.
+    std::vector<SavedTitles> savedTitles {};       ///< XTPUSHTITLE, deepest first.
+    std::optional<std::string> programTabTitle {}; ///< The tab title the application set (OSC 30).
+    uint8_t titleModes = 0;                        ///< XTSMTITLE, a bit per feature.
 
     /// Lists the fields for the state codec.
     void visitFields(this auto& self, auto& visitor)
@@ -251,7 +251,7 @@ struct TitlesState
         visitor(1, self.windowTitle);
         visitor(2, self.iconTitle);
         visitor(3, self.savedTitles);
-        visitor(4, self.tabName);
+        visitor(4, self.programTabTitle);
         visitor(5, self.titleModes);
     }
 };

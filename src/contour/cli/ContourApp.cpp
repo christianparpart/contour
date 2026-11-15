@@ -1175,7 +1175,7 @@ namespace
         return vthost::daemonSnapshotPath(vthost::daemonStateDirectory(env),
                                           label,
                                           fileSystem.weaklyCanonical(socket),
-                                          fileSystem.weaklyCanonical(vthost::labelSocketPath(label, env)));
+                                          fileSystem.weaklyCanonical(vthost::namedSocketPath(label, env)));
     }
 
     /// @param handover What a live upgrade handed over; nullopt for a daemon that starts afresh.
@@ -1546,7 +1546,7 @@ int ContourApp::serveDaemon(DaemonVerbOptions const& options,
     auto const& resolved = ownProfile->resolved;
     // Read before the configuration moves into the catalog. Not reloaded: a running daemon keeps the file
     // and the schedule it started with.
-    auto const daemonLabel = vthost::socketLabelOf(options.label).name;
+    auto const daemonLabel = vthost::daemonNameFromOption(options.label).name;
     if (auto snapshotPath = snapshotPathOf(processEnvironment(), daemonLabel, config.socketPath))
         config.persistence =
             workspacePersistenceOf(hostConfig->daemon.value().restore, *std::move(snapshotPath));
@@ -1586,15 +1586,15 @@ int ContourApp::serveDaemon(DaemonVerbOptions const& options,
     // The extensions' modules and configuration are resolved here, on the daemon's side, as its sessions'
     // shells are; they run in the daemon, where each session's terminal is.
     auto extensionServices = DaemonExtensionResources { childDescriptorLimitOf(keeper) };
-    auto const label = vthost::socketLabelOf(options.label).name;
+    auto const label = vthost::daemonNameFromOption(options.label).name;
     auto const& fileSystem = core::platform::NativeFileSystem::instance();
     config.extensions = daemonExtensionsOf(
         resolved,
         vtextension::DaemonIdentity { .label = label,
-                                      .defaultLabel = vthost::DefaultSocketLabel,
+                                      .defaultLabel = vthost::DefaultDaemonName,
                                       .socketPath = fileSystem.weaklyCanonical(config.socketPath),
                                       .labelSocketPath =
-                                          fileSystem.weaklyCanonical(vthost::labelSocketPath(label)) },
+                                          fileSystem.weaklyCanonical(vthost::namedSocketPath(label)) },
         std::filesystem::absolute(
             core::pathFromUtf8(commandLine().front()).value_or(std::filesystem::path {}))
             .parent_path(),
@@ -1719,7 +1719,7 @@ int ContourApp::keeperAction(DaemonVerbOptions const& options)
     // The TCP options are the command line's alone, so they are refused here, by the process the user
     // started, rather than by a daemon that cannot start with them: the daemon reads them again, the same
     // way.
-    if (auto const nativeTcp = nativeTcpOption(options, vthost::socketLabelOf(options.label).name);
+    if (auto const nativeTcp = nativeTcpOption(options, vthost::daemonNameFromOption(options.label).name);
         !nativeTcp)
     {
         cerr << std::format("contour daemon: the TCP listener is not served: {}\n", nativeTcp.error());
@@ -1985,13 +1985,13 @@ int ContourApp::stdioRelayAction(std::shared_ptr<vthost::IByteStream> client,
     auto const placement = vtpty::makeDefaultProcessPlacement();
     // The registered user service when there is one, so a stopped service is started rather than an
     // on-demand daemon beside it.
-    auto const label = vthost::socketLabelOf(options.label).name;
+    auto const label = vthost::daemonNameFromOption(options.label).name;
     auto starter = vthost::chooseDaemonStarter(
         vthost::findRepairedRegisteredService(label,
                                               vthost::nativeServiceBackendFactory(services),
                                               nativeRepairInputs(services.fileSystem),
                                               vthost::RegistrationUse::Start),
-        vthost::labelSocketPath(label, services.environment),
+        vthost::namedSocketPath(label, services.environment),
         vthost::OnDemandSpawn { .endpoint = vthost::UnixEndpoint { .socketPath = socketPath },
                                 .spawner = *spawner,
                                 .binary = *binary,
@@ -2254,7 +2254,7 @@ int ContourApp::daemonVerbAction(DaemonVerb verb, std::string const& prefix)
         cerr << std::format("contour daemon: {}\n", !label ? label.error() : socketOption.error());
         return exitCode(ExitStatus::BadUsage);
     }
-    auto const socketLabel = vthost::socketLabelOf(*label);
+    auto const socketLabel = vthost::daemonNameFromOption(*label);
     auto const socket = vthost::muxSocketPath(socketLabel, *socketOption);
     // Never starts a daemon: asking about one, or stopping it, must not bring one up. A stop waits for the
     // daemon's last snapshot.
@@ -2333,7 +2333,7 @@ int ContourApp::daemonRelocateAction()
     }
     auto const& files = core::platform::NativeFileSystem::instance();
     auto const sockets = daemonSocketsIn(
-        files, vthost::labelSocketPath(vthost::DefaultSocketLabel, processEnvironment()).parent_path());
+        files, vthost::namedSocketPath(vthost::DefaultDaemonName, processEnvironment()).parent_path());
     auto const argv0 = core::pathFromUtf8(commandLine().front()).value_or(std::filesystem::path {});
     auto const binary =
         vthost::makeOwnDaemonBinary(processEnvironment(), files, CONTOUR_VERSION_STRING, argv0);
@@ -2416,7 +2416,7 @@ int ContourApp::runDaemonInBackground(DaemonVerbOptions const& options,
 
 int ContourApp::daemonServiceAction(DaemonServiceAction action, std::string const& prefix)
 {
-    auto const socketLabel = vthost::socketLabelOf(parameters().get<string>(prefix + ".label"));
+    auto const socketLabel = vthost::daemonNameFromOption(parameters().get<string>(prefix + ".label"));
     auto const& label = socketLabel.name;
 
     auto const mode = [&]() -> std::optional<vthost::ServiceStartMode> {
@@ -2444,7 +2444,7 @@ int ContourApp::daemonServiceAction(DaemonServiceAction action, std::string cons
     // For a non-install verb the registration decides which backend owns it, and under which name: a
     // task registered by an older release carries the older name, so `status` must not report "not
     // installed" merely because it asked the newer name or the SCM.
-    auto name = vthost::serviceNameForLabel(label);
+    auto name = vthost::serviceNameFor(label);
     auto backend = std::unique_ptr<vthost::ServiceBackend> {};
     if (mode)
         backend = vthost::makeServiceBackend(*mode, name, services);
@@ -2581,7 +2581,7 @@ int ContourApp::daemonServiceAction(DaemonServiceAction action, std::string cons
 }
 
 std::expected<std::vector<std::string>, std::string> ContourApp::daemonServiceCommandLine(
-    std::string const& prefix, vthost::SocketLabel const& label, vthost::DaemonLaunchStyle launchStyle) const
+    std::string const& prefix, vthost::DaemonName const& label, vthost::DaemonLaunchStyle launchStyle) const
 {
     // Absolute, and resolved NOW: a registration outlives the shell that created it, and a
     // service's %TEMP%/%USERNAME% need not match the interactive user's — so a path left to be

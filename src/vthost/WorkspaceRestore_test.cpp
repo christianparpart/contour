@@ -430,9 +430,9 @@ TEST_CASE("restored workspaces, tabs and panes keep the UUIDs and labels they we
     REQUIRE(source->createWorkspace() != nullptr);
     auto& objects = source->objects();
     auto const firstPane = tab->rootPane()->first()->session();
-    objects.setLabel({ vtcontrol::ObjectKind::Pane, *objects.uuidOf(firstPane) }, "logs");
-    objects.setLabel({ vtcontrol::ObjectKind::Tab, *objects.uuidOf(tab->id()) }, "ops");
-    objects.setLabel({ vtcontrol::ObjectKind::Workspace, *objects.uuidOf(source->workspaceId()) }, "main");
+    objects.setName({ vtcontrol::ObjectKind::Pane, *objects.uuidOf(firstPane) }, "logs");
+    objects.setName({ vtcontrol::ObjectKind::Tab, *objects.uuidOf(tab->id()) }, "ops");
+    objects.setName({ vtcontrol::ObjectKind::Workspace, *objects.uuidOf(source->workspaceId()) }, "main");
 
     auto const captured = captureWorkspace(*source, { .scrollback = ScrollbackPersistence::Off }, Now);
     auto decoded = decodeSnapshot(encodeSnapshot(captured));
@@ -441,15 +441,15 @@ TEST_CASE("restored workspaces, tabs and panes keep the UUIDs and labels they we
     REQUIRE(snap.workspaces.size() == 2);
     REQUIRE(snap.workspaces[0].identity.has_value());
     CHECK(snap.workspaces[0].identity->uuid == objects.uuidOf(source->workspaceId())->bytes);
-    CHECK(snap.workspaces[0].identity->label == "main");
+    CHECK(snap.workspaces[0].identity->name == "main");
     REQUIRE(snap.workspaces[0].tabs.front().identity.has_value());
-    CHECK(snap.workspaces[0].tabs.front().identity->label == "ops");
+    CHECK(snap.workspaces[0].tabs.front().identity->name == "ops");
     REQUIRE(snap.workspaces[0].tabs.front().root.children.size() == 2);
     auto const& firstLeaf = snap.workspaces[0].tabs.front().root.children[0].pane;
     REQUIRE(firstLeaf.identity.has_value());
     CHECK(firstLeaf.identity->uuid == objects.uuidOf(firstPane)->bytes);
-    CHECK(firstLeaf.identity->label == "logs");
-    CHECK_FALSE(snap.workspaces[0].tabs.front().root.children[1].pane.identity->label.has_value());
+    CHECK(firstLeaf.identity->name == "logs");
+    CHECK_FALSE(snap.workspaces[0].tabs.front().root.children[1].pane.identity->name.has_value());
 
     h.recorded.overrides.clear();
     auto const restored = h.restore(WorkspaceRestore { .snapshot = snap });
@@ -463,10 +463,9 @@ TEST_CASE("restored workspaces, tabs and panes keep the UUIDs and labels they we
     CHECK(now.uuidOf(restoredFirst) == objects.uuidOf(firstPane));
     CHECK(now.uuidOf(restoredTab->id()) == objects.uuidOf(tab->id()));
     CHECK(now.uuidOf(restored->workspaceId()) == objects.uuidOf(source->workspaceId()));
-    CHECK(now.labelOf({ vtcontrol::ObjectKind::Pane, *objects.uuidOf(firstPane) }) == "logs");
-    CHECK(now.labelOf({ vtcontrol::ObjectKind::Tab, *objects.uuidOf(tab->id()) }) == "ops");
-    CHECK(now.labelOf({ vtcontrol::ObjectKind::Workspace, *objects.uuidOf(source->workspaceId()) })
-          == "main");
+    CHECK(now.nameOf({ vtcontrol::ObjectKind::Pane, *objects.uuidOf(firstPane) }) == "logs");
+    CHECK(now.nameOf({ vtcontrol::ObjectKind::Tab, *objects.uuidOf(tab->id()) }) == "ops");
+    CHECK(now.nameOf({ vtcontrol::ObjectKind::Workspace, *objects.uuidOf(source->workspaceId()) }) == "main");
     // The first restored spawn is the first pane, and its shell is told the ids it came back with.
     REQUIRE(h.recorded.overrides.size() == source->sessionCount());
     CHECK(exportedRefsOf(h.recorded.overrides.front()) == refsOf(*restored, restoredFirst));
@@ -475,7 +474,7 @@ TEST_CASE("restored workspaces, tabs and panes keep the UUIDs and labels they we
 TEST_CASE("a snapshot that repeats a UUID restores the second object under a fresh one",
           "[vthost][snapshot][restore][ids]")
 {
-    auto const repeated = ObjectIdentityRecord { .uuid = { 0x01, 0x9a }, .label = "twin" };
+    auto const repeated = ObjectIdentityRecord { .uuid = { 0x01, 0x9a }, .name = "twin" };
     auto h = RestoreHarness {};
     auto const host =
         h.restore(WorkspaceRestore { .snapshot = workspaceOf({ PaneSnapshot { .identity = repeated },

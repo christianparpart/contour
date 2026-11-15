@@ -176,7 +176,7 @@ class ContourApp: public core::cli::App
     /// @return The argv (argv[0] first), or why the options could not be resolved.
     [[nodiscard]] std::expected<std::vector<std::string>, std::string> daemonServiceCommandLine(
         std::string const& prefix,
-        vthost::SocketLabel const& label,
+        vthost::DaemonName const& label,
         vthost::DaemonLaunchStyle launchStyle) const;
 
     /// The daemon's log destination (installDaemonLogging()): categories hold a reference into it, so it

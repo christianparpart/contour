@@ -898,7 +898,7 @@ struct SessionSpawnRequest
     /// (@see SessionHost::interruptedCommandOf). Empty for none.
     std::string interruptedCommand {};
 
-    /// The UUIDs and labels the objects this spawn creates come back with, instead of fresh ones: a restored
+    /// The UUIDs and names the objects this spawn creates come back with, instead of fresh ones: a restored
     /// workspace keeps its ids. Nullopt mints them all.
     std::optional<PresetObjectIds> presetIds {};
 
@@ -1211,10 +1211,10 @@ class SessionHost final: public vtworkspace::ModelEvents
     ///         and another workspace takes this role (@see discardWorkspace).
     [[nodiscard]] vtworkspace::WorkspaceId workspaceId() const noexcept { return _workspace; }
 
-    /// @return The UUIDs and labels of this host's workspaces, tabs and panes.
+    /// @return The UUIDs and names of this host's workspaces, tabs and panes.
     [[nodiscard]] ObjectRegistry& objects() noexcept { return _objects; }
 
-    /// @return The UUIDs and labels of this host's workspaces, tabs and panes.
+    /// @return The UUIDs and names of this host's workspaces, tabs and panes.
     [[nodiscard]] ObjectRegistry const& objects() const noexcept { return _objects; }
 
     /// @return The authoritative client area, in cells: layout projection and
@@ -1837,7 +1837,7 @@ class SessionHost final: public vtworkspace::ModelEvents
     struct StagedTab
     {
         vtcontrol::Uuid uuid {};
-        std::string label {};
+        std::string name {};
     };
 
     /// @param incoming What this creation overrides about the session.
@@ -1948,8 +1948,8 @@ class SessionHost final: public vtworkspace::ModelEvents
 
     /// @return The name a workspace made from @p request starts with: after the folder its first shell
     ///         @p seeded starts in (@see vtbackend::defaultWorkspaceName); empty when that is unknown.
-    [[nodiscard]] std::string defaultWorkspaceLabel(SessionSpawnRequest const& request,
-                                                    vtworkspace::SessionId seeded) const;
+    [[nodiscard]] std::string defaultWorkspaceName(SessionSpawnRequest const& request,
+                                                   vtworkspace::SessionId seeded) const;
 
     /// Destroys session @p session and forgets everything kept beside it, so no erase site can leave a
     /// stale entry behind.
@@ -2521,7 +2521,7 @@ class SessionHost final: public vtworkspace::ModelEvents
     std::vector<RestoredWorkspace>
         _restoreAnnouncement {}; ///< What @ref takeRestoreAnnouncement has yet to tell.
 
-    /// The UUIDs and labels of workspaces, tabs and panes. Declared before the model, whose events bind into
+    /// The UUIDs and names of workspaces, tabs and panes. Declared before the model, whose events bind into
     /// it.
     ObjectRegistry _objects;
     /// The UUID of the tab a creation path is about to add; bound by `tabAdded`, then cleared.

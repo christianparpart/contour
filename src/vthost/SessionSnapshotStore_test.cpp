@@ -312,15 +312,15 @@ TEST_CASE("sessionSnapshotPath puts one file per label under sessions/", "[vthos
     CHECK(sessionSnapshotPath("/s/contour", "default")
           == fs::path { "/s/contour/sessions/default.snapshot" });
     CHECK(sessionSnapshotPath("/s/contour", "work") == fs::path { "/s/contour/sessions/work.snapshot" });
-    for (auto const label: { std::string_view { "../x" },
-                             std::string_view { "a/b" },
-                             std::string_view { "a\\b" },
-                             std::string_view { "" },
-                             std::string_view { ".." },
-                             std::string_view { "C:x" },
-                             std::string_view { "a:" },
-                             std::string_view { "a\0b", 3 } })
-        CHECK_FALSE(sessionSnapshotPath("/s/contour", label));
+    for (auto const name: { std::string_view { "../x" },
+                            std::string_view { "a/b" },
+                            std::string_view { "a\\b" },
+                            std::string_view { "" },
+                            std::string_view { ".." },
+                            std::string_view { "C:x" },
+                            std::string_view { "a:" },
+                            std::string_view { "a\0b", 3 } })
+        CHECK_FALSE(sessionSnapshotPath("/s/contour", name));
 }
 
 TEST_CASE("daemonSnapshotPath keys a daemon at a socket of its own by that socket",

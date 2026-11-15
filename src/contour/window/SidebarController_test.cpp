@@ -84,7 +84,7 @@ struct ScriptedSource final: IWorkspaceDirectorySource
     auto tab = DirectoryTab {};
     tab.id = id;
     tab.title = "t";
-    tab.label = "t";
+    tab.name = "t";
     for (auto const key: panes)
     {
         auto pane = DirectoryPane {};
@@ -154,7 +154,7 @@ TEST_CASE("a sidebar action whose pane is not there waits and never runs on the 
     REQUIRE(shown.has_value());
     source.listed.selected = shown;
     source.listed.workspaces = { DirectoryWorkspace {
-        .id = *shown, .label = "w", .tabs = { tabHolding(901, { 9001 }), tabHolding(902, { 9002 }) } } };
+        .id = *shown, .name = "w", .tabs = { tabHolding(901, { 9001 }), tabHolding(902, { 9002 }) } } };
     window->setDirectorySource(&source);
 
     window->sidebar().openContextMenu(tabRowOf(*window, 901), QPointF {});
@@ -181,9 +181,9 @@ TEST_CASE("a refused workspace selection drops the sidebar action that waited fo
     auto const shown = window->directorySource()->directory().selected.value_or(1);
     source.listed.selected = shown;
     source.listed.workspaces = {
-        DirectoryWorkspace { .id = shown, .label = "here", .tabs = { tabHolding(1, { 11 }) } },
+        DirectoryWorkspace { .id = shown, .name = "here", .tabs = { tabHolding(1, { 11 }) } },
         DirectoryWorkspace {
-            .id = 777, .label = "there", .tabs = { tabHolding(2, { 22 }), tabHolding(3, { 33 }) } }
+            .id = 777, .name = "there", .tabs = { tabHolding(2, { 22 }), tabHolding(3, { 33 }) } }
     };
     window->setDirectorySource(&source);
 
@@ -223,12 +223,12 @@ TEST_CASE("a sidebar menu's Mark seen, Move and Rename act on a background row w
     auto const shown = window->directorySource()->directory().selected.value_or(1);
     source.listed.selected = shown;
     auto there = DirectoryWorkspace { .id = 777,
-                                      .label = "there",
+                                      .name = "there",
                                       .tabs = { tabHolding(2, { 22 }), tabHolding(3, { 33 }) } };
     there.tabs[1].panes[0].finished = vthost::proto::FinishedCommand { .exitCode = 0 };
     there.tabs[1].panes[0].finishedSerial = 1;
     source.listed.workspaces = {
-        DirectoryWorkspace { .id = shown, .label = "here", .tabs = { tabHolding(1, { 11 }) } },
+        DirectoryWorkspace { .id = shown, .name = "here", .tabs = { tabHolding(1, { 11 }) } },
         std::move(there),
     };
     window->setDirectorySource(&source);
@@ -307,7 +307,7 @@ TEST_CASE("the displayed tab is the one holding the active pane, whatever id the
         source.listed.selected = shown;
         source.listed.workspaces = { DirectoryWorkspace {
             .id = shown,
-            .label = "d",
+            .name = "d",
             .tabs = { tabHolding(5001, { 1 }), tabHolding(5002, { active.value }) } } };
         window->setDirectorySource(&source);
         window->sidebar().refreshNow();
@@ -694,7 +694,7 @@ namespace
 {
     return contour::window::SwitcherOpening {
         .window = window,
-        .windowDaemon = contour::session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Label,
+        .windowDaemon = contour::session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Name,
                                                          .daemon = "work",
                                                          .workspace = {} },
         .mode = contour::session::SwitchMode::Switch,

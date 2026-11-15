@@ -63,11 +63,11 @@ namespace
 } // namespace
 
 std::optional<std::filesystem::path> daemonIdentityPath(std::filesystem::path const& stateDirectory,
-                                                        std::string_view label)
+                                                        std::string_view name)
 {
-    if (!isFileNameLabel(label))
+    if (!isValidDaemonName(name))
         return std::nullopt;
-    return stateDirectory / "tls" / std::format("{}.pem", label);
+    return stateDirectory / "tls" / std::format("{}.pem", name);
 }
 
 std::expected<handover::TlsIdentity, std::string> loadOrCreateDaemonIdentity(

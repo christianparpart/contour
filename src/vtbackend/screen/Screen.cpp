@@ -8878,7 +8878,7 @@ ApplyResult Screen::apply(Function const& function, Sequence const& seq)
         case SETWINTITLE:
             _terminal->setWindowTitle(_terminal->decodeTitle(seq.intermediateCharacters()));
             break;
-        case SETTABNAME: _terminal->setTabName(seq.intermediateCharacters()); break;
+        case SETTABNAME: _terminal->setProgramTabTitle(seq.intermediateCharacters()); break;
         case SETXPROP: return ApplyResult::Unsupported;
         case SETCOLPAL: return impl::setOrRequestColorPalette(seq, *_terminal, impl::IndexedColorSelector);
         case SETSPECIALCOLPAL:

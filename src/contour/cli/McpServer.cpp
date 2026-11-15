@@ -123,7 +123,7 @@ namespace
         auto out = std::vector<vtcontrol::TargetCandidate> {};
         auto const add = [&](std::string const& id, std::string const& label, uint32_t position) {
             if (auto const ref = vtcontrol::parseObjectRef(id))
-                out.push_back({ .ref = *ref, .label = label, .position = position });
+                out.push_back({ .ref = *ref, .name = label, .position = position });
         };
         for (auto const& workspace: reply.workspaces)
         {

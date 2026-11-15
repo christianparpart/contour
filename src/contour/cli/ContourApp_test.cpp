@@ -186,19 +186,19 @@ TEST_CASE("ContourApp: --label is Explicit exactly when the command line gave it
     auto const originOf = [](std::vector<char const*> argv, std::string const& key) {
         auto app = contour::cli::ContourApp { core::defaultEnvironment() };
         REQUIRE(app.parseParametersForTesting(static_cast<int>(argv.size()), argv.data()));
-        return vthost::socketLabelOf(app.parameters().get<std::string>(key)).origin;
+        return vthost::daemonNameFromOption(app.parameters().get<std::string>(key)).origin;
     };
 
     CHECK(originOf({ "contour", "daemon", "status" }, "contour.daemon.label")
-          == vthost::LabelOrigin::Default);
+          == vthost::DaemonNameOrigin::Default);
     CHECK(originOf({ "contour", "daemon", "--label", "x", "status" }, "contour.daemon.label")
-          == vthost::LabelOrigin::Explicit);
+          == vthost::DaemonNameOrigin::Explicit);
     CHECK(originOf({ "contour", "daemon", "--label=default", "status" }, "contour.daemon.label")
-          == vthost::LabelOrigin::Explicit);
+          == vthost::DaemonNameOrigin::Explicit);
     CHECK(originOf({ "contour", "daemon", "status", "--label", "x" }, "contour.daemon.status.label")
-          == vthost::LabelOrigin::Explicit);
+          == vthost::DaemonNameOrigin::Explicit);
     CHECK(originOf({ "contour", "daemon", "status" }, "contour.daemon.status.label")
-          == vthost::LabelOrigin::Default);
+          == vthost::DaemonNameOrigin::Default);
 }
 
 namespace

@@ -106,7 +106,7 @@ namespace
 
     constexpr auto SwitchDaemonNames = std::array {
         EnumName { .value = SwitchDaemonKind::Same, .name = "same" },
-        EnumName { .value = SwitchDaemonKind::Label, .name = "label" },
+        EnumName { .value = SwitchDaemonKind::Name, .name = "label" },
         EnumName { .value = SwitchDaemonKind::Host, .name = "host" },
     };
 
@@ -313,7 +313,7 @@ namespace
                            value.contextChain.size(),
                            value.commandBlocks.size(),
                            value.interruptedCommand.size(),
-                           value.tabName.size());
+                           value.programTabTitle.size());
                    } },
         TraceRow { PduType::Delta,
                    "Delta",
@@ -684,12 +684,12 @@ namespace
                    "WorkspaceMeta",
                    +[](DecodedPdu const& pdu) {
                        auto const& value = std::get<WorkspaceMeta>(pdu);
-                       // The label and the branch are told by presence only: both are the user's words.
+                       // The name and the branch are told by presence only: both are the user's words.
                        return std::format("workspace={}{}{}{}",
                                           value.workspace,
                                           value.position ? std::format(" position={}", *value.position)
                                                          : std::string {},
-                                          formatPresence("label", value.label),
+                                          formatPresence("label", value.name),
                                           formatGit(value.git));
                    } },
         TraceRow { PduType::MoveWorkspace,
@@ -703,12 +703,12 @@ namespace
                    +[](DecodedPdu const& pdu) {
                        return std::format("workspace={}", std::get<CloseWorkspace>(pdu).workspace);
                    } },
-        TraceRow { PduType::SetWorkspaceLabel,
-                   "SetWorkspaceLabel",
+        TraceRow { PduType::SetWorkspaceName,
+                   "SetWorkspaceName",
                    +[](DecodedPdu const& pdu) {
-                       // The label is the user's words: told by its length only.
-                       auto const& value = std::get<SetWorkspaceLabel>(pdu);
-                       return std::format("workspace={} label={} bytes", value.workspace, value.label.size());
+                       // The name is the user's words: told by its length only.
+                       auto const& value = std::get<SetWorkspaceName>(pdu);
+                       return std::format("workspace={} label={} bytes", value.workspace, value.name.size());
                    } },
     };
 

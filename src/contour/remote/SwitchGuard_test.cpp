@@ -32,12 +32,12 @@ namespace
 
 [[nodiscard]] DaemonAddress label(std::string name)
 {
-    return DaemonAddress { .kind = SwitchDaemonKind::Label, .name = std::move(name) };
+    return DaemonAddress { .kind = SwitchDaemonKind::Name, .name = std::move(name) };
 }
 
 [[nodiscard]] SwitchTarget toLabel(std::string name, std::string_view workspace = {})
 {
-    return SwitchTarget { .kind = SwitchDaemonKind::Label,
+    return SwitchTarget { .kind = SwitchDaemonKind::Name,
                           .daemon = std::move(name),
                           .workspace = contour::session::workspaceTargetOf(workspace) };
 }

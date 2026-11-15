@@ -76,12 +76,12 @@ std::expected<ObjectRef, ControlError> resolveTarget(ObjectKind kind,
         return settle(found, spec, kind);
     }
 
-    // 2. A label, ignoring case.
-    if (auto const byLabel = collect(
+    // 2. A name, ignoring case.
+    if (auto const byName = collect(
             candidates,
-            [&](TargetCandidate const& c) { return !c.label.empty() && equalsIgnoreCase(c.label, spec); });
-        !byLabel.empty())
-        return settle(byLabel, spec, kind);
+            [&](TargetCandidate const& c) { return !c.name.empty() && equalsIgnoreCase(c.name, spec); });
+        !byName.empty())
+        return settle(byName, spec, kind);
 
     // 3. A 1-based position, for tabs and workspaces.
     if (kind != ObjectKind::Pane)

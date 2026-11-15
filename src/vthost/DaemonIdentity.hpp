@@ -22,10 +22,10 @@ namespace vthost
 {
 
 /// @param stateDirectory The daemon's state directory (`daemonStateDirectory(...)`, StatePath.hpp).
-/// @param label The daemon's label.
-/// @return `<stateDirectory>/tls/<label>.pem`; nullopt for a label that cannot name a file.
+/// @param name The daemon's name.
+/// @return `<stateDirectory>/tls/<name>.pem`; nullopt for a name that cannot name a file.
 [[nodiscard]] std::optional<std::filesystem::path> daemonIdentityPath(
-    std::filesystem::path const& stateDirectory, std::string_view label);
+    std::filesystem::path const& stateDirectory, std::string_view name);
 
 /// Reads the identity at @p file, or makes one and keeps it there: a self-signed certificate named
 /// `contour-daemon`, written certificate then key to a file made private (empty, mode 0600) before the key

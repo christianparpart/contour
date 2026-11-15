@@ -47,8 +47,8 @@ namespace contour::window
         return std::string(hostLabel);
     if (address.kind == vthost::proto::SwitchDaemonKind::Host && !address.daemon.empty())
         return address.daemon;
-    if (address.kind == vthost::proto::SwitchDaemonKind::Label && !address.daemon.empty())
-        return address.daemon == vthost::DefaultSocketLabel ? std::string("local") : address.daemon;
+    if (address.kind == vthost::proto::SwitchDaemonKind::Name && !address.daemon.empty())
+        return address.daemon == vthost::DefaultDaemonName ? std::string("local") : address.daemon;
     return "daemon";
 }
 

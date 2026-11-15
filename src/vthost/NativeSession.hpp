@@ -514,7 +514,7 @@ class NativeSession final: public SessionStreamEvents, public UpgradeObserver
         /// carries the title (and forces a send) only when it actually changed.
         std::string lastTitle;
         /// The OSC 30 tab name last sent to this connection (empty: none), diffed like the title.
-        std::string lastTabName;
+        std::string lastProgramTabTitle;
         /// The DECSCUSR Ps last sent (-1 until the first snapshot), so a cursor-shape
         /// change carries (and forces) a delta only when it actually changed.
         int lastCursorShape = -1;
@@ -980,7 +980,7 @@ class NativeSession final: public SessionStreamEvents, public UpgradeObserver
     /// Capability::DaemonFollow).
     [[nodiscard]] bool summarizesPanes() const noexcept;
 
-    /// Whether this connection is told each workspace's label, control id and git state (its client shares
+    /// Whether this connection is told each workspace's name, control id and git state (its client shares
     /// Capability::WorkspaceMeta).
     [[nodiscard]] bool sharesWorkspaceMeta() const noexcept;
 
@@ -1002,16 +1002,16 @@ class NativeSession final: public SessionStreamEvents, public UpgradeObserver
     /// @return @p workspace's 0-based place in the daemon's workspace order; 0 for one the model lacks.
     [[nodiscard]] int positionOf(vtworkspace::WorkspaceId workspace) const;
 
-    /// Tells the client of a label the registry changed: a workspace's as a label delta, where the client
+    /// Tells the client of a name the registry changed: a workspace's as a name delta, where the client
     /// shares Capability::WorkspaceMeta; a tab's with its workspace's layout; a pane's not at all.
-    /// @param ref The object whose label changed.
-    /// @param label Its label now; empty when it was cleared.
-    void labelChanged(vtcontrol::ObjectRef const& ref, std::string_view label);
+    /// @param ref The object whose name changed.
+    /// @param name Its name now; empty when it was cleared.
+    void nameChanged(vtcontrol::ObjectRef const& ref, std::string_view name);
 
-    /// Sends a label delta when @p ref is a workspace this connection was told of.
-    /// @param ref The object whose label changed.
-    /// @param label Its label now; empty when it was cleared.
-    void workspaceLabelChanged(vtcontrol::ObjectRef const& ref, std::string_view label);
+    /// Sends a name delta when @p ref is a workspace this connection was told of.
+    /// @param ref The object whose name changed.
+    /// @param name Its name now; empty when it was cleared.
+    void workspaceNameChanged(vtcontrol::ObjectRef const& ref, std::string_view name);
 
     /// @param workspace A workspace of the model.
     /// @return Its control id as WorkspaceMeta carries it; all zero for one the registry does not bind.
@@ -1441,8 +1441,8 @@ class NativeSession final: public SessionStreamEvents, public UpgradeObserver
     /// the last members, so they are released before anything they deliver to.
     std::optional<ScopedStreamSubscription> _streamSubscription;
     std::optional<ScopedModelSubscription> _layoutSubscription;
-    /// The registry's label changes (@see labelChanged()).
-    std::optional<ObjectRegistry::Subscription> _labelSubscription;
+    /// The registry's name changes (@see nameChanged()).
+    std::optional<ObjectRegistry::Subscription> _nameSubscription;
     UpgradeEnd _upgradeEnd = UpgradeEnd::Open;
     std::shared_ptr<UpgradeLink> _upgradeLink = std::make_shared<UpgradeLink>(UpgradeLink { this });
     /// Told of the daemon's upgrade from run() on. Last, so it is released before anything it delivers to.

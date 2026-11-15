@@ -957,8 +957,8 @@ TEST_CASE("workspace.create opens a workspace with a tab, labelled as asked", "[
           == vtcontrol::toString(
               vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab,
                                      .uuid = *h.host.objects().uuidOf(workspace->activeTab()->id()) }));
-    CHECK(h.host.objects().labelOf(vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace,
-                                                          .uuid = *h.host.objects().uuidOf(workspace->id()) })
+    CHECK(h.host.objects().nameOf(vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace,
+                                                         .uuid = *h.host.objects().uuidOf(workspace->id()) })
           == "ops");
 }
 
@@ -2003,7 +2003,7 @@ TEST_CASE("workspace.switch asks one window and relays its answer", "[vthost][co
 
     callSwitch(h, { .toLabel = "admin", .toWorkspace = "build" }, answer);
     REQUIRE(window.asked.size() == 1);
-    CHECK(window.asked.front().target.kind == vthost::proto::SwitchDaemonKind::Label);
+    CHECK(window.asked.front().target.kind == vthost::proto::SwitchDaemonKind::Name);
     CHECK(window.asked.front().target.daemon == "admin");
     CHECK(window.asked.front().target.workspace == "build");
     CHECK(window.asked.front().workspace == h.host.workspaceId().value);
