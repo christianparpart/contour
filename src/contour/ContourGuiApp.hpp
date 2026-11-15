@@ -123,6 +123,7 @@ namespace text
 {
 class FontLocator;
 class LastResortFontLocator;
+class BundledEmojiFontLocator;
 class NerdFontSymbolsLocator;
 } // namespace text
 
@@ -1932,6 +1933,8 @@ class ContourGuiApp:
     // locator, which degrades a family the system lacks to any monospace font, then to any font at all.
     std::once_flag _fontLocatorBuilt;
     std::unique_ptr<text::LastResortFontLocator> _lastResortFontLocator;
+    // Between the two: offers the bundled emoji font after every answer of the system, for emoji text.
+    std::unique_ptr<text::BundledEmojiFontLocator> _bundledEmojiFontLocator;
     std::unique_ptr<text::NerdFontSymbolsLocator> _nativeFontLocator;
     // The native menu presenter, built from the same services; it holds no callback into this app.
     std::unique_ptr<platform::INativeMenuPresenter> _nativeMenus;

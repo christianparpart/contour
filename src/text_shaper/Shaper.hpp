@@ -69,6 +69,19 @@ struct RasterizedGlyph
 
 std::tuple<RasterizedGlyph, float> scale(RasterizedGlyph const& bitmap, vtbackend::ImageSize boundingBox);
 
+/// Whether a glyph belongs to a cluster its font drew whole, or to one it could only draw in pieces.
+///
+/// An emoji sequence no font combines is drawn as its pieces -- "people with bunny ears" in two skin tones as
+/// a person, a rabbit and a person -- each a whole emoji wide. The renderer fits such a cluster into its
+/// cells instead of letting the pieces run into the cells beside it, and this is how it learns which clusters
+/// those are: only the shaper, which looked for a font that combines the sequence, can tell pieces from a
+/// base and its marks.
+enum class ClusterIntegrity : uint8_t
+{
+    Whole,  ///< The font drew the cluster as it is meant to be drawn, in however many glyphs.
+    Pieces, ///< The cluster is an emoji sequence no font combined; its glyphs are the pieces.
+};
+
 struct GlyphPosition
 {
     GlyphKey glyph;
@@ -80,6 +93,9 @@ struct GlyphPosition
     /// The cluster value shape() was handed for the codepoint this glyph begins, i.e. the grid cell the
     /// glyph belongs to. Glyphs of one ligature or one grapheme cluster share it.
     unsigned cluster = 0;
+
+    /// Whether this glyph's cluster was drawn whole or in pieces. @see ClusterIntegrity
+    ClusterIntegrity integrity = ClusterIntegrity::Whole;
 };
 
 using ShapeResult = std::vector<GlyphPosition>;

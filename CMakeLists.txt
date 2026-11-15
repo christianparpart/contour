@@ -427,6 +427,7 @@ endif()
 # Only the GUI draws text, so only the GUI has any use for a font to fall back to.
 if(CONTOUR_FRONTEND_GUI)
     include(NerdFontSymbols)
+    include(BundledEmojiFont)
 endif()
 set(CMAKE_CXX_CLANG_TIDY "${_CONTOUR_SAVED_CLANG_TIDY}")
 # Everything added below is first-party: the production flags (LTO, hardening) reach only these targets.

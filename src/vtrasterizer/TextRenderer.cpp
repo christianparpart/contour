@@ -113,6 +113,7 @@ Making use of reserved glyph slots
 #include <vtbackend/core/Primitives.hpp>
 
 #include <vtrasterizer/BoxDrawingRenderer.hpp>
+#include <vtrasterizer/ClusterFit.hpp>
 #include <vtrasterizer/GlyphSlicing.hpp>
 #include <vtrasterizer/GridMetrics.hpp>
 #include <vtrasterizer/RunPen.hpp>
@@ -247,6 +248,48 @@ namespace
             return TextStyle::Italic;
         return TextStyle::Regular;
     }
+    /// A cluster's glyphs, as a half-open range into a shaped run.
+    struct ClusterRange
+    {
+        unsigned cluster;
+        size_t begin;
+        size_t end;
+    };
+
+    /// @return The clusters of @p glyphs for which @p isFragmented holds, each as its range of glyphs.
+    /// @param glyphs       A shaped run, whose glyphs of one cluster are contiguous.
+    /// @param isFragmented Asked once per cluster of more than one glyph.
+    template <typename Predicate>
+    [[nodiscard]] std::vector<ClusterRange> fragmentedEmojiClusters(text::ShapeResult const& glyphs,
+                                                                    Predicate isFragmented)
+    {
+        auto ranges = std::vector<ClusterRange> {};
+        auto begin = size_t { 0 };
+        for (auto const end: std::views::iota(size_t { 1 }, glyphs.size() + 1))
+        {
+            if (end < glyphs.size() && glyphs[end].cluster == glyphs[begin].cluster)
+                continue;
+            if (end - begin > 1
+                && isFragmented(std::span<text::GlyphPosition const>(glyphs).subspan(begin, end - begin)))
+                ranges.emplace_back(
+                    ClusterRange { .cluster = glyphs[begin].cluster, .begin = begin, .end = end });
+            begin = end;
+        }
+        return ranges;
+    }
+
+    /// @return How many display columns the cell of @p cluster spans: what the grid gave it, not what its
+    ///         font would like. One where the cluster is not found, which cannot happen for a shaped cluster.
+    [[nodiscard]] int cellWidthOf(std::span<unsigned const> clusters,
+                                  std::span<uint8_t const> cellWidths,
+                                  unsigned cluster)
+    {
+        for (auto const i: std::views::iota(size_t { 0 }, std::min(clusters.size(), cellWidths.size())))
+            if (clusters[i] == cluster)
+                return std::max(1, static_cast<int>(cellWidths[i]));
+        return 1;
+    }
+
 } // namespace
 
 text::FontLocator& createFontLocator(FontLocatorEngine engine)
@@ -490,6 +533,7 @@ void TextRenderer::renderCell(vtbackend::RenderCell const& cell)
 
     _textClusterGrouper.renderCell(cell.position,
                                    cell.codepoints,
+                                   cell.width,
                                    cell.attributes.foregroundColor,
                                    makeTextStyle(cell.attributes.flags),
                                    cell.attributes.lineFlags,
@@ -732,6 +776,7 @@ static Renderable::AtlasTileAttributes adjustTileAttributesForLineFlags(
 
 void TextRenderer::renderTextGroup(std::u32string_view codepoints,
                                    gsl::span<unsigned> clusters,
+                                   std::span<uint8_t const> cellWidths,
                                    vtbackend::CellLocation initialPenPosition,
                                    TextStyle style,
                                    vtbackend::RGBColor color,
@@ -767,11 +812,26 @@ void TextRenderer::renderTextGroup(std::u32string_view codepoints,
         return;
     }
 
+    // An emoji sequence no font could render whole arrives as its pieces, in one cluster. Placed by the
+    // font's advances they ran far into the cells to the right (#2381); they are fitted into the
+    // cluster's own cells instead, after the rest of the group.
+    auto const fragmented = fragmentedEmojiClusters(
+        glyphPositions, [this](auto cluster) { return isFragmentedEmojiCluster(cluster); });
+
+    // A colour cluster is centred in its cells as a whole, its glyphs keeping the places the font gave them.
+    auto const colourShifts = colourClusterShifts(glyphPositions, clusters, cellWidths, lineFlags);
+
     auto runPen = RunPen { cellWidth, advanceScale };
     for (auto const& glyphPosition: glyphPositions)
     {
+        if (std::ranges::find(fragmented, glyphPosition.cluster, &ClusterRange::cluster) != fragmented.end())
+            continue;
+
         auto pen = runOrigin;
         pen.x += runPen.place(glyphPosition.cluster, glyphPosition.advance.x);
+        if (auto const shift = std::ranges::find(colourShifts, glyphPosition.cluster, &ClusterShift::cluster);
+            shift != colourShifts.end())
+            pen.x += shift->shift;
 
         if (auto const* attributes = ensureRasterizedIfDirectMapped(glyphPosition.glyph))
         {
@@ -818,6 +878,148 @@ void TextRenderer::renderTextGroup(std::u32string_view codepoints,
                 sliceX += unbox<int>(subAttribsCopy.metadata.targetSize.width);
                 sliceKey += unbox(textureAtlas().tileSize().width);
             }
+        }
+    }
+
+    for (auto const& range: fragmented)
+    {
+        auto const columns = cellWidthOf(
+            std::span<unsigned const>(clusters.data(), clusters.size()), cellWidths, range.cluster);
+        auto cellOrigin = runOrigin;
+        cellOrigin.x += static_cast<int>(range.cluster) * cellWidth;
+        renderFittedCluster(std::span(glyphPositions).subspan(range.begin, range.end - range.begin),
+                            cellOrigin,
+                            columns * cellWidth,
+                            color);
+    }
+}
+
+std::vector<TextRenderer::ClusterShift> TextRenderer::colourClusterShifts(
+    text::ShapeResult const& glyphPositions,
+    gsl::span<unsigned const> clusters,
+    std::span<uint8_t const> cellWidths,
+    vtbackend::LineFlags lineFlags)
+{
+    auto const cellWidth = unbox<int>(_gridMetrics.cellSize.width);
+    auto shifts = std::vector<ClusterShift> {};
+    auto tiles = std::vector<PlacedTile> {};
+    auto anyColour = false;
+    auto pen = RunPen { cellWidth, lineAdvanceScale(lineFlags) };
+
+    auto const flush = [&](unsigned cluster) {
+        if (anyColour)
+        {
+            auto const columns =
+                cellWidthOf(std::span<unsigned const>(clusters.data(), clusters.size()), cellWidths, cluster);
+            shifts.emplace_back(ClusterShift {
+                .cluster = cluster,
+                .shift = centringShift(tiles, static_cast<int>(cluster) * cellWidth, columns * cellWidth) });
+        }
+        tiles.clear();
+        anyColour = false;
+    };
+
+    for (auto const i: std::views::iota(size_t { 0 }, glyphPositions.size()))
+    {
+        auto const& glyphPosition = glyphPositions[i];
+        if (i > 0 && glyphPositions[i - 1].cluster != glyphPosition.cluster)
+            flush(glyphPositions[i - 1].cluster);
+
+        auto const penX = pen.place(glyphPosition.cluster, glyphPosition.advance.x);
+        // Pieces are fitted, not centred (@see renderFittedCluster); direct-mapped glyphs are never colour.
+        if (glyphPosition.integrity == text::ClusterIntegrity::Pieces
+            || isGlyphDirectMapped(glyphPosition.glyph))
+            continue;
+        auto const glyphHash = hashGlyphKeyAndPresentation(glyphPosition.glyph, glyphPosition.presentation);
+        auto const* head =
+            getOrCreateRasterizedMetadata(glyphHash, glyphPosition.glyph, glyphPosition.presentation);
+        if (!head || unbox<int>(head->bitmapSize.width) == 0)
+            continue;
+        if (head->metadata.fragmentShaderSelector == FRAGMENT_SELECTOR_IMAGE_BGRA)
+            anyColour = true;
+
+        // The drawn width: the head tile and every slice a wide glyph was cut into, as the line draws them.
+        auto width = unbox<int>(adjustTileAttributesForLineFlags(lineFlags, *head).metadata.targetSize.width);
+        auto sliceKey = unbox(textureAtlas().tileSize().width);
+        while (AtlasTileAttributes const* slice = textureAtlas().tryGet(glyphHash * sliceKey))
+        {
+            width +=
+                unbox<int>(adjustTileAttributesForLineFlags(lineFlags, *slice).metadata.targetSize.width);
+            sliceKey += unbox(textureAtlas().tileSize().width);
+        }
+        tiles.emplace_back(
+            PlacedTile { .x = penX + head->metadata.x.value + glyphPosition.offset.x, .width = width });
+    }
+    if (!glyphPositions.empty())
+        flush(glyphPositions.back().cluster);
+    return shifts;
+}
+
+std::vector<TextRenderer::InkedGlyph> TextRenderer::inkedGlyphsOf(
+    std::span<text::GlyphPosition const> cluster)
+{
+    auto inked = std::vector<InkedGlyph> {};
+    for (auto const& glyphPosition: cluster)
+    {
+        auto const glyphHash = hashGlyphKeyAndPresentation(glyphPosition.glyph, glyphPosition.presentation);
+        auto const* head =
+            getOrCreateRasterizedMetadata(glyphHash, glyphPosition.glyph, glyphPosition.presentation);
+        if (!head || unbox<int>(head->bitmapSize.width) == 0)
+            continue; // a hidden joiner, or a glyph that would not rasterize
+
+        auto glyph = InkedGlyph { .tiles = { head }, .drawnSize = head->metadata.targetSize };
+        auto sliceKey = unbox(textureAtlas().tileSize().width);
+        while (AtlasTileAttributes const* slice = textureAtlas().tryGet(glyphHash * sliceKey))
+        {
+            glyph.tiles.emplace_back(slice);
+            glyph.drawnSize.width += slice->metadata.targetSize.width;
+            sliceKey += unbox(textureAtlas().tileSize().width);
+        }
+        inked.emplace_back(std::move(glyph));
+    }
+    return inked;
+}
+
+bool TextRenderer::isFragmentedEmojiCluster(std::span<text::GlyphPosition const> cluster)
+{
+    // Only the shaper can tell pieces from a sequence drawn whole: a font without a keycap ligature draws
+    // the keycap mark around its digit, two inked glyphs that must stay where the font put them.
+    auto const isPiece = [](text::GlyphPosition const& glyphPosition) {
+        return glyphPosition.integrity == text::ClusterIntegrity::Pieces;
+    };
+    return std::ranges::any_of(cluster, isPiece) && inkedGlyphsOf(cluster).size() > 1;
+}
+
+void TextRenderer::renderFittedCluster(std::span<text::GlyphPosition const> cluster,
+                                       crispy::Point cellOrigin,
+                                       int boxWidth,
+                                       vtbackend::RGBColor color)
+{
+    auto const inked = inkedGlyphsOf(cluster);
+    auto const sizes =
+        std::ranges::to<std::vector<ImageSize>>(std::views::transform(inked, &InkedGlyph::drawnSize));
+    auto const cellHeight = unbox<int>(_gridMetrics.cellSize.height);
+    auto const fitted = fitClusterPieces(sizes, boxWidth, cellHeight);
+
+    // The pieces are drawn the way an emoji is: centred in the cell (@see the RGBA branch of
+    // createRasterizedGlyph). cellOrigin is the cell's bottom edge; its top is a cell height above.
+    for (auto const i: std::views::iota(size_t { 0 }, inked.size()))
+    {
+        auto const& glyph = inked[i];
+        auto const& piece = fitted[i];
+        auto const factor = static_cast<double>(piece.width)
+                            / static_cast<double>(std::max(1, unbox<int>(glyph.drawnSize.width)));
+        auto const y = cellOrigin.y - cellHeight + ((cellHeight - piece.height) / 2);
+        auto x = cellOrigin.x + piece.x;
+        for (auto const* tile: glyph.tiles)
+        {
+            auto scaled = *tile;
+            auto const width = std::max(
+                1, static_cast<int>(std::lround(unbox<double>(tile->metadata.targetSize.width) * factor)));
+            scaled.metadata.targetSize =
+                ImageSize { vtbackend::Width::cast_from(width), vtbackend::Height::cast_from(piece.height) };
+            renderTile(atlas::RenderTile::X { x }, atlas::RenderTile::Y { y }, color, scaled);
+            x += width;
         }
     }
 }
@@ -1220,6 +1422,8 @@ auto TextRenderer::createRasterizedGlyph(atlas::TileLocation tileLocation,
     };
     if (glyph.format == text::BitmapFormat::RGBA)
     {
+        auto const originalPosition = glyph.position;
+        auto scaleFactor = 1.0f;
         if (glyph.bitmapSize.height
                 > vtbackend::Height::cast_from(unbox<double>(emojiBoundingBox.height) * 1.1)
             || glyph.bitmapSize.width
@@ -1232,18 +1436,21 @@ auto TextRenderer::createRasterizedGlyph(atlas::TileLocation tileLocation,
                     glyph.position,
                     emojiBoundingBox,
                     numCells);
-            auto [scaledGlyph, scaleFactor] = text::scale(glyph, emojiBoundingBox);
+            auto [scaledGlyph, factor] = text::scale(glyph, emojiBoundingBox);
 
             glyph = std::move(scaledGlyph);
+            scaleFactor = factor;
 
             if (rasterizerLog)
                 rasterizerLog()(" ==> scaled: {}/{}, factor {}", glyph, emojiBoundingBox, scaleFactor);
         }
 
-        // Assume colored (RGBA) bitmap glyphs to be emoji.
-        // At least on macOS, the emoji font reports bad positioning, so we simply center them ourself.
-        // Center horizontally within the emoji bounding box (numCells * cellWidth).
-        glyph.position.x = unbox<int>(emojiBoundingBox.width - glyph.bitmapSize.width) / 2;
+        // Assume colored (RGBA) bitmap glyphs to be emoji. Emoji fonts place their glyphs inconsistently
+        // (macOS's especially), so an emoji is centred in its cells -- but as a whole cluster, when drawn
+        // (@see centringShift), not glyph by glyph here: a font may compose one emoji from several glyphs,
+        // as Segoe UI Emoji does a family, and their places relative to each other are the font's. So the
+        // font's bearing is kept, scaled with the bitmap.
+        glyph.position.x = static_cast<int>(static_cast<float>(originalPosition.x) / scaleFactor);
         // Center vertically within the full box height, accounting for the baseline offset.
         glyph.position.y =
             ((unbox<int>(_gridMetrics.cellSize.height) + glyph.bitmapSize.height.as<int>()) / 2)

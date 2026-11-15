@@ -2931,6 +2931,271 @@ TEST_CASE("Renderer.softGlyphs.drawnFromTheFrameInEveryPass", "[renderer][softfo
     CHECK((smoothShift != 0) == smooth);
 }
 
+namespace
+{
+
+/// A TextRenderer over one synthetic emoji font, which -- having no ligatures -- draws every emoji
+/// sequence as its pieces, the way a system emoji font older than the sequence does.
+class EmojiRenderEnv
+{
+  public:
+    /// Builds the shaper the renderer uses, given the BDF-backed one: the identity, or a test double around
+    /// it.
+    using ShaperFactory = std::function<std::unique_ptr<text::Shaper>(text::Shaper& inner)>;
+
+    /// @param glyphs   The synthetic emoji font's glyphs.
+    /// @param factory  Wraps the shaper the renderer uses; none uses the BDF-backed shaper as it is.
+    /// @param format   The atlas format: Red for alpha-mask glyphs, RGBA for colour ones.
+    explicit EmojiRenderEnv(std::vector<text::test::BDFGlyph> const& glyphs,
+                            ShaperFactory const& factory = {},
+                            vtrasterizer::atlas::Format format = vtrasterizer::atlas::Format::Red):
+        _font { "emoji", true, glyphs }
+    {
+        _description.familyName = "emoji";
+        _description.spacing = text::FontSpacing::Mono;
+        MockFontLocator::configure({ { .description = _description, .source = _font.source() } });
+        auto const fontKey = _shaper.loadFont(_description, text::test::BDFFont::Size);
+        REQUIRE(fontKey.has_value());
+        _fontDescriptions.dpi = text::test::BDFFont::Dpi;
+        _fontDescriptions.size = text::test::BDFFont::Size;
+        _fontDescriptions.textShapingEngine = TextShapingEngine::OpenShaper;
+        _fontKeys = FontKeys { .regular = *fontKey,
+                               .bold = *fontKey,
+                               .italic = *fontKey,
+                               .boldItalic = *fontKey,
+                               .emoji = *fontKey };
+        // The renderer keeps references to the metrics, descriptions and keys: they are members for that.
+        if (factory)
+            _wrapper = factory(_shaper);
+        _renderer.emplace(_gridMetrics,
+                          _wrapper ? *_wrapper : static_cast<text::Shaper&>(_shaper),
+                          _fontDescriptions,
+                          _fontKeys,
+                          _events);
+        _renderer->setRenderTarget(_renderTarget, _allocator);
+        _atlas.emplace(_renderTarget.getMockBackend(),
+                       vtrasterizer::atlas::AtlasProperties { .format = format,
+                                                              .tileSize = _gridMetrics.cellSize,
+                                                              .hashCount = { 1024 },
+                                                              .tileCount = { 4096 },
+                                                              .directMappingCount = 128 });
+        _renderer->setTextureAtlas(*_atlas);
+    }
+
+    EmojiRenderEnv(EmojiRenderEnv const&) = delete;
+    EmojiRenderEnv(EmojiRenderEnv&&) = delete;
+    EmojiRenderEnv& operator=(EmojiRenderEnv const&) = delete;
+    EmojiRenderEnv& operator=(EmojiRenderEnv&&) = delete;
+    ~EmojiRenderEnv() { MockFontLocator::configure({}); }
+
+    /// One cell of a frame: where it starts, what it holds, and how many grid columns it spans.
+    struct Cell
+    {
+        int column;
+        std::u32string text;
+        uint8_t width;
+    };
+
+    /// Renders @p cells as one line of one frame.
+    /// @return The tiles drawn, in the order they were drawn.
+    [[nodiscard]] std::vector<atlas::RenderTile> render(std::vector<Cell> const& cells)
+    {
+        _renderTarget.getMockBackend().renderCommands.clear();
+        _renderer->beginFrame();
+        for (auto const& [column, text, width]: cells)
+        {
+            auto cell = vtbackend::RenderCell {};
+            cell.groupStart = column == cells.front().column;
+            cell.position = vtbackend::CellLocation { .line = LineOffset(0), .column = ColumnOffset(column) };
+            cell.codepoints = text;
+            cell.width = width;
+            cell.attributes.flags = vtbackend::CellFlags {};
+            cell.attributes.foregroundColor = vtbackend::RGBColor(0xFF, 0xFF, 0xFF);
+            _renderer->renderCell(cell);
+        }
+        _renderer->endFrame();
+        return _renderTarget.getMockBackend().renderCommands;
+    }
+
+  private:
+    text::test::BDFFont _font;
+    text::FontDescription _description {};
+    MockFontLocator _locator {};
+    OpenShaper _shaper { text::test::BDFFont::Dpi, _locator };
+    std::unique_ptr<text::Shaper> _wrapper; ///< The test double the renderer shapes through, if any.
+    GridMetrics _gridMetrics { .pageSize = PageSize { LineCount(24), ColumnCount(80) },
+                               .cellSize = ImageSize { Width(CellWidth), Height(20) },
+                               .baseline = 15,
+                               .underline = { .position = 17, .thickness = 1 } };
+    FontDescriptions _fontDescriptions {};
+    FontKeys _fontKeys {};
+    MockTextRendererEvents _events;
+    MockRenderTarget _renderTarget;
+    vtrasterizer::atlas::DirectMappingAllocator<vtrasterizer::RenderTileAttributes> _allocator;
+    std::optional<TextRenderer> _renderer;
+    std::optional<TextureAtlas> _atlas;
+};
+
+} // namespace
+
+TEST_CASE("TextRenderer.fragmented_emoji_cluster_stays_inside_its_cells", "[renderer][emoji]")
+{
+    // Issue #2381. An emoji ZWJ sequence the emoji font cannot combine shapes to its pieces in ONE cluster,
+    // and each piece advances by a whole emoji. Moved by those advances, the pieces landed many cells to
+    // the right, over unrelated text. They are fitted into the cluster's own two cells instead.
+    constexpr auto Person = char32_t { 0x1F9D1 };
+    constexpr auto MediumSkin = char32_t { 0x1F3FD };
+    constexpr auto LightSkin = char32_t { 0x1F3FB };
+    constexpr auto Zwj = char32_t { 0x200D };
+    constexpr auto Rabbit = char32_t { 0x1F430 };
+
+    auto env = EmojiRenderEnv {
+        { { Person, 16 }, { MediumSkin, 16 }, { LightSkin, 16 }, { Zwj, 0 }, { Rabbit, 16 }, { U'x', 8 } }
+    };
+    auto const tiles = env.render({
+        { .column = 0, .text = { Person, MediumSkin, Zwj, Rabbit, Zwj, Person, LightSkin }, .width = 2 },
+        { .column = 2, .text = U"x", .width = 1 },
+    });
+
+    // The fitted cluster is drawn after the rest of its group, so the tiles are told apart by where they
+    // are: exactly one -- the "x" -- may start at column 2, and it must start exactly there.
+    auto const isTheX = [](atlas::RenderTile const& tile) {
+        return tile.x.value >= 2 * CellWidth;
+    };
+    REQUIRE(std::ranges::count_if(tiles, isTheX) == 1);
+    CHECK(std::ranges::find_if(tiles, isTheX)->x.value == 2 * CellWidth);
+    auto pieces = 0;
+    for (auto const& tile: tiles | std::views::filter(std::not_fn(isTheX)))
+    {
+        INFO("tile at x=" << tile.x.value << " width=" << tile.targetSize.width.value);
+        CHECK(tile.x.value >= 0);
+        CHECK(tile.x.value + unbox<int>(tile.targetSize.width) <= 2 * CellWidth);
+        ++pieces;
+    }
+    CHECK(pieces >= 5); // every piece is still drawn: nothing is hidden
+}
+
+namespace
+{
+
+/// A colour emoji font that composes one emoji from two glyphs, overlapped by its own offsets -- as Segoe UI
+/// Emoji draws a family from narrower people. Shapes any emoji run as those two glyphs, and draws each as a
+/// small colour bitmap at the pen, no bearing.
+class ComposingShaper: public text::Shaper
+{
+  public:
+    explicit ComposingShaper(text::Shaper& inner) noexcept: _inner { inner } {}
+
+    /// The first of the two glyph indices, clear of the indices the renderer maps directly to atlas tiles.
+    static constexpr auto FirstGlyph = uint32_t { 9001 };
+    static constexpr auto PieceWidth = 9;    ///< Each glyph's bitmap width.
+    static constexpr auto FirstOffset = 2;   ///< The first glyph's x offset.
+    static constexpr auto Advance = 13;      ///< The first glyph's advance.
+    static constexpr auto SecondOffset = -7; ///< The second glyph's x offset, pulling it onto the first.
+
+    void setDPI(text::DPI dpi) override { _inner.setDPI(dpi); }
+    void setLocator(text::FontLocator& locator) override { _inner.setLocator(locator); }
+    void clearCache() override { _inner.clearCache(); }
+    void setFontFallbackLimit(int limit) override { _inner.setFontFallbackLimit(limit); }
+    [[nodiscard]] std::optional<text::FontKey> loadFont(text::FontDescription const& description,
+                                                        text::FontSize size) override
+    {
+        return _inner.loadFont(description, size);
+    }
+    [[nodiscard]] text::FontMetrics metrics(text::FontKey key) const override { return _inner.metrics(key); }
+    void shape(text::FontKey font,
+               std::u32string_view text,
+               gsl::span<unsigned> clusters,
+               unicode::Script script,
+               unicode::PresentationStyle presentation,
+               text::ShapeResult& result) override
+    {
+        if (presentation != unicode::PresentationStyle::Emoji)
+        {
+            _inner.shape(font, text, clusters, script, presentation, result);
+            return;
+        }
+        auto const glyph = [&](uint32_t index, int offset, int advance) {
+            auto gpos = text::GlyphPosition {};
+            gpos.glyph = text::GlyphKey { .size = text::test::BDFFont::Size,
+                                          .font = font,
+                                          .index = text::GlyphIndex { index } };
+            gpos.offset = crispy::Point { .x = offset, .y = 0 };
+            gpos.advance = crispy::Point { .x = advance, .y = 0 };
+            gpos.presentation = presentation;
+            gpos.cluster = clusters[0];
+            return gpos;
+        };
+        result.emplace_back(glyph(FirstGlyph, FirstOffset, Advance));
+        result.emplace_back(glyph(FirstGlyph + 1, SecondOffset, 0));
+    }
+    [[nodiscard]] std::optional<text::GlyphPosition> shape(text::FontKey font, char32_t codepoint) override
+    {
+        return _inner.shape(font, codepoint);
+    }
+    [[nodiscard]] std::optional<text::RasterizedGlyph> rasterize(text::GlyphKey glyph,
+                                                                 text::RenderMode mode,
+                                                                 float outlineThickness) override
+    {
+        if (glyph.index.value < FirstGlyph)
+            return _inner.rasterize(glyph, mode, outlineThickness);
+        auto bitmap = text::RasterizedGlyph {};
+        bitmap.index = glyph.index;
+        bitmap.bitmapSize = ImageSize { Width(PieceWidth), Height(4) };
+        bitmap.position = crispy::Point { .x = 0, .y = 4 };
+        bitmap.format = text::BitmapFormat::RGBA;
+        bitmap.bitmap.assign(static_cast<size_t>(PieceWidth) * 4 * 4, uint8_t { 0xFF });
+        return bitmap;
+    }
+
+  private:
+    text::Shaper& _inner;
+};
+
+} // namespace
+
+TEST_CASE("TextRenderer.a_composed_colour_cluster_is_centred_as_a_whole", "[renderer][emoji]")
+{
+    // Issue #2381, as reported from Windows: Segoe UI Emoji composes a family from two narrower people the
+    // font overlaps. Centred one by one, then pushed apart by the first one's advance, they landed right of
+    // the cell's centre. The font's placement must stand, and the pair be centred as one.
+    auto env = EmojiRenderEnv {
+        { { U'x', 8 } },
+        [](text::Shaper& inner) { return std::make_unique<ComposingShaper>(inner); },
+        vtrasterizer::atlas::Format::RGBA,
+    };
+    auto const tiles = env.render({ { .column = 0, .text = U"\U0001F468\u200D\U0001F466", .width = 2 } });
+
+    REQUIRE(tiles.size() == 2);
+    auto const [first, second] = std::minmax(tiles[0].x.value, tiles[1].x.value);
+    // Where the font put them relative to each other: second = first - offset + advance + offset.
+    CHECK(second - first
+          == ComposingShaper::Advance + ComposingShaper::SecondOffset - ComposingShaper::FirstOffset);
+    // And the pair -- (second + width) - first wide -- centred in the cluster's two cells.
+    auto const unionWidth = second + ComposingShaper::PieceWidth - first;
+    CHECK(first == ((2 * CellWidth) - unionWidth) / 2);
+}
+
+TEST_CASE("TextRenderer.a_keycap_drawn_around_its_digit_is_not_fitted", "[renderer][emoji]")
+{
+    // A font without a keycap ligature positions the enclosing keycap mark AROUND its digit, at zero
+    // advance. Two glyphs with ink, but one sequence drawn whole: the shaper resolved it, so the renderer
+    // must draw both where the font put them, not side by side.
+    constexpr auto Vs16 = char32_t { 0xFE0F };
+    constexpr auto Keycap = char32_t { 0x20E3 };
+
+    auto env = EmojiRenderEnv { { { U'1', 16 }, { Vs16, 0 }, { Keycap, 0 } } };
+    auto const tiles = env.render({ { .column = 0, .text = { U'1', Vs16, Keycap }, .width = 2 } });
+
+    // Where the font put them: the digit at the cell's left edge, the mark by its offset from there. Fitted
+    // side by side instead, the pair would be re-centred in the box and start at x=2.
+    REQUIRE(tiles.size() >= 2);
+    CHECK(std::ranges::min(tiles | std::views::transform([](auto const& tile) { return tile.x.value; }))
+          == 0);
+    for (auto const& tile: tiles)
+        CHECK(tile.targetSize == tile.bitmapSize); // drawn at the size it was rasterized at
+}
+
 int main(int argc, char* argv[])
 {
     core::testing::suppressWindowsDialogs();

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <vector>
@@ -15,6 +16,29 @@ struct ShapedGlyphRef
 {
     unsigned cluster {}; ///< The input cluster the shaper assigned to this glyph.
     bool missing {};     ///< Whether the shaping font had no glyph for it (glyph index 0, .notdef).
+    int advance {};      ///< The glyph's horizontal advance, in pixels. Zero for a hidden joiner or a mark.
+};
+
+/// Whether a cluster group is rendered by the font that shaped it, and if not, why not.
+enum class GroupResolution : uint8_t
+{
+    Resolved,   ///< The font renders the group.
+    NotDef,     ///< The font has no glyph for at least one of its codepoints.
+    Fragmented, ///< The font has every glyph, but draws one emoji sequence as several -- see
+                ///< FragmentationRule.
+};
+
+/// Whether a cluster shaped into more than one advancing glyph counts as rendered.
+///
+/// In text it does: a base and its combining marks, or a conjunct, legitimately shape to several glyphs.
+/// An emoji sequence does not: a font that knows "people with bunny ears" in two skin tones draws it as one
+/// glyph, and one that does not draws its pieces side by side -- a person, a rabbit and a person -- which no
+/// reader takes for the sequence. Font fallback must look further for such a cluster, exactly as for a
+/// missing glyph.
+enum class FragmentationRule : uint8_t
+{
+    Ignore,             ///< Text: several glyphs per cluster are fine.
+    OneGlyphPerCluster, ///< Emoji: a cluster with more than one advancing glyph is Fragmented.
 };
 
 /// A maximal group of consecutive shaped glyphs sharing one cluster value, together with the half-open
@@ -25,10 +49,16 @@ struct ClusterGroup
     std::size_t glyphEnd {};       ///< One past the last glyph index.
     std::size_t codepointBegin {}; ///< First input codepoint index, into the run's codepoints.
     std::size_t codepointEnd {};   ///< One past the last input codepoint index.
-    bool missing {};               ///< Whether any glyph in this group is .notdef.
+    GroupResolution resolution {}; ///< Whether the shaping font renders this group.
 
     /// @return Whether this group maps to no input codepoints at all.
     [[nodiscard]] constexpr bool empty() const noexcept { return codepointBegin >= codepointEnd; }
+
+    /// @return Whether this group must be offered to a fallback font.
+    [[nodiscard]] constexpr bool unresolved() const noexcept
+    {
+        return resolution != GroupResolution::Resolved;
+    }
 
     [[nodiscard]] constexpr bool operator==(ClusterGroup const&) const noexcept = default;
 };
@@ -95,11 +125,12 @@ struct ClusterGroup
         auto const codepointEnd =
             glyphEnd < glyphs.size() ? advanceTo(glyphs[glyphEnd].cluster) : inputClusters.size();
 
-        groups.emplace_back(ClusterGroup { .glyphBegin = glyphIndex,
-                                           .glyphEnd = glyphEnd,
-                                           .codepointBegin = codepointBegin,
-                                           .codepointEnd = codepointEnd,
-                                           .missing = missing });
+        groups.emplace_back(
+            ClusterGroup { .glyphBegin = glyphIndex,
+                           .glyphEnd = glyphEnd,
+                           .codepointBegin = codepointBegin,
+                           .codepointEnd = codepointEnd,
+                           .resolution = missing ? GroupResolution::NotDef : GroupResolution::Resolved });
         glyphIndex = glyphEnd;
     }
 
@@ -126,8 +157,44 @@ struct ClusterGroup
                           .glyphEnd = glyphs.size(),
                           .codepointBegin = 0,
                           .codepointEnd = codepointCount,
-                          .missing = std::ranges::any_of(
-                              glyphs, [](ShapedGlyphRef const& ref) { return ref.missing; }) };
+                          .resolution = std::ranges::any_of(
+                                            glyphs, [](ShapedGlyphRef const& ref) { return ref.missing; })
+                                            ? GroupResolution::NotDef
+                                            : GroupResolution::Resolved };
+}
+
+/// Marks each group drawn as the pieces of an emoji sequence as Fragmented.
+///
+/// A group is pieces when more than one of its glyphs advances AND together they advance further than one
+/// emoji could: @p maxWholeAdvance. Both halves matter. Zero-advance glyphs do not count, for the joiners of
+/// an uncombined sequence are hidden at zero advance between its pieces. And several advancing glyphs alone
+/// are not pieces: Segoe UI Emoji draws a family as narrower people the font overlaps with its own offsets,
+/// together about one emoji wide, where uncombined pieces advance one whole emoji EACH.
+/// A group already NotDef stays NotDef -- a missing glyph is the stronger statement, and both send the group
+/// down the same fallback chain.
+///
+/// @param groups          The cluster groups of one shaped run.
+/// @param glyphs          The shaped glyphs the groups index into.
+/// @param maxWholeAdvance The widest, in pixels, a cluster may advance and still be one emoji.
+inline void markFragmentedGroups(std::span<ClusterGroup> groups,
+                                 std::span<ShapedGlyphRef const> glyphs,
+                                 int maxWholeAdvance) noexcept
+{
+    for (auto& group: groups)
+    {
+        if (group.resolution != GroupResolution::Resolved)
+            continue;
+        auto const members = glyphs.subspan(group.glyphBegin, group.glyphEnd - group.glyphBegin);
+        auto advancing = 0;
+        auto totalAdvance = 0;
+        for (auto const& ref: members)
+        {
+            advancing += ref.advance != 0 ? 1 : 0;
+            totalAdvance += ref.advance;
+        }
+        if (advancing > 1 && totalAdvance > maxWholeAdvance)
+            group.resolution = GroupResolution::Fragmented;
+    }
 }
 
 /// Coalesces neighbouring uncovered groups into single fallback segments.
@@ -146,7 +213,7 @@ struct ClusterGroup
 
     for (auto index = std::size_t { 0 }; index < groups.size();)
     {
-        if (!groups[index].missing)
+        if (!groups[index].unresolved())
         {
             segments.emplace_back(groups[index]);
             ++index;
@@ -154,14 +221,19 @@ struct ClusterGroup
         }
 
         auto last = index;
-        while (last + 1 < groups.size() && groups[last + 1].missing)
+        auto anyNotDef = groups[index].resolution == GroupResolution::NotDef;
+        while (last + 1 < groups.size() && groups[last + 1].unresolved())
+        {
             ++last;
+            anyNotDef = anyNotDef || groups[last].resolution == GroupResolution::NotDef;
+        }
 
-        segments.emplace_back(ClusterGroup { .glyphBegin = groups[index].glyphBegin,
-                                             .glyphEnd = groups[last].glyphEnd,
-                                             .codepointBegin = groups[index].codepointBegin,
-                                             .codepointEnd = groups[last].codepointEnd,
-                                             .missing = true });
+        segments.emplace_back(
+            ClusterGroup { .glyphBegin = groups[index].glyphBegin,
+                           .glyphEnd = groups[last].glyphEnd,
+                           .codepointBegin = groups[index].codepointBegin,
+                           .codepointEnd = groups[last].codepointEnd,
+                           .resolution = anyNotDef ? GroupResolution::NotDef : GroupResolution::Fragmented });
         index = last + 1;
     }
 
@@ -177,14 +249,25 @@ struct ClusterGroup
 ///
 /// @param glyphs   The shaped glyphs of the run, in visual (left-to-right) order.
 /// @param clusters The per-codepoint cluster values the run was shaped with.
+/// @param rule     Whether a cluster shaped into several advancing glyphs counts as unresolved.
+/// @param maxWholeAdvance Under FragmentationRule::OneGlyphPerCluster, the widest, in pixels, a cluster may
+///                        advance and still be one emoji (@see markFragmentedGroups). Ignored otherwise.
 /// @return The segments, in order, covering the run end to end.
 [[nodiscard]] inline std::vector<ClusterGroup> fallbackSegments(std::span<ShapedGlyphRef const> glyphs,
-                                                                std::span<unsigned const> clusters)
+                                                                std::span<unsigned const> clusters,
+                                                                FragmentationRule rule,
+                                                                int maxWholeAdvance)
 {
-    if (auto const groups = clusterGroups(glyphs, clusters))
-        return mergeAdjacentMissing(*groups);
+    auto groups = clusterGroups(glyphs, clusters)
+                      .value_or(std::vector<ClusterGroup> { indivisibleGroup(glyphs, clusters.size()) });
+    if (rule == FragmentationRule::Ignore)
+        return mergeAdjacentMissing(groups);
 
-    return { indivisibleGroup(glyphs, clusters.size()) };
+    // In an emoji run every cluster is its own question for fallback. Merged with a neighbour, a sequence
+    // could only be given a font that renders the neighbour too -- so one no font knows would deny it the
+    // font that combines it, or turn its pieces into replacement glyphs.
+    markFragmentedGroups(groups, glyphs, maxWholeAdvance);
+    return groups;
 }
 
 } // namespace text

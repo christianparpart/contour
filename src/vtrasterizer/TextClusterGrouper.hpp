@@ -11,6 +11,8 @@
 #include <gsl/span>
 #include <gsl/span_ext>
 
+#include <cstdint>
+#include <span>
 #include <vector>
 
 namespace vtrasterizer
@@ -25,8 +27,19 @@ class TextClusterGrouper
     {
         virtual ~Events() = default;
 
+        /// Renders one group of cells sharing a style, color, line flags and sizing.
+        /// @param codepoints         The group's codepoints, cell after cell.
+        /// @param clusters           Per codepoint, the display column its cell starts at, from the group's.
+        /// @param cellWidths         Per codepoint, the width of its cell in display columns -- the unit
+        ///                           @p clusters count in, so two per grid column on a double-width line.
+        /// @param initialPenPosition Where the group's first cell is.
+        /// @param style              The group's text style.
+        /// @param color              The group's foreground color.
+        /// @param flags              The line's flags.
+        /// @param sizing             The group's text-sizing scale.
         virtual void renderTextGroup(std::u32string_view codepoints,
                                      gsl::span<unsigned> clusters,
+                                     std::span<uint8_t const> cellWidths,
                                      vtbackend::CellLocation initialPenPosition,
                                      TextStyle style,
                                      vtbackend::RGBColor color,
@@ -51,8 +64,17 @@ class TextClusterGrouper
     /// transformed into a RenderCell.
     void renderCell(vtbackend::RenderCell const& cell);
 
+    /// Renders one grid cell.
+    /// @param position        Where the cell is.
+    /// @param graphemeCluster The cell's text.
+    /// @param width           How many grid columns the cell spans.
+    /// @param foregroundColor The cell's foreground color.
+    /// @param style           The cell's text style.
+    /// @param flags           The line's flags.
+    /// @param sizing          The cell's text-sizing scale.
     void renderCell(vtbackend::CellLocation position,
                     std::u32string_view graphemeCluster,
+                    uint8_t width,
                     vtbackend::RGBColor foregroundColor,
                     TextStyle style,
                     vtbackend::LineFlags flags,
@@ -72,6 +94,7 @@ class TextClusterGrouper
     /// at the end of the currently filled line.
     void appendCellTextToClusterGroup(vtbackend::CellLocation position,
                                       std::u32string_view codepoints,
+                                      uint8_t width,
                                       TextStyle style,
                                       vtbackend::RGBColor color,
                                       vtbackend::LineFlags flags,
@@ -97,6 +120,9 @@ class TextClusterGrouper
 
     // For each codepoint, the column its cell starts at, counted from the group's first. @see RunPen
     std::vector<unsigned> _clusters;
+
+    // For each codepoint, the width of its cell in display columns.
+    std::vector<uint8_t> _cellWidths;
 
     /// The scale the current group is being drawn at. Part of the group's identity: a cell drawn at
     /// a different size cannot share a shaping run with its neighbours.

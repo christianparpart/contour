@@ -8,6 +8,7 @@ set(text_shaper_SRC
     NerdFontSymbolRanges.hpp
     LastResortFontLocator.cpp LastResortFontLocator.hpp
     NerdFontSymbolsLocator.cpp NerdFontSymbolsLocator.hpp
+    BundledEmojiFontLocator.cpp BundledEmojiFontLocator.hpp EmojiSpan.hpp
     OpenShaper.cpp OpenShaper.hpp
     Shaper.cpp Shaper.hpp
 )
@@ -92,7 +93,7 @@ message(STATUS "[text_shaper] Libraries: ${TEXT_SHAPER_LIBS}")
 
 if(CONTOUR_TESTING)
     enable_testing()
-    add_executable(text_shaper_test test_main.cpp ClusterSpans_test.cpp Font_test.cpp FontHash_test.cpp FontLocatorProvider_test.cpp LastResortFontLocator_test.cpp NerdFontSymbolsLocator_test.cpp OpenShaper_test.cpp Scale_test.cpp)
+    add_executable(text_shaper_test test_main.cpp ClusterSpans_test.cpp Font_test.cpp FontHash_test.cpp FontLocatorProvider_test.cpp LastResortFontLocator_test.cpp NerdFontSymbolsLocator_test.cpp BundledEmojiFontLocator_test.cpp OpenShaper_test.cpp Scale_test.cpp)
     if(APPLE)
         target_sources(text_shaper_test PRIVATE CoreTextLocator_test.cpp)
     endif()
@@ -104,6 +105,10 @@ if(CONTOUR_TESTING)
     if(CONTOUR_NERD_FONT_SYMBOLS_DIR)
         # The font the build staged, for the test that checks the code point table against it.
         target_compile_definitions(text_shaper_test PRIVATE CONTOUR_NERD_FONT_SYMBOLS_FILE="${CONTOUR_NERD_FONT_SYMBOLS_DIR}/SymbolsNerdFontMono-Regular.ttf")
+    endif()
+    if(CONTOUR_EMOJI_FONT_DIR)
+        # The bundled emoji font, for the cases that need a font which combines an emoji ZWJ sequence.
+        target_compile_definitions(text_shaper_test PRIVATE CONTOUR_EMOJI_FONT_FILE="${CONTOUR_EMOJI_FONT_DIR}/Noto-COLRv1.ttf")
     endif()
     add_test(NAME text_shaper_test COMMAND text_shaper_test)
     if(NOT WIN32)

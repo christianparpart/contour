@@ -101,7 +101,9 @@
     #include <vthost/client/DaemonGrantReplies.hpp>
 #endif
 
+#include <text_shaper/BundledEmojiFontLocator.hpp>
 #include <text_shaper/BundledFonts.hpp>
+#include <text_shaper/EmojiSpan.hpp>
 #include <text_shaper/FontLocator.hpp>
 #include <text_shaper/LastResortFontLocator.hpp>
 #include <text_shaper/NerdFontSymbolRanges.hpp>
@@ -3100,16 +3102,26 @@ text::FontLocator& ContourGuiApp::fontLocator(vtrasterizer::FontLocatorEngine en
         // was never installed and has no staged copy, or one built without the symbols font), the locator
         // wraps nothing and the platform's own is what is asked.
         auto symbolsFont = fs::path {};
+        auto emojiFont = fs::path {};
         if (auto const executable = vtpty::currentExecutablePath())
             if (auto const directories = bundledFontDirectories(executable->parent_path());
                 !directories.paths.empty())
+            {
                 symbolsFont = directories.paths.front() / text::NerdFontSymbolsFileName;
+                emojiFont = text::bundledEmojiFontPath(directories.paths.front());
+            }
         _lastResortFontLocator = std::make_unique<text::LastResortFontLocator>(platformLocator);
+        // The bundled emoji font answers last, for emoji text only: the system's emoji fonts stay first.
+        _bundledEmojiFontLocator =
+            std::make_unique<text::BundledEmojiFontLocator>(*_lastResortFontLocator, emojiFont);
         _nativeFontLocator =
-            std::make_unique<text::NerdFontSymbolsLocator>(*_lastResortFontLocator, symbolsFont);
+            std::make_unique<text::NerdFontSymbolsLocator>(*_bundledEmojiFontLocator, symbolsFont);
         startupLog()("Nerd Fonts symbols font {}: {}.",
                      _nativeFontLocator->hasSymbolsFont() ? "bundled" : "not found",
                      core::pathToUtf8(symbolsFont));
+        startupLog()("Bundled emoji font {}: {}.",
+                     _bundledEmojiFontLocator->hasEmojiFont() ? "bundled" : "not found",
+                     core::pathToUtf8(emojiFont));
     });
     return *_nativeFontLocator;
 }

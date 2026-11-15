@@ -368,13 +368,13 @@ void DirectWriteShaper::shape(FontKey font,
             result.insert(result.end(), glyphs.begin(), glyphs.end());
             return;
         }
-        for (auto const& segment: fallbackSegments(refs, cells))
+        for (auto const& segment: fallbackSegments(refs, cells, FragmentationRule::Ignore, 0))
         {
             auto position = cursor;
             auto fallback = std::optional<FontKey> {};
             auto const count = segment.codepointEnd - segment.codepointBegin;
             auto const missing = input.substr(segment.codepointBegin, count);
-            if (segment.missing && !segment.empty())
+            if (segment.unresolved() && !segment.empty())
             {
                 fallback = nextFont(position);
                 if (!fallback && canFallback && !position.hasTriedCoverage)

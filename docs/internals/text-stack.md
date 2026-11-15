@@ -255,6 +255,65 @@ To upgrade, set `CONTOUR_NERD_FONT_SYMBOLS_VERSION` and `CONTOUR_NERD_FONT_SYMBO
 the table in `src/text_shaper/NerdFontSymbolRanges.hpp`. The `text_shaper_test` case that checks the table
 against the staged font fails until the two agree.
 
+## The bundled emoji font
+
+A system's emoji font knows the emoji sequences of the Unicode version it was built for. One older than a
+sequence draws it as its pieces -- `🧑🏽‍🐰‍🧑🏻` (Emoji 17.0) as a person, a rabbit and a person -- and none of
+them is a missing glyph, so the fallback above never looks further (#2381). Contour therefore bundles a current
+Noto Color Emoji (COLRv1) as the **last** emoji fallback:
+
+1. In an emoji run, `OpenShaper` treats a cluster shaped into more than one advancing glyph as unresolved
+   (`text::GroupResolution::Fragmented`, `ClusterSpans.hpp`) and walks the fallback chain for it, as for a
+   missing glyph. Each emoji cluster is its own fallback segment.
+2. Once the chain is out of fonts, an emoji span is resolved by **shaping** what the locator's `resolve()`
+   answers -- not by cmap coverage, which cannot tell a font that combines a sequence from one that only has its
+   pieces. `text::BundledEmojiFontLocator` appends the bundled font after the platform's answers, for emoji spans
+   only, so a system emoji font that renders the sequence whole always wins.
+3. When no font combines it, the pieces of the first font that had them all stand, marked
+   `text::ClusterIntegrity::Pieces`, and `TextRenderer` fits them side by side into the cluster's own cells
+   (`vtrasterizer/ClusterFit.hpp`) instead of letting them run into the cells beside it.
+
+A cluster counts as pieces only when more than one of its glyphs advances **and** together they advance
+further than 1.75 em. A font may compose one emoji from several glyphs on purpose -- Segoe UI Emoji draws a
+family as narrower people overlapped by its own offsets, about one emoji wide together -- and that is the font
+drawing the sequence, not failing to. Such a cluster is also centred in its cells **as a whole**
+(`vtrasterizer::centringShift`): each glyph keeps the place the font gave it, and the union of them is centred.
+Centring each colour glyph on its own, as the renderer used to, stacked the people in the middle and the
+advance between them pushed the cluster right of its cells' centre.
+
+The font is installed in `emoji-font/` **beside** the bundled fonts directory (`<prefix>/share/contour/emoji-font`,
+`Contents/Resources/emoji-font`), never inside it: the fonts directory is registered with fontconfig, which scans
+it recursively, and a registered copy would outrank an older bitmap-only Noto Color Emoji of the same family for
+every emoji.
+
+`cmake/BundledEmojiFont.cmake` takes it from the noto-emoji repository at a pinned tag, pinned by SHA-256.
+`CONTOUR_EMOJI_FONT` chooses how:
+
+| Value | Meaning |
+|-------|---------|
+| `FETCH` (default) | Download `Noto-COLRv1.ttf` and its `LICENSE` at configure time. Skipped, with a message, against a Cairo older than 1.18, which cannot draw COLRv1. |
+| `LOCAL` | Use the two files in the directory `CONTOUR_EMOJI_FONT_LOCAL_DIR` names, checked against the same hashes. |
+| `OFF` | Bundle nothing: emoji sequences no system font combines are drawn as fitted pieces. |
+
+For a Flatpak manifest:
+
+```yaml
+sources:
+  - type: file
+    url: https://raw.githubusercontent.com/googlefonts/noto-emoji/v2.051/fonts/Noto-COLRv1.ttf
+    sha256: 0ae57fe58645638523ba35f388d93739d292539a9acb84df5700c81b1e1a28d2
+    dest: noto-emoji
+  - type: file
+    url: https://raw.githubusercontent.com/googlefonts/noto-emoji/v2.051/fonts/LICENSE
+    sha256: 6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2
+    dest: noto-emoji
+config-opts:
+  - -DCONTOUR_EMOJI_FONT=LOCAL
+  - -DCONTOUR_EMOJI_FONT_LOCAL_DIR=noto-emoji
+```
+
+To upgrade, set `CONTOUR_EMOJI_FONT_VERSION` and both hashes in `cmake/BundledEmojiFont.cmake`.
+
 References
 ----------
 

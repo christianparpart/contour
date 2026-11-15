@@ -83,7 +83,7 @@ struct FrameWriter
     {
         for (auto const codepoint: textCluster)
         {
-            grouper.renderCell(penPosition, std::u32string_view(&codepoint, 1), color, style, flags);
+            grouper.renderCell(penPosition, std::u32string_view(&codepoint, 1), 1, color, style, flags);
             ++penPosition.column;
         }
         return *this;
@@ -148,9 +148,11 @@ namespace
 struct EventRecorder final: public TextClusterGrouper::Events
 {
     std::vector<Event> events;
+    std::vector<std::vector<int>> cellWidths; ///< Per text group, the cell widths it reported.
 
     void renderTextGroup(std::u32string_view codepoints,
                          gsl::span<unsigned> clusters,
+                         std::span<uint8_t const> widths,
                          vtbackend::CellLocation initialPenPosition,
                          TextStyle style,
                          vtbackend::RGBColor color,
@@ -158,6 +160,7 @@ struct EventRecorder final: public TextClusterGrouper::Events
                          vtbackend::GlyphSizing const& sizing) override
     {
         (void) sizing;
+        cellWidths.emplace_back(widths.begin(), widths.end());
         events.emplace_back(TextClusterGroup {
             .codepoints = std::u32string(codepoints),
             .clusters = toVector<int>(clusters),
@@ -307,6 +310,7 @@ TEST_CASE("TextClusterGrouper.clusters_count_columns_not_cells")
     auto const write = [&](int column, char32_t codepoint) {
         grouper.renderCell(CellLocation { LineOffset(0), ColumnOffset(column) },
                            std::u32string_view(&codepoint, 1),
+                           1,
                            0x102030_rgb,
                            TextStyle::Regular,
                            LineFlag::None);
@@ -360,6 +364,7 @@ TEST_CASE("TextClusterGrouper.a_group_starts_where_its_first_cell_is")
     auto const write = [&](int column, char32_t codepoint, RGBColor color) {
         grouper.renderCell(CellLocation { LineOffset(0), ColumnOffset(column) },
                            std::u32string_view(&codepoint, 1),
+                           1,
                            color,
                            TextStyle::Regular,
                            LineFlag::None);
@@ -403,4 +408,34 @@ TEST_CASE("TextClusterGrouper.SplitAtColorChange")
               .style = TextStyle::Bold,
               .flags = vtbackend::LineFlag::None,
           });
+}
+
+TEST_CASE("TextClusterGrouper.reports_each_cells_width")
+{
+    // The renderer fits an emoji sequence the font could only draw in pieces into the cells the grid gave
+    // it, so it must learn how wide each cell is -- in display columns, the unit clusters count in.
+    auto const run = [](LineFlags flags) {
+        auto recorder = EventRecorder {};
+        auto grouper = TextClusterGrouper(recorder);
+        auto const scale = flags.test(LineFlag::DoubleWidth) ? 2 : 1;
+        grouper.beginFrame();
+        grouper.renderCell(CellLocation { LineOffset(0), ColumnOffset(0) },
+                           U"\U0001F9D1\U0001F3FD"sv,
+                           2,
+                           0x102030_rgb,
+                           TextStyle::Regular,
+                           flags);
+        grouper.renderCell(CellLocation { LineOffset(0), ColumnOffset(2 * scale) },
+                           U"a"sv,
+                           1,
+                           0x102030_rgb,
+                           TextStyle::Regular,
+                           flags);
+        grouper.endFrame();
+        REQUIRE(recorder.cellWidths.size() == 1);
+        return recorder.cellWidths[0];
+    };
+
+    CHECK(run(LineFlag::None) == std::vector { 2, 2, 1 });
+    CHECK(run(LineFlag::DoubleWidth) == std::vector { 4, 4, 2 });
 }

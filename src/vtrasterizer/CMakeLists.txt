@@ -45,6 +45,7 @@ set(_test_files
     BackgroundRenderer_test.cpp
     AtlasBudget_test.cpp
     TextClusterGrouper_test.cpp
+    ClusterFit_test.cpp
     BoxDrawingRenderer_test.cpp
     SoftFontRenderer_test.cpp
     ChipRenderer_test.cpp
