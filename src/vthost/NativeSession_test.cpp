@@ -6220,6 +6220,48 @@ TEST_CASE("a client without the names capability is answered in the old spelling
     CHECK(h.host.objects().nameOf(tab) == "release");
 }
 
+TEST_CASE("a subscriber without the names capability hears a workspace's rename in the old spelling only",
+          "[vthost][native][control][compat-0.9.0]")
+{
+    auto h = NativeHarness { controlApiOptions() };
+    auto const session = newSession(h.host);
+    auto const [workspace, tab, pane] = h.host.model().findSessionLeaf(session);
+    REQUIRE(tab != nullptr);
+    auto const workspaceId = vtcontrol::toString(vtcontrol::ObjectRef {
+        .kind = vtcontrol::ObjectKind::Workspace, .uuid = *h.host.objects().uuidOf(workspace->id()) });
+    auto const tabId = vtcontrol::toString(vtcontrol::ObjectRef {
+        .kind = vtcontrol::ObjectKind::Tab, .uuid = *h.host.objects().uuidOf(tab->id()) });
+
+    auto const repliedTo = [](uint64_t requestId) {
+        return [requestId](std::vector<proto::DecodedFrame> const& got) {
+            return std::ranges::any_of(got, [requestId](proto::DecodedFrame const& frame) {
+                auto const* reply = std::get_if<proto::ControlReply>(&frame.pdu);
+                return reply != nullptr && reply->requestId == requestId;
+            });
+        };
+    };
+    auto const got = h.exchangeUntil(
+        { controlApiHello(vtcontrol::Spelling::Legacy),
+          controlCall(1, "events.subscribe", R"({"kinds":["workspace.labelChanged"]})"),
+          controlCall(2, "object.setLabel", std::format(R"({{"object":"{}","label":"ops"}})", workspaceId)),
+          controlCall(3, "object.setLabel", std::format(R"({{"object":"{}","label":"build"}})", tabId)),
+          // Answered after every event the renames published: what arrived before it is all there is.
+          controlCall(4, "daemon.info") },
+        repliedTo(4));
+
+    auto events = std::vector<std::string> {};
+    for (auto const& frame: got)
+        if (auto const* event = std::get_if<proto::ControlEvent>(&frame.pdu))
+            events.push_back(event->event);
+    REQUIRE(events.size() == 1);
+    auto const envelope = vtcontrol::decodeJson<vtcontrol::EventEnvelope>(events.front());
+    REQUIRE(envelope.has_value());
+    CHECK(envelope->type == "workspace.labelChanged");
+    CHECK(envelope->workspace == workspaceId);
+    CHECK(envelope->tab.empty());
+    CHECK(envelope->payload.text == R"({"label":"ops"})");
+}
+
 TEST_CASE("a client with the names capability is answered with name keys", "[vthost][native][control]")
 {
     auto h = NativeHarness { controlApiOptions() };
