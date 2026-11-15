@@ -540,8 +540,8 @@ TEST_CASE("live upgrade keeps every child alive and the same pid", "[vthost][han
     CHECK(std::ranges::count_if(argv, [](std::string const& arg) { return arg.starts_with(HandoverPrefix); })
           == 1);
     CHECK(handoverTokenOf(argv.back()).and_then(parseHandoverDescriptor).has_value());
-    // The rest of the daemon's command line, as main() handed it on: an old `--label x` already rewritten to
-    // `--name x` (the rewrite is LegacyArguments_test's), which the next image repeats.
+    // The rest of the daemon's command line, as main() handed it on, which the next image repeats. That an
+    // old `--label x` reaches it as `--name x` is LegacyArguments_test's live-upgrade compat case.
     CHECK(std::ranges::find(argv, "--name") != argv.end());
     CHECK(std::ranges::find(argv, "--label") == argv.end());
 

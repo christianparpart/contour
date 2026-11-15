@@ -39,7 +39,7 @@ namespace contour::window
 /// @param address   Where the window's daemon was reached.
 /// @param hostLabel The window's host label; empty for a local window.
 /// @return What the chip calls the daemon: the host label when there is one, else "local" for the default
-///         socket label, the label itself, or "daemon" when the address names none.
+///         daemon name, the name itself, or "daemon" when the address names none.
 [[nodiscard]] inline std::string locationDaemonName(session::SwitchTarget const& address,
                                                     std::string_view hostLabel)
 {

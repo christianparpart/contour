@@ -1426,10 +1426,10 @@ class WindowController:
 
     /// @name The workspace operations, by the ids the window's directory lists (TerminalSessionManager's).
     /// @{
-    /// Sets the title tab @p tab shows: a tab of the shown workspace as the strip's inline rename does, any
+    /// Sets the name tab @p tab shows: a tab of the shown workspace as the strip's inline rename does, any
     /// other through TerminalSessionManager::renameTab().
     /// @param tab The tab, as the directory names it.
-    /// @param title Its title; empty clears the one the user set.
+    /// @param name Its name; empty clears it.
     void renameTab(TabRef tab, std::string const& name);
     /// Renames workspace @p workspace.
     /// @param workspace The workspace's id.

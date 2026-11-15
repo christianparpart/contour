@@ -120,8 +120,8 @@ std::expected<std::unique_ptr<core::net::IListener>, core::net::NetError> listen
 {
 #ifndef _WIN32
     auto const pathText = core::pathToUtf8(path);
-    // Named after this process: a daemon on another label binds beside it at the same time, and the one
-    // that stopped on this label removes its own such name as it closes, never this one.
+    // Named after this process: a daemon of another name binds beside it at the same time, and the one
+    // that stopped under this name removes its own such name as it closes, never this one.
     auto const aside = path.parent_path() / std::format(".bind-{}", ::getpid());
     auto const address = unixAddressOf(pathText);
     if (!address || !unixAddressOf(core::pathToUtf8(aside)))

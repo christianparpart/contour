@@ -344,6 +344,8 @@ namespace detail
         {
             auto tab = DirectoryTab {};
             tab.id = wireTab.tabId;
+            // compat(0.9.0): an older daemon names a tab by its runtime title, which tabNameOf() falls back
+            // to.
             tab.title = wireTab.title;
             detail::collectPanes(wireTab.root, status, tab.panes);
             tab.name = vtworkspace::tabNameOf(

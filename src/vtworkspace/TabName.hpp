@@ -15,8 +15,10 @@ namespace vtworkspace
 enum class TabNameSource : uint8_t
 {
     Panes, ///< Its panes, as the place naming the tab names a tab after them (a title, a template).
-    Title, ///< Its own title, as what states the tab gives one: an older daemon states its runtime title.
-    Name,  ///< Its user-given name, set from the GUI and the control API alike.
+    /// compat(0.9.0): its own title, as what states the tab gives one: an older daemon states its runtime
+    /// title.
+    Title,
+    Name, ///< Its user-given name, set from the GUI and the control API alike.
 };
 
 /// What a tab could be named by besides its panes; an empty one names nothing.
@@ -37,7 +39,7 @@ struct TabNameRule
 /// where none does, its panes name it. A new source is a row here.
 constexpr auto TabNamePrecedence = std::array {
     TabNameRule { .source = TabNameSource::Name, .text = &TabNameCandidates::name },
-    TabNameRule { .source = TabNameSource::Title, .text = &TabNameCandidates::title },
+    TabNameRule { .source = TabNameSource::Title, .text = &TabNameCandidates::title }, // compat(0.9.0)
 };
 
 /// @param candidates What the tab could be named by besides its panes.

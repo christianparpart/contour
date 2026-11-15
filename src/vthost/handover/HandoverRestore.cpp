@@ -82,7 +82,7 @@ std::expected<void, HandoverError> SessionHost::restoreHandover(HandoverImage im
         outcome = std::unexpected(HandoverError::Malformed);
     }
     else
-        restoreTabNames(image.tree);
+        restoreTabNames(image.tree); // compat(0.9.0): an older image's tabs carry their names as titles.
 
     // No session minted from now on is named as one the previous image had: not one the tree names, not one
     // it hosted, not one it minted.

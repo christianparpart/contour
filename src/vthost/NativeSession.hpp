@@ -143,6 +143,8 @@ struct HandshakePolicy
                                                                    proto::Capability::WorkspaceMeta,
                                                                    proto::Capability::ClientGoodbye,
                                                                    proto::Capability::LaunchFirstTab,
+                                                                   // compat(0.9.0): Names may stay; the
+                                                                   // legacy branches taken without it go.
                                                                    proto::Capability::Names });
 };
 

@@ -250,7 +250,7 @@ TEST_CASE("--label picks a daemon by its name, or names one", "[contour][cli][co
                   == Strings { "contour", "daemon-service", verb, "--name", "work" });
         }
     }
-    SECTION("a daemon restarted by a live upgrade carries --name, its handover argument kept")
+    SECTION("the live-upgrade compat case: a restarted daemon carries --name, its handover argument kept")
     {
         CHECK(rewrite("/state/bin/Contour.AppImage", "daemon", "--handover=fd=7", "--label", "work").arguments
               == Strings { "/state/bin/Contour.AppImage", "daemon", "--handover=fd=7", "--name", "work" });

@@ -83,8 +83,7 @@ namespace
             .newTokens = DaemonOption,
             .operandPrefix = "name:",
             .keptPrefixes = DaemonWordPrefixes,
-            .note = "`--label NAME` is deprecated and goes away in 0.9.0; use `--daemon name:NAME`, or "
-                    "`--daemon NAME`.",
+            .note = "`--label NAME` is deprecated and goes away in 0.9.0; use `--daemon name:NAME`.",
         },
     };
 

@@ -91,6 +91,7 @@ namespace
             vthost::proto::Capability::WorkspaceMeta,
             vthost::proto::Capability::ClientGoodbye,
             vthost::proto::Capability::LaunchFirstTab,
+            // compat(0.9.0): Names may stay; the legacy branches taken without it go.
             vthost::proto::Capability::Names,
         });
         if (switchRequests == NativeController::SwitchRequests::Answered)

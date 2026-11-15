@@ -280,6 +280,7 @@ core::async::Task<std::expected<proto::DecodedFrame, ControlClientError>> Contro
 core::async::Task<std::expected<void, ControlClientError>> ControlClient::handshake()
 {
     auto const ours = proto::SupportedVersions;
+    // compat(0.9.0): Names may stay; the legacy branches taken without it go.
     auto const offered =
         proto::CapabilitySet::of({ proto::Capability::ControlApi, proto::Capability::Names });
     auto const sendHello = [&](std::optional<proto::KeyProof> proof) {

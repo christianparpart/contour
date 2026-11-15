@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <string>
 
 #include <vtworkspace/ObjectName.hpp>

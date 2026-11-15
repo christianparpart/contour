@@ -1084,6 +1084,7 @@ SessionHost::RealizedWorkspace SessionHost::realizeRestoredWorkspace(WorkspaceId
             {
                 tabUuid = restoredUuid(ObjectKind::Tab, tabSnapshot.identity);
                 _stagedTab = StagedTab { .uuid = *tabUuid,
+                                         // compat(0.9.0): an older image's tab carries its name as a title.
                                          .name = std::string { vtworkspace::restoredTabName(
                                              nameOf(tabSnapshot.identity), tabSnapshot.title) } };
             }
@@ -2961,6 +2962,7 @@ void SessionHost::restoreTabNames(vtworkspace::WorkspaceTreeState const& tree)
             if (!uuid)
                 continue;
             auto const ref = ObjectRef { .kind = ObjectKind::Tab, .uuid = *uuid };
+            // compat(0.9.0): an older image's tab carries its name as a title.
             auto name = std::string { vtworkspace::restoredTabName(_objects.nameOf(ref), tab.view.title) };
             // The registry was restored before the model held the tab, so its mirror missed it.
             _objects.setName(ref, name);

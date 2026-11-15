@@ -45,7 +45,7 @@ struct KeeperVerbInputs
 /// @param inputs What to keep.
 /// @param errors Where a keeper that does not start says why.
 /// @return The status the process exits with: the keeper's (@see vthost::keeper::Keeper::exitStatus), or
-///         EXIT_FAILURE when it did not start, another keeper holding the label among the reasons.
+///         EXIT_FAILURE when it did not start, another keeper holding the name among the reasons.
 [[nodiscard]] int runKeeperVerb(KeeperVerbInputs inputs, std::ostream& errors);
 
 /// @param launch The launch the keeper's record holds.

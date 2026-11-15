@@ -341,7 +341,7 @@ TEST_CASE("switcherDaemonName names a daemon as the location chip does, by the w
           == "studio");
     // A label target with no host label keeps its label.
     CHECK(switcherDaemonName(label("work"), {}) == contour::window::locationDaemonName(label("work"), {}));
-    // Every place the popup names a daemon reads the daemon's own label: the group title, the status.
+    // Every place the popup names a daemon reads the daemon's own name: the group title, the status.
     auto const daemon = SwitcherDaemon { .address = host("ci-box"), .hostLabel = "studio" };
     CHECK(switcherDaemonName(daemon) == "studio");
 }

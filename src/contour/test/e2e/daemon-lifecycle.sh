@@ -142,7 +142,7 @@ fi
 
 # --- A second daemon on the same socket is refused --------------------------------------------
 #
-# The newcomer's keeper finds the label's lock (<socket>.keeper.lock) held by the incumbent's and ends at
+# The newcomer's keeper finds the name's lock (<socket>.keeper.lock) held by the incumbent's and ends at
 # once, before it starts a daemon or touches the socket.
 if timeout 20 "$CONTOUR" daemon --socket "$SOCKET" > "$OUT/second.txt" 2>&1; then
     fail "a second daemon on a live socket unexpectedly succeeded"

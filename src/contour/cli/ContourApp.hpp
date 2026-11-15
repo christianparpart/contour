@@ -139,7 +139,7 @@ class ContourApp: public core::cli::App
     [[nodiscard]] int daemonRelocateAction();
     /// Reads `contour daemon --listen-tcp` and the options that go with it.
     /// @param options The daemon's options.
-    /// @param daemonLabel The daemon's label, which names its TLS identity file.
+    /// @param daemonLabel The daemon's name, which names its TLS identity file.
     /// @return The TCP listener to serve, nullopt for none; or why the options cannot be served.
     [[nodiscard]] std::expected<std::optional<vthost::NativeTcpListenerConfig>, std::string> nativeTcpOption(
         DaemonVerbOptions const& options, std::string_view daemonLabel);

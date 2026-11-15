@@ -55,6 +55,7 @@ ActionAlias const* actionAliasOf(std::string_view name)
 optional<Action> fromString(string const& name)
 {
     // Case-insensitive, so `input_mapping:` may spell an action however it reads best.
+    // compat(0.9.0): an old action name is read as its new one.
     auto const* const alias = actionAliasOf(name);
     auto const lowerCaseName = toLower(alias != nullptr ? alias->name : name);
     auto const& catalog = actionCatalog();
