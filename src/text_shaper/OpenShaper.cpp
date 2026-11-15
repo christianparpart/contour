@@ -570,9 +570,17 @@ namespace
     struct ShapedRun
     {
         ShapeResult glyphs;          ///< The shaped glyphs, in visual (left-to-right) order.
-        vector<ShapedGlyphRef> refs; ///< Parallel to @c glyphs: cluster value and .notdef flag.
-        bool anyMissing = false;     ///< Whether the font came up short on any glyph at all.
+        vector<ShapedGlyphRef> refs; ///< Parallel to @c glyphs: cluster value, .notdef flag, raw advance.
+        bool anyUnresolved =
+            false; ///< Whether any glyph is .notdef or, in an emoji run, any cluster fragmented.
+        FragmentationRule rule = FragmentationRule::Ignore; ///< How the run's clusters were judged.
+        int maxWholeAdvance = 0; ///< The widest a cluster may advance and still be one emoji, in pixels.
     };
+
+    /// How far, in em, a cluster may advance and still be one emoji: past one emoji's advance (1.2 to 1.4 em
+    /// in Noto, Segoe and Apple Color Emoji, and a family Segoe composes from narrower people stays within
+    /// that), short of the two whole emoji the fewest uncombined pieces add up to.
+    constexpr auto MaxWholeEmojiAdvanceInEm = 1.75;
 
     /// Which spacing class a fallback pass accepts.
     ///
@@ -648,6 +656,21 @@ namespace
         }
 
         hb_shape(hbFont, hbBuf, hbFeatures.data(), static_cast<unsigned int>(hbFeatures.size()));
+
+        // Normalization moves a cluster's whole advance onto its first glyph, after which nothing can tell
+        // an emoji sequence the font combined from one it drew as pieces side by side. Each glyph's own
+        // advance is read before. Normalization reorders glyphs only WITHIN a cluster, so the i-th raw
+        // advance still belongs to the i-th glyph's cluster -- all a per-cluster count needs.
+        auto const rawAdvances = [&] {
+            auto rawGlyphCount = 0u;
+            hb_glyph_position_t const* rawPos = hb_buffer_get_glyph_positions(hbBuf, &rawGlyphCount);
+            auto advances = vector<int> {};
+            advances.reserve(rawGlyphCount);
+            for (auto const& position: std::span(rawPos, rawGlyphCount))
+                advances.emplace_back(static_cast<int>(static_cast<double>(position.x_advance) / 64.0));
+            return advances;
+        }();
+
         hb_buffer_normalize_glyphs(hbBuf); // TODO: lookup again what this one does
 
         auto const glyphCount = hb_buffer_get_length(hbBuf);
@@ -679,11 +702,23 @@ namespace
             gpos.cluster = info[i].cluster;
 
             auto const missing = glyphMissing(gpos);
-            output.anyMissing = output.anyMissing || missing;
+            output.anyUnresolved = output.anyUnresolved || missing;
 
             output.glyphs.emplace_back(gpos);
-            output.refs.emplace_back(ShapedGlyphRef { .cluster = info[i].cluster, .missing = missing });
+            output.refs.emplace_back(
+                ShapedGlyphRef { .cluster = info[i].cluster, .missing = missing, .advance = rawAdvances[i] });
         }
+
+        // An emoji run also needs every sequence drawn as one glyph. Text runs never pay for the check.
+        output.rule = presentation == unicode::PresentationStyle::Emoji
+                          ? FragmentationRule::OneGlyphPerCluster
+                          : FragmentationRule::Ignore;
+        output.maxWholeAdvance = static_cast<int>(std::lround(
+            MaxWholeEmojiAdvanceInEm * static_cast<double>(fontInfo.ftFace->size->metrics.x_ppem)));
+        if (!output.anyUnresolved && output.rule == FragmentationRule::OneGlyphPerCluster)
+            output.anyUnresolved = std::ranges::any_of(
+                fallbackSegments(output.refs, clusters, output.rule, output.maxWholeAdvance),
+                [](ClusterGroup const& segment) { return segment.unresolved(); });
 
         return output;
     }
@@ -694,6 +729,18 @@ namespace
         result.insert(result.end(),
                       shaped.glyphs.begin() + static_cast<ptrdiff_t>(segment.glyphBegin),
                       shaped.glyphs.begin() + static_cast<ptrdiff_t>(segment.glyphEnd));
+    }
+
+    /// Appends the segment's glyphs as the pieces of an emoji sequence no font combined, marked so that the
+    /// renderer fits them into their cells.
+    void appendPieces(ShapeResult& result, ShapedRun const& shaped, ClusterGroup const& segment)
+    {
+        for (auto const i: iota(segment.glyphBegin, segment.glyphEnd))
+        {
+            auto gpos = shaped.glyphs[i];
+            gpos.integrity = ClusterIntegrity::Pieces;
+            result.emplace_back(gpos);
+        }
     }
 
     /// Appends the segment's glyphs, re-homing the unresolved ones onto @p primaryFont.
@@ -1155,6 +1202,54 @@ struct OpenShaper::PrivateOpenShaper // {{{
         return resolved;
     }
 
+    /// Asks the locator which fonts might render an emoji span, and returns the first that renders it whole.
+    ///
+    /// The emoji counterpart of resolveByCoverage(), for when the fallback chain is walked out. Coverage
+    /// cannot answer here: a font older than a sequence covers every one of its codepoints and still draws
+    /// it as pieces, and a font covering only some of them is no answer at all. So each candidate is shaped,
+    /// in the order the locator gives -- the system's fonts first, the bundled emoji font last (@see
+    /// BundledEmojiFontLocator) -- and the first one with neither a .notdef nor a fragmented cluster wins.
+    /// Nothing is cached here: the renderer caches the shaped result for the whole text.
+    ///
+    /// @param fontInfo   The primary font, supplying the size and weight to load a candidate at.
+    /// @param codepoints The span no font in the chain rendered.
+    /// @param clusters   Per-codepoint cluster values of @p codepoints.
+    /// @param script     The run's script.
+    /// @return The first font that renders the span whole, or nullopt when none does.
+    [[nodiscard]] optional<FontKey> resolveEmojiByShaping(HbFontInfo const& fontInfo,
+                                                          u32string_view codepoints,
+                                                          std::span<unsigned const> clusters,
+                                                          unicode::Script script)
+    {
+        ZoneScoped;
+        if (codepoints.empty() || !locator || !canFallback(fontInfo))
+            return nullopt;
+
+        for (auto const& source: locator->resolve(gsl::span(codepoints.data(), codepoints.size())))
+        {
+            auto const candidate = getOrCreateKeyForFont(source, fontInfo.size, fontInfo.weight);
+            if (!candidate)
+                continue;
+            auto const& candidateInfo = fontKeyToHbFontInfoMapping.at(*candidate);
+            auto const shaped = shapeWithFont(*candidate,
+                                              candidateInfo,
+                                              hbBuf.get(),
+                                              candidateInfo.hbFont.get(),
+                                              script,
+                                              unicode::PresentationStyle::Emoji,
+                                              codepoints,
+                                              clusters);
+            if (!shaped.glyphs.empty() && !shaped.anyUnresolved)
+            {
+                textShapingLog()("Resolved emoji U+{:04X} by shaping to font key:{}.",
+                                 static_cast<uint32_t>(codepoints.front()),
+                                 *candidate);
+                return candidate;
+            }
+        }
+        return nullopt;
+    }
+
     /// Shapes @p codepoints with @p shapingFont, then resolves each span that font cannot render against
     /// the rest of @p primaryFontInfo's fallback chain, appending the spliced glyphs to @p result.
     ///
@@ -1202,18 +1297,18 @@ struct OpenShaper::PrivateOpenShaper // {{{
 
         // The overwhelmingly common case: this font renders the whole run. Take the glyphs as they are
         // and do not pay for the segmentation at all.
-        if (!shaped.anyMissing)
+        if (!shaped.anyUnresolved)
         {
             result.insert(result.end(), shaped.glyphs.begin(), shaped.glyphs.end());
             return true;
         }
 
-        auto const segments = fallbackSegments(shaped.refs, clusters);
+        auto const segments = fallbackSegments(shaped.refs, clusters, shaped.rule, shaped.maxWholeAdvance);
         auto allResolved = true;
 
         for (ClusterGroup const& segment: segments)
         {
-            if (!segment.missing)
+            if (!segment.unresolved())
             {
                 appendGlyphs(result, shaped, segment);
                 continue;
@@ -1227,30 +1322,63 @@ struct OpenShaper::PrivateOpenShaper // {{{
             // The chain is out of fonts, but "no font in the first N of a description-ordered list"
             // is not the same as "no font on this system". Ask which one actually covers these
             // codepoints before settling for the replacement glyph.
+            auto const count = segment.codepointEnd - segment.codepointBegin;
+            auto const spanCodepoints = codepoints.substr(segment.codepointBegin, count);
+            auto const spanClusters = clusters.subspan(segment.codepointBegin, count);
             if (!fallbackOpt.has_value() && !segment.empty() && !spanCursor.coverageTried)
             {
-                auto const missing = segment.codepointEnd - segment.codepointBegin;
+                // In an emoji run the question is not which font HAS these codepoints -- the system's
+                // emoji font has every piece of a sequence it draws in pieces -- but which one renders
+                // them whole, and only shaping can answer that.
                 fallbackOpt =
-                    resolveByCoverage(primaryFontInfo, codepoints.substr(segment.codepointBegin, missing));
+                    shaped.rule == FragmentationRule::OneGlyphPerCluster
+                        ? resolveEmojiByShaping(primaryFontInfo, spanCodepoints, spanClusters, script)
+                        : resolveByCoverage(primaryFontInfo, spanCodepoints);
                 spanCursor.coverageTried = true;
             }
 
             if (!fallbackOpt.has_value())
             {
-                appendUnresolvedGlyphs(result, shaped, segment, primaryFont);
+                if (segment.resolution == GroupResolution::Fragmented)
+                    appendPieces(result, shaped, segment);
+                else
+                    appendUnresolvedGlyphs(result, shaped, segment, primaryFont);
                 allResolved = false;
                 continue;
             }
 
-            auto const count = segment.codepointEnd - segment.codepointBegin;
+            // A fragmented sequence is still drawn, in pieces, by this font. Should no font further down
+            // render it whole, those pieces stand -- the first font that has every glyph wins, not the
+            // last one tried -- so the deeper attempt is made aside and kept only if it succeeds.
+            if (segment.resolution == GroupResolution::Fragmented)
+            {
+                auto attempt = ShapeResult {};
+                if (shapeRunWithFallback(primaryFont,
+                                         primaryFontInfo,
+                                         *fallbackOpt,
+                                         spanCursor,
+                                         script,
+                                         presentation,
+                                         spanCodepoints,
+                                         spanClusters,
+                                         attempt))
+                    result.insert(result.end(), attempt.begin(), attempt.end());
+                else
+                {
+                    appendPieces(result, shaped, segment);
+                    allResolved = false;
+                }
+                continue;
+            }
+
             if (!shapeRunWithFallback(primaryFont,
                                       primaryFontInfo,
                                       *fallbackOpt,
                                       spanCursor,
                                       script,
                                       presentation,
-                                      codepoints.substr(segment.codepointBegin, count),
-                                      clusters.subspan(segment.codepointBegin, count),
+                                      spanCodepoints,
+                                      spanClusters,
                                       result))
                 allResolved = false;
         }

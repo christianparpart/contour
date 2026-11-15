@@ -8,6 +8,9 @@ using namespace text;
 namespace
 {
 
+/// The widest a cluster may advance and still be one emoji: 1.75 em of a 12 px font.
+constexpr auto WholeLimit = 21;
+
 /// Builds the shaped-glyph view the segmenter consumes: one entry per output glyph, in visual order.
 [[nodiscard]] std::vector<ShapedGlyphRef> glyphsOf(std::initializer_list<ShapedGlyphRef> glyphs)
 {
@@ -41,14 +44,23 @@ TEST_CASE("cluster_spans.one_to_one_all_covered", "[cluster_spans]")
     REQUIRE(groups->size() == 3);
 
     CHECK((*groups)[0]
-          == ClusterGroup {
-              .glyphBegin = 0, .glyphEnd = 1, .codepointBegin = 0, .codepointEnd = 1, .missing = false });
+          == ClusterGroup { .glyphBegin = 0,
+                            .glyphEnd = 1,
+                            .codepointBegin = 0,
+                            .codepointEnd = 1,
+                            .resolution = GroupResolution::Resolved });
     CHECK((*groups)[1]
-          == ClusterGroup {
-              .glyphBegin = 1, .glyphEnd = 2, .codepointBegin = 1, .codepointEnd = 2, .missing = false });
+          == ClusterGroup { .glyphBegin = 1,
+                            .glyphEnd = 2,
+                            .codepointBegin = 1,
+                            .codepointEnd = 2,
+                            .resolution = GroupResolution::Resolved });
     CHECK((*groups)[2]
-          == ClusterGroup {
-              .glyphBegin = 2, .glyphEnd = 3, .codepointBegin = 2, .codepointEnd = 3, .missing = false });
+          == ClusterGroup { .glyphBegin = 2,
+                            .glyphEnd = 3,
+                            .codepointBegin = 2,
+                            .codepointEnd = 3,
+                            .resolution = GroupResolution::Resolved });
 }
 
 TEST_CASE("cluster_spans.missing_at_each_boundary", "[cluster_spans]")
@@ -61,9 +73,9 @@ TEST_CASE("cluster_spans.missing_at_each_boundary", "[cluster_spans]")
         auto const groups = clusterGroups(glyphs, clusters);
         REQUIRE(groups.has_value());
         REQUIRE(groups->size() == 3);
-        CHECK((*groups)[0].missing);
-        CHECK_FALSE((*groups)[1].missing);
-        CHECK_FALSE((*groups)[2].missing);
+        CHECK((*groups)[0].unresolved());
+        CHECK_FALSE((*groups)[1].unresolved());
+        CHECK_FALSE((*groups)[2].unresolved());
         CHECK((*groups)[0].codepointBegin == 0);
         CHECK((*groups)[0].codepointEnd == 1);
     }
@@ -74,9 +86,9 @@ TEST_CASE("cluster_spans.missing_at_each_boundary", "[cluster_spans]")
         auto const groups = clusterGroups(glyphs, clusters);
         REQUIRE(groups.has_value());
         REQUIRE(groups->size() == 3);
-        CHECK_FALSE((*groups)[0].missing);
-        CHECK((*groups)[1].missing);
-        CHECK_FALSE((*groups)[2].missing);
+        CHECK_FALSE((*groups)[0].unresolved());
+        CHECK((*groups)[1].unresolved());
+        CHECK_FALSE((*groups)[2].unresolved());
         CHECK((*groups)[1].codepointBegin == 1);
         CHECK((*groups)[1].codepointEnd == 2);
     }
@@ -87,9 +99,9 @@ TEST_CASE("cluster_spans.missing_at_each_boundary", "[cluster_spans]")
         auto const groups = clusterGroups(glyphs, clusters);
         REQUIRE(groups.has_value());
         REQUIRE(groups->size() == 3);
-        CHECK_FALSE((*groups)[0].missing);
-        CHECK_FALSE((*groups)[1].missing);
-        CHECK((*groups)[2].missing);
+        CHECK_FALSE((*groups)[0].unresolved());
+        CHECK_FALSE((*groups)[1].unresolved());
+        CHECK((*groups)[2].unresolved());
         CHECK((*groups)[2].codepointBegin == 2);
         CHECK((*groups)[2].codepointEnd == 3);
     }
@@ -106,7 +118,7 @@ TEST_CASE("cluster_spans.ligature_is_never_split", "[cluster_spans]")
     REQUIRE(groups.has_value());
     REQUIRE(groups->size() == 2);
 
-    CHECK((*groups)[0].missing);
+    CHECK((*groups)[0].unresolved());
     CHECK((*groups)[0].codepointBegin == 0);
     CHECK((*groups)[0].codepointEnd == 2); // both codepoints of the ligature, not just the first
     CHECK((*groups)[1].codepointBegin == 2);
@@ -124,7 +136,7 @@ TEST_CASE("cluster_spans.combining_mark_is_never_torn_from_its_base", "[cluster_
     REQUIRE(groups.has_value());
     REQUIRE(groups->size() == 1);
 
-    CHECK((*groups)[0].missing);
+    CHECK((*groups)[0].unresolved());
     CHECK((*groups)[0].glyphBegin == 0);
     CHECK((*groups)[0].glyphEnd == 2);
     CHECK((*groups)[0].codepointBegin == 0);
@@ -146,7 +158,7 @@ TEST_CASE("cluster_spans.clusters_are_cell_labels_not_codepoint_offsets", "[clus
     CHECK((*groups)[0].codepointEnd == 1);
     CHECK((*groups)[1].codepointBegin == 1);
     CHECK((*groups)[1].codepointEnd == 2);
-    CHECK((*groups)[1].missing);
+    CHECK((*groups)[1].unresolved());
     CHECK((*groups)[2].codepointBegin == 2);
     CHECK((*groups)[2].codepointEnd == 3);
 }
@@ -220,20 +232,20 @@ TEST_CASE("cluster_spans.indivisibleGroup", "[cluster_spans]")
         CHECK(group.glyphEnd == 3);
         CHECK(group.codepointBegin == 0);
         CHECK(group.codepointEnd == 3);
-        CHECK(group.missing);
+        CHECK(group.unresolved());
     }
 
     SECTION("a fully covered run is not missing")
     {
         auto const glyphs = glyphsOf({ { 0, false }, { 1, false } });
-        CHECK_FALSE(indivisibleGroup(glyphs, 2).missing);
+        CHECK_FALSE(indivisibleGroup(glyphs, 2).unresolved());
     }
 
     SECTION("no glyphs at all")
     {
         auto const group = indivisibleGroup({}, 0);
         CHECK(group.empty());
-        CHECK_FALSE(group.missing);
+        CHECK_FALSE(group.unresolved());
     }
 }
 
@@ -251,13 +263,13 @@ TEST_CASE("cluster_spans.mergeAdjacentMissing", "[cluster_spans]")
         auto const segments = mergeAdjacentMissing(*groups);
         REQUIRE(segments.size() == 3);
 
-        CHECK(segments[0].missing);
+        CHECK(segments[0].unresolved());
         CHECK(segments[0].glyphBegin == 0);
         CHECK(segments[0].glyphEnd == 2);
         CHECK(segments[0].codepointBegin == 0);
         CHECK(segments[0].codepointEnd == 2);
-        CHECK_FALSE(segments[1].missing);
-        CHECK_FALSE(segments[2].missing);
+        CHECK_FALSE(segments[1].unresolved());
+        CHECK_FALSE(segments[2].unresolved());
     }
 
     SECTION("disjoint missing groups stay separate")
@@ -269,9 +281,9 @@ TEST_CASE("cluster_spans.mergeAdjacentMissing", "[cluster_spans]")
 
         auto const segments = mergeAdjacentMissing(*groups);
         REQUIRE(segments.size() == 3);
-        CHECK(segments[0].missing);
-        CHECK_FALSE(segments[1].missing);
-        CHECK(segments[2].missing);
+        CHECK(segments[0].unresolved());
+        CHECK_FALSE(segments[1].unresolved());
+        CHECK(segments[2].unresolved());
     }
 
     SECTION("an entirely missing run becomes a single span")
@@ -283,7 +295,7 @@ TEST_CASE("cluster_spans.mergeAdjacentMissing", "[cluster_spans]")
 
         auto const segments = mergeAdjacentMissing(*groups);
         REQUIRE(segments.size() == 1);
-        CHECK(segments[0].missing);
+        CHECK(segments[0].unresolved());
         CHECK(segments[0].codepointBegin == 0);
         CHECK(segments[0].codepointEnd == 3);
         CHECK(segments[0].glyphBegin == 0);
@@ -318,4 +330,98 @@ TEST_CASE("cluster_spans.empty_group_detection", "[cluster_spans]")
     REQUIRE(groups.has_value());
     REQUIRE(groups->size() == 1);
     CHECK((*groups)[0].empty());
+}
+
+TEST_CASE("cluster_spans.markFragmentedGroups", "[cluster_spans]")
+{
+    SECTION("glyphs a font composes into one emoji are whole")
+    {
+        // Segoe UI Emoji draws a family as several narrower people, overlapped by the font's offsets:
+        // together they advance about one emoji, where unjoined pieces advance one emoji EACH.
+        auto const glyphs = glyphsOf({ { .cluster = 0, .advance = 8 }, { .cluster = 0, .advance = 6 } });
+        auto groups = *clusterGroups(glyphs, clustersOf({ 0, 0, 0 }));
+        markFragmentedGroups(groups, glyphs, WholeLimit);
+        CHECK(groups[0].resolution == GroupResolution::Resolved);
+    }
+
+    // An emoji ZWJ sequence a font cannot combine shapes to its pieces, all in one cluster: each
+    // piece advances, and the joiners between them are hidden at zero advance.
+    SECTION("zero-advance joiners do not count")
+    {
+        auto const glyphs = glyphsOf({ { .cluster = 0, .advance = 16 },
+                                       { .cluster = 0, .advance = 0 },
+                                       { .cluster = 0, .advance = 16 } });
+        auto groups = *clusterGroups(glyphs, clustersOf({ 0, 0, 0 }));
+        markFragmentedGroups(groups, glyphs, WholeLimit);
+        REQUIRE(groups.size() == 1);
+        CHECK(groups[0].resolution == GroupResolution::Fragmented);
+    }
+
+    SECTION("one advancing glyph and its joiner are resolved")
+    {
+        auto const glyphs = glyphsOf({ { .cluster = 0, .advance = 16 }, { .cluster = 0, .advance = 0 } });
+        auto groups = *clusterGroups(glyphs, clustersOf({ 0, 0 }));
+        markFragmentedGroups(groups, glyphs, WholeLimit);
+        CHECK(groups[0].resolution == GroupResolution::Resolved);
+    }
+
+    SECTION(".notdef wins over fragmentation")
+    {
+        auto const glyphs =
+            glyphsOf({ { .cluster = 0, .missing = true, .advance = 16 }, { .cluster = 0, .advance = 16 } });
+        auto groups = *clusterGroups(glyphs, clustersOf({ 0, 0 }));
+        markFragmentedGroups(groups, glyphs, WholeLimit);
+        CHECK(groups[0].resolution == GroupResolution::NotDef);
+    }
+
+    SECTION("only the fragmented cluster is marked")
+    {
+        auto const glyphs = glyphsOf({ { .cluster = 0, .advance = 16 },
+                                       { .cluster = 0, .advance = 16 },
+                                       { .cluster = 2, .advance = 16 } });
+        auto groups = *clusterGroups(glyphs, clustersOf({ 0, 0, 2 }));
+        markFragmentedGroups(groups, glyphs, WholeLimit);
+        REQUIRE(groups.size() == 2);
+        CHECK(groups[0].resolution == GroupResolution::Fragmented);
+        CHECK(groups[1].resolution == GroupResolution::Resolved);
+    }
+}
+
+TEST_CASE("cluster_spans.fallbackSegments_by_rule", "[cluster_spans]")
+{
+    auto const glyphs = glyphsOf({ { .cluster = 0, .advance = 16 },
+                                   { .cluster = 0, .advance = 16 },
+                                   { .cluster = 2, .missing = true, .advance = 16 } });
+    auto const clusters = clustersOf({ 0, 0, 2 });
+
+    SECTION("a text run never fragments")
+    {
+        auto const segments = fallbackSegments(glyphs, clusters, FragmentationRule::Ignore, WholeLimit);
+        REQUIRE(segments.size() == 2);
+        CHECK(segments[0].resolution == GroupResolution::Resolved);
+        CHECK(segments[1].resolution == GroupResolution::NotDef);
+    }
+
+    SECTION("an emoji run keeps each unresolved cluster a segment of its own")
+    {
+        // Each emoji cluster is its own question for fallback: a neighbour no font renders must not deny
+        // a sequence the font that combines it, nor turn its pieces into replacement glyphs.
+        auto const segments =
+            fallbackSegments(glyphs, clusters, FragmentationRule::OneGlyphPerCluster, WholeLimit);
+        REQUIRE(segments.size() == 2);
+        CHECK(segments[0].resolution == GroupResolution::Fragmented);
+        CHECK(segments[1].resolution == GroupResolution::NotDef);
+    }
+
+    SECTION("a fragmented group alone stays fragmented")
+    {
+        auto const resolvedTail = glyphsOf({ { .cluster = 0, .advance = 16 },
+                                             { .cluster = 0, .advance = 16 },
+                                             { .cluster = 2, .advance = 16 } });
+        auto const segments =
+            fallbackSegments(resolvedTail, clusters, FragmentationRule::OneGlyphPerCluster, WholeLimit);
+        REQUIRE(segments.size() == 2);
+        CHECK(segments[0].resolution == GroupResolution::Fragmented);
+        CHECK(segments[1].resolution == GroupResolution::Resolved);
+    }
 }

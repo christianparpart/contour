@@ -9,6 +9,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <format>
 #include <ranges>
@@ -880,3 +881,292 @@ TEST_CASE("OpenShaper.fallback.zero_limit_stops_an_already_loaded_chain", "[Open
     REQUIRE(restored.size() == 1);
     CHECK(restored.front().glyph.font == enabled.front().glyph.font);
 }
+
+// {{{ emoji sequences a font cannot combine (#2381)
+
+namespace
+{
+
+constexpr auto Person = char32_t { 0x1F9D1 };
+constexpr auto MediumSkin = char32_t { 0x1F3FD };
+constexpr auto LightSkin = char32_t { 0x1F3FB };
+constexpr auto MediumLightSkin = char32_t { 0x1F3FC };
+constexpr auto Zwj = char32_t { 0x200D };
+constexpr auto Rabbit = char32_t { 0x1F430 };
+constexpr auto FightCloud = char32_t { 0x1FAEF };
+constexpr auto Grinning = char32_t { 0x1F600 };
+
+/// @return People with bunny ears: medium skin tone, light skin tone (Emoji 17.0).
+[[nodiscard]] u32string bunnyEars()
+{
+    return { Person, MediumSkin, Zwj, Rabbit, Zwj, Person, LightSkin };
+}
+
+/// @return People wrestling: medium-light skin tone, light skin tone (Emoji 17.0), U+1FAEF itself new
+/// in 17.0.
+[[nodiscard]] u32string wrestling()
+{
+    return { Person, MediumLightSkin, Zwj, FightCloud, Zwj, Person, LightSkin };
+}
+
+/// The pieces of bunnyEars() and a grinning face, each a glyph of its own -- a BDF font has no ligatures, so
+/// this is exactly a system emoji font that predates the sequence.
+[[nodiscard]] vector<BDFGlyph> emojiPieces()
+{
+    return {
+        { Person, 16 }, { MediumSkin, 16 }, { LightSkin, 16 }, { MediumLightSkin, 16 },
+        { Zwj, 0 },     { Rabbit, 16 },     { Grinning, 16 },  { Replacement, 16 },
+    };
+}
+
+/// Shapes @p codepoints as an emoji run with the given per-codepoint clusters.
+[[nodiscard]] ShapeResult shapeEmoji(OpenShaper& shaper,
+                                     FontKey font,
+                                     u32string const& codepoints,
+                                     vector<unsigned> clusters)
+{
+    auto result = ShapeResult {};
+    shaper.shape(font,
+                 codepoints,
+                 gsl::span<unsigned> { clusters },
+                 unicode::Script::Common,
+                 unicode::PresentationStyle::Emoji,
+                 result);
+    return result;
+}
+
+/// Shapes @p codepoints as an emoji run in a single cell.
+[[nodiscard]] ShapeResult shapeOneCellEmoji(OpenShaper& shaper, FontKey font, u32string const& codepoints)
+{
+    return shapeEmoji(shaper, font, codepoints, vector<unsigned>(codepoints.size(), 0U));
+}
+
+[[nodiscard]] size_t advancingGlyphs(ShapeResult const& result)
+{
+    return static_cast<size_t>(
+        ranges::count_if(result, [](GlyphPosition const& gpos) { return gpos.advance.x != 0; }));
+}
+
+#ifdef CONTOUR_EMOJI_FONT_FILE
+/// The bundled Noto Color Emoji, which combines the Emoji 17.0 sequences into one glyph each.
+[[nodiscard]] FontSource bundledEmojiFont()
+{
+    return FontPath { .value = CONTOUR_EMOJI_FONT_FILE };
+}
+#endif
+
+} // namespace
+
+TEST_CASE("OpenShaper.emoji.fragmented_cluster_resolves_to_the_combining_font", "[OpenShaper][emoji]")
+{
+#ifndef CONTOUR_EMOJI_FONT_FILE
+    SKIP("built with CONTOUR_EMOJI_FONT=OFF: no font that combines the sequence");
+#else
+    auto env =
+        FallbackEnv { { { .name = "system-emoji", .monospace = Monospaced, .glyphs = emojiPieces() } } };
+    MockFontLocator::configureCoverage({ bundledEmojiFont() });
+
+    auto const primary = env.key("system-emoji");
+    auto const result = shapeOneCellEmoji(env.shaper(), primary, bunnyEars());
+
+    REQUIRE(advancingGlyphs(result) == 1);
+    for (auto const& gpos: result)
+    {
+        CHECK(gpos.glyph.font != primary);
+        CHECK(gpos.glyph.index.value != 0);
+    }
+#endif
+}
+
+TEST_CASE("OpenShaper.emoji.keeps_the_first_fonts_pieces", "[OpenShaper][emoji]")
+{
+    // No font combines the sequence: the system font's pieces stand, not those of whichever font was
+    // tried last, and none of them turns into a replacement glyph. Must terminate.
+    auto otherPieces = BDFFont { "other-emoji", Monospaced, emojiPieces() };
+    auto env =
+        FallbackEnv { { { .name = "system-emoji", .monospace = Monospaced, .glyphs = emojiPieces() } } };
+    MockFontLocator::configureCoverage({ otherPieces.source() });
+
+    auto const primary = env.key("system-emoji");
+    auto const result = shapeOneCellEmoji(env.shaper(), primary, bunnyEars());
+
+    // Five pieces: two people, their two skin tones and the rabbit. (Shaping puts a cluster's whole
+    // advance on its first glyph, so the pieces are counted, not their advances.)
+    CHECK(result.size() == 5);
+    for (auto const& gpos: result)
+    {
+        CHECK(gpos.glyph.font == primary);
+        CHECK(gpos.glyph.index.value != 0);
+        CHECK(gpos.integrity == ClusterIntegrity::Pieces); // so the renderer fits them into the cell
+    }
+}
+
+TEST_CASE("OpenShaper.emoji.notdef_member_reaches_the_combining_font", "[OpenShaper][emoji]")
+{
+#ifndef CONTOUR_EMOJI_FONT_FILE
+    SKIP("built with CONTOUR_EMOJI_FONT=OFF: no font that combines the sequence");
+#else
+    // The system font has no U+1FAEF at all, and the system's first coverage answer has only part of the
+    // sequence: it must be passed over, because it does not resolve the cluster, for the bundled font.
+    auto partial = BDFFont { "partial", Monospaced, { { Person, 16 } } };
+    auto env =
+        FallbackEnv { { { .name = "system-emoji", .monospace = Monospaced, .glyphs = emojiPieces() } } };
+    MockFontLocator::configureCoverage({ partial.source(), bundledEmojiFont() });
+
+    auto const primary = env.key("system-emoji");
+    auto const result = shapeOneCellEmoji(env.shaper(), primary, wrestling());
+
+    REQUIRE(advancingGlyphs(result) == 1);
+    for (auto const& gpos: result)
+    {
+        CHECK(gpos.glyph.font != primary);
+        CHECK(gpos.glyph.index.value != 0);
+    }
+#endif
+}
+
+TEST_CASE("OpenShaper.emoji.only_the_fragmented_cluster_falls_back", "[OpenShaper][emoji]")
+{
+#ifndef CONTOUR_EMOJI_FONT_FILE
+    SKIP("built with CONTOUR_EMOJI_FONT=OFF: no font that combines the sequence");
+#else
+    auto env =
+        FallbackEnv { { { .name = "system-emoji", .monospace = Monospaced, .glyphs = emojiPieces() } } };
+    MockFontLocator::configureCoverage({ bundledEmojiFont() });
+
+    auto const primary = env.key("system-emoji");
+    auto codepoints = bunnyEars();
+    codepoints += Grinning;
+    auto clusters = vector<unsigned>(bunnyEars().size(), 0U);
+    clusters.emplace_back(2U);
+    auto const result = shapeEmoji(env.shaper(), primary, codepoints, clusters);
+
+    REQUIRE(advancingGlyphs(result) == 2);
+    auto const grinning =
+        ranges::find_if(result, [](GlyphPosition const& gpos) { return gpos.cluster == 2; });
+    REQUIRE(grinning != result.end());
+    CHECK(grinning->glyph.font == primary);
+    for (auto const& gpos: result)
+        if (gpos.cluster == 0)
+            CHECK(gpos.glyph.font != primary);
+#endif
+}
+
+TEST_CASE("OpenShaper.emoji.a_neighbour_no_font_combines_does_not_hold_back_a_sequence",
+          "[OpenShaper][emoji]")
+{
+#ifndef CONTOUR_EMOJI_FONT_FILE
+    SKIP("built with CONTOUR_EMOJI_FONT=OFF: no font that combines the sequence");
+#else
+    // Two fragmented clusters side by side: one the bundled font combines, and a ZWJ chain no font defines.
+    // Each is its own question; the second's having no answer must not deny the first its font.
+    auto env =
+        FallbackEnv { { { .name = "system-emoji", .monospace = Monospaced, .glyphs = emojiPieces() } } };
+    MockFontLocator::configureCoverage({ bundledEmojiFont() });
+
+    auto const primary = env.key("system-emoji");
+    auto const nonRgi = u32string { Rabbit, Zwj, Grinning };
+    auto clusters = vector<unsigned>(bunnyEars().size(), 0U);
+    clusters.insert(clusters.end(), nonRgi.size(), 2U);
+    auto const result = shapeEmoji(env.shaper(), primary, bunnyEars() + nonRgi, clusters);
+
+    auto const ofCluster = [&](unsigned cluster) {
+        auto glyphs = vector<GlyphPosition> {};
+        ranges::copy_if(result, back_inserter(glyphs), [cluster](GlyphPosition const& gpos) {
+            return gpos.cluster == cluster;
+        });
+        return glyphs;
+    };
+    REQUIRE(ofCluster(0).size() == 1); // combined, by the bundled font
+    CHECK(ofCluster(0).front().glyph.font != primary);
+    for (auto const& gpos: ofCluster(2)) // still in pieces, the system font's
+        CHECK(gpos.glyph.font == primary);
+#endif
+}
+
+TEST_CASE("OpenShaper.emoji.a_missing_neighbour_does_not_turn_pieces_into_replacements",
+          "[OpenShaper][emoji]")
+{
+    // A fragmented sequence beside an emoji no font has at all. The sequence's pieces are the best anyone
+    // can draw; they must not become replacement glyphs because the neighbour is missing.
+    auto otherPieces = BDFFont { "other-emoji", Monospaced, emojiPieces() };
+    auto env =
+        FallbackEnv { { { .name = "system-emoji", .monospace = Monospaced, .glyphs = emojiPieces() },
+                        { .name = "chain-emoji", .monospace = Monospaced, .glyphs = emojiPieces() } } };
+    MockFontLocator::configureCoverage({ otherPieces.source() });
+
+    auto const primary = env.key("system-emoji");
+    auto clusters = vector<unsigned>(bunnyEars().size(), 0U);
+    clusters.emplace_back(2U);
+    auto const result = shapeEmoji(env.shaper(), primary, bunnyEars() + u32string { FightCloud }, clusters);
+
+    for (auto const& gpos:
+         result | views::filter([](GlyphPosition const& gpos) { return gpos.cluster == 0; }))
+    {
+        CHECK(gpos.glyph.font == primary);
+        CHECK(gpos.glyph.index.value != 0);
+    }
+}
+
+TEST_CASE("OpenShaper.emoji.the_first_fonts_pieces_win_over_a_later_fonts", "[OpenShaper][emoji]")
+{
+    // The chain holds a second font that also draws the sequence only in pieces. Its pieces are tried
+    // and found no better: the system font's stand.
+    auto env =
+        FallbackEnv { { { .name = "system-emoji", .monospace = Monospaced, .glyphs = emojiPieces() },
+                        { .name = "chain-emoji", .monospace = Monospaced, .glyphs = emojiPieces() } } };
+
+    auto const primary = env.key("system-emoji");
+    auto const result = shapeOneCellEmoji(env.shaper(), primary, bunnyEars());
+
+    REQUIRE(result.size() == 5);
+    for (auto const& gpos: result)
+    {
+        CHECK(gpos.glyph.font == primary);
+        CHECK(gpos.integrity == ClusterIntegrity::Pieces);
+    }
+}
+
+TEST_CASE("OpenShaper.emoji.a_sequence_the_font_composes_from_several_glyphs_is_whole", "[OpenShaper][emoji]")
+{
+    // Segoe UI Emoji composes a family from several narrower glyphs overlapped by the font's offsets;
+    // together they advance about one emoji. That is the font drawing the sequence, not pieces of it: no
+    // fallback, and nothing for the renderer to pull apart. (The BDF font is 12 px to the em; 8 + 6 px is
+    // about 1.2 em.)
+    auto composing = vector<BDFGlyph> { { Person, 8 }, { Zwj, 0 }, { Rabbit, 6 } };
+    auto other = BDFFont { "other-emoji", Monospaced, composing };
+    auto env = FallbackEnv { { { .name = "system-emoji", .monospace = Monospaced, .glyphs = composing } } };
+    MockFontLocator::configureCoverage({ other.source() });
+
+    auto const primary = env.key("system-emoji");
+    auto const result = shapeOneCellEmoji(env.shaper(), primary, u32string { Person, Zwj, Rabbit });
+
+    REQUIRE(result.size() >= 2);
+    for (auto const& gpos: result)
+    {
+        CHECK(gpos.glyph.font == primary);
+        CHECK(gpos.integrity == ClusterIntegrity::Whole);
+    }
+}
+
+TEST_CASE("OpenShaper.emoji.text_runs_are_never_fragmented", "[OpenShaper][emoji]")
+{
+    // A base and its combining mark legitimately shape to two advancing glyphs in one cluster.
+    auto coverage = BDFFont { "coverage", Monospaced, { { U'e', 8 }, { Acute, 8 } } };
+    auto env = FallbackEnv { {
+        { .name = "primary", .monospace = Monospaced, .glyphs = { { U'e', 8 }, { Acute, 8 } } },
+    } };
+    MockFontLocator::configureCoverage({ coverage.source() });
+
+    auto const primary = env.key("primary");
+    auto const result = shapeOneCell(env.shaper(), primary, u32string { U'e', Acute });
+
+    REQUIRE(result.size() == 2);
+    for (auto const& gpos: result)
+    {
+        CHECK(gpos.glyph.font == primary);
+        CHECK(gpos.integrity == ClusterIntegrity::Whole); // a base and its mark are not pieces
+    }
+}
+
+// }}}
