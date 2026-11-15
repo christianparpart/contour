@@ -350,8 +350,8 @@ color_schemes:
 }
 
 /// The entry of @p section in reference page @p doc, from its heading to the next one; empty when it has
-/// none. A leaf is looked for there, as its `==term==`: a bare word such as `marks` or `pager` turns up in
-/// other entries' prose, and in its own entry's YAML example besides.
+/// none. A leaf is looked for there, as its list item (- `term`): a bare word such as `marks` or `pager`
+/// turns up in other entries' prose, and in its own entry's YAML example besides.
 [[nodiscard]] std::string_view referenceEntry(std::string_view doc, std::string_view section)
 {
     auto const heading = std::format("### `{}`\n", section);
@@ -1518,7 +1518,7 @@ TEST_CASE("Config: the generated config and the reference docs carry every comma
             {
                 INFO(scope << ": " << section << "." << leaf);
                 CHECK(hasPath(written, std::array { section, leaf }));
-                CHECK(referenceEntry(reference, section).contains(std::format("=={}==", leaf)));
+                CHECK(referenceEntry(reference, section).contains(std::format("- `{}`", leaf)));
             }
     };
     checkSections("global", generated, globalDoc, globalSections);
