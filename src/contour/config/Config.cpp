@@ -905,7 +905,7 @@ vtbackend::Settings emulationSettings(Config const& config, TerminalProfile cons
     settings.contextTintScope = oscContext.tinting;
     settings.terminalId = profile.terminalId.value();
     settings.answerback = profile.answerback.value();
-    settings.frozenModes = profile.frozenModes.value();
+    settings.frozenModes = profile.frozenDecModes.value();
     settings.maxImageRegisterCount = config.images.value().maxImageColorRegisters;
     settings.goodImageProtocol = config.images.value().goodImageProtocol;
     settings.sixelScrolling = config.images.value().sixelScrolling ? vtbackend::SixelScrolling::Enabled
@@ -2136,7 +2136,7 @@ void YAMLConfigReader::loadProfileBody(YAML::Node const& child,
         loadFromEntry(child, "margins", where.margins);
         loadFromEntry(child, "terminal_id", where.terminalId);
         loadFromEntry(child, "answerback", where.answerback);
-        loadFromEntry(child, "frozen_dec_modes", where.frozenModes);
+        loadFromEntry(child, "frozen_dec_modes", where.frozenDecModes);
         loadFromEntry(child, "slow_scrolling_time", where.smoothLineScrolling);
         loadFromEntry(child, "smooth_scrolling", where.smoothScrolling);
         loadFromEntry(child, "momentum_scrolling", where.momentumScrolling);
@@ -5635,19 +5635,21 @@ static std::string createForGlobal(Config const& c)
     };
 
     auto const processConfigEntry =
-        [&]<typename T, typename Doc>(auto const& name, contour::config::ConfigEntry<T, Doc> const& v) {
-            doc.append(writer.processEntry(writer.whichDoc(v), name, v.value()));
+        [&]<typename T, typename Doc>(auto const& /*name*/, contour::config::ConfigEntry<T, Doc> const& v) {
+            doc.append(writer.processEntry(writer.whichDoc(v), writer.keyOf(v), v.value()));
         };
 
     auto const processConfigEntryWithEscape =
-        [&]<typename Doc>(auto const& name, contour::config::ConfigEntry<std::string, Doc> const& v) {
-            doc.append(writer.processEntry(writer.whichDoc(v), name, escapeSequence(v.value())));
+        [&]<typename Doc>(auto const& /*name*/, contour::config::ConfigEntry<std::string, Doc> const& v) {
+            doc.append(writer.processEntry(writer.whichDoc(v), writer.keyOf(v), escapeSequence(v.value())));
         };
 
     // Not a ConfigEntry: the edition is fixed before the file is read, so no loader assigns it. It is
     // written all the same, so that a generated file names the defaults it was generated with.
-    auto const processDefaultsEdition = [&](auto const& name, DefaultsEdition const& edition) {
-        doc.append(writer.processEntry(writer.whichDoc(documentation::DefaultsEdition {}), name, edition));
+    auto const processDefaultsEdition = [&](auto const& /*name*/, DefaultsEdition const& edition) {
+        doc.append(writer.processEntry(writer.whichDoc(documentation::DefaultsEdition {}),
+                                       writer.keyOf(documentation::DefaultsEdition {}),
+                                       edition));
     };
 
     auto completeOverload = core::Overloaded {
@@ -5673,7 +5675,7 @@ static std::string createForGlobal(Config const& c)
         // example, so that "Attach to Host" can be found from the file alone.
         [&]([[maybe_unused]] auto const& name,
             ConfigEntry<std::map<std::string, HostEntry>, documentation::Hosts> const& v) {
-            doc.append(writer.format(writer.whichDoc(v)));
+            doc.append(writer.processEntry(writer.whichDoc(v), writer.keyOf(v)));
         },
         [&]([[maybe_unused]] auto const& name, [[maybe_unused]] auto const& v) {},
     };
@@ -5695,22 +5697,25 @@ template <typename Writer>
 static void emitProfileBody(Writer& writer, std::string& doc, TerminalProfile const& profile)
 {
     auto const processConfigEntry =
-        [&]<typename T, typename Doc>(auto const& name, contour::config::ConfigEntry<T, Doc> const& v) {
-            doc.append(writer.processEntry(writer.whichDoc(v), name, v.value()));
+        [&]<typename T, typename Doc>(auto const& /*name*/, contour::config::ConfigEntry<T, Doc> const& v) {
+            doc.append(writer.processEntry(writer.whichDoc(v), writer.keyOf(v), v.value()));
         };
 
     // Something is wrong for vtpty::Process::ExecInfo formatting for static build
     // we add this lambda to handle it in overload set for now
     auto const processConfigEntryWithExecInfo =
-        [&]<typename Doc>(auto const& name,
+        [&]<typename Doc>(auto const& /*name*/,
                           contour::config::ConfigEntry<vtpty::Process::ExecInfo, Doc> const& vEntry) {
             auto v = vEntry.value();
             auto args = std::string { "[" };
             args.append(v.arguments | core::views::joinWith(", "sv));
             args.append("]");
 
-            doc.append(writer.processEntry(
-                writer.whichDoc(vEntry), name, v.program, args, spelledWorkingDirectory(v.workingDirectory)));
+            doc.append(writer.processEntry(writer.whichDoc(vEntry),
+                                           writer.keyOf(vEntry),
+                                           v.program,
+                                           args,
+                                           spelledWorkingDirectory(v.workingDirectory)));
         };
 
     auto completeOverload = core::Overloaded {

@@ -551,7 +551,7 @@ profiles:
     CHECK(profile->fonts.value().textShapingEngine == vtrasterizer::TextShapingEngine::OpenShaper);
 
     // Valid DEC mode 2026 freezes; the out-of-range number is rejected.
-    CHECK(profile->frozenModes.value().size() == 1);
+    CHECK(profile->frozenDecModes.value().size() == 1);
 
     // Hint patterns: the complete entry loads, the nameless one is skipped with a warning.
     REQUIRE(profile->hintPatterns.value().size() == 1);
@@ -2542,7 +2542,7 @@ profiles:
 
     auto const* profile = config.profile("main");
     REQUIRE(profile != nullptr);
-    auto const& frozen = profile->frozenModes.value();
+    auto const& frozen = profile->frozenDecModes.value();
     // 25 (cursor visibility) and 2004 (bracketed paste) are valid DEC modes.
     CHECK(frozen.at(static_cast<vtbackend::DECMode>(25)) == true);
     CHECK(frozen.at(static_cast<vtbackend::DECMode>(2004)) == false);

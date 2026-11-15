@@ -17,14 +17,40 @@ struct StringLiteral
     char value[N]; // NOLINT
 };
 
-/// The text of one documentation entry: its two strings, for contour.yml and for the website. Each Text<Tag>
-/// specialization below derives from one, so a ConfigEntry names the tag rather than carrying the strings in
-/// its type.
-template <StringLiteral ConfigDoc, StringLiteral WebDoc>
+/// The YAML key an entry documents: the first line of @p configDoc that is not a comment, up to its colon.
+/// The commented contour.yml text is what a generated file is made of, so the key it opens with is the
+/// key the reader accepts for the entry's value -- which is not always the member's name (the member
+/// `smoothLineScrolling` is read from `slow_scrolling_time`).
+/// @param configDoc The commented contour.yml text of the entry.
+/// @return The key, or an empty view when every line of @p configDoc is a comment.
+[[nodiscard]] constexpr std::string_view firstKeyOf(std::string_view configDoc) noexcept
+{
+    while (!configDoc.empty())
+    {
+        auto const eol = configDoc.find('\n');
+        auto const line = configDoc.substr(0, eol);
+        configDoc.remove_prefix(eol == std::string_view::npos ? configDoc.size() : eol + 1);
+        auto const length = line.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_");
+        if (length != 0 && length != std::string_view::npos && line[length] == ':')
+            return line.substr(0, length);
+    }
+    return {};
+}
+
+/// The text of one documentation entry: its two strings, for contour.yml and for the website, and the YAML
+/// key they document. Each Text<Tag> specialization below derives from one, so a ConfigEntry names the tag
+/// rather than carrying the strings in its type.
+/// @tparam ConfigDoc The commented contour.yml text.
+/// @tparam WebDoc The website's Markdown text.
+/// @tparam KeyOverride The key, for an entry whose contour.yml text has no uncommented line to read it from.
+template <StringLiteral ConfigDoc, StringLiteral WebDoc, StringLiteral KeyOverride = StringLiteral { "" }>
 struct DocumentationEntry
 {
     static constexpr std::string_view Config = ConfigDoc.value; ///< The commented contour.yml text.
     static constexpr std::string_view Web = WebDoc.value;       ///< The website's Markdown text.
+    /// The YAML key the entry documents; the website page's heading.
+    static constexpr std::string_view Key =
+        KeyOverride.value[0] == '\0' ? firstKeyOf(Config) : std::string_view { KeyOverride.value };
 };
 
 constexpr StringLiteral Dummy { "{comment} fmt formatted doc {}\n" };
@@ -935,6 +961,17 @@ constexpr StringLiteral InputMethodEditorSupportConfig {
     "\n"
 };
 
+constexpr StringLiteral InputMethodEditorSupportWeb {
+    "Enables Input Method Editor (IME) support. This is enabled by default.\n"
+    "\n"
+    "``` yaml\n"
+    "profiles:\n"
+    "  profile_name:\n"
+    "    input_method_editor: true\n"
+    "```\n"
+    "\n"
+};
+
 constexpr StringLiteral InputMethodEditorStyleConfig {
     "{comment} How text an input method is composing is drawn, at the cursor, or to its left when it\n"
     "{comment} would not fit: `inline` in the terminal's default colours with a thin underline, or\n"
@@ -947,6 +984,7 @@ constexpr StringLiteral InputMethodEditorStyleWeb {
     "How text an input method is composing is drawn, at the cursor, or to its left when it would not fit.\n"
     "\n"
     "Valid values are:\n"
+    "\n"
     "- `inline` - in the terminal's default colours with a thin underline, as it will read once committed\n"
     "- `highlighted` - in the colour scheme's `input_method_editor` colours, bold and underlined\n"
     "\n"
@@ -1048,6 +1086,26 @@ constexpr StringLiteral FrozenDecModeConfig {
     "{comment}\n"
     "{comment}frozen_dec_modes:\n"
     "\n"
+};
+
+constexpr StringLiteral FrozenDecModeWeb {
+    "Defines a list of DEC modes to explicitly and permanently disable or enable support for.\n"
+    "\n"
+    "This is a developer-users-only option that may possibly help investigating problems. It may also be "
+    "used by regular users if they are asked to, in order to disable a broken functionality. This is "
+    "something we hardly try to avoid, of course.\n"
+    "\n"
+    "It is an object with each key being the DEC mode number and its value a boolean, indicating whether "
+    "this DEC mode is permanently set (enabled) or unset (disabled). A change applies to sessions opened "
+    "afterwards. It is a profile option.\n"
+    "\n"
+    "``` yaml\n"
+    "profiles:\n"
+    "  profile_name:\n"
+    "    frozen_dec_modes:\n"
+    "      2026: false\n"
+    "      2027: true\n"
+    "```\n"
 };
 
 constexpr StringLiteral LiveConfig {
@@ -1207,7 +1265,7 @@ constexpr StringLiteral TabSwitchOnHorizontalWheelConfig {
     "{comment} strip or the terminal switches to the previous/next tab.\n"
     "{comment}\n"
     "{comment} An application that has asked for mouse reporting (vim, tmux, ...) keeps receiving the\n"
-    "{comment} horizontal wheel; hold the bypass modifier (see bypass_mouse_protocol_modifiers) to\n"
+    "{comment} horizontal wheel; hold the bypass modifier (see bypass_mouse_protocol_modifier) to\n"
     "{comment} switch tabs anyway. An explicit WheelLeft/WheelRight entry in input_mapping wins over\n"
     "{comment} this built-in behaviour.\n"
     "tab_switch_on_horizontal_wheel: {}\n"
@@ -1323,9 +1381,10 @@ constexpr StringLiteral HostsConfig {
     "{comment}         identity_file: \"~/.ssh/id_ed25519\"\n"
     "\n"
 };
-constexpr StringLiteral HostsWeb { "Saved remote hosts that \"Attach to Host\" lists." };
+constexpr StringLiteral HostsWeb { "Saved remote hosts that \"Attach to Host\" lists.\n" };
 constexpr StringLiteral DefaultLayoutWeb {
-    "Name of the layout to open at startup, instead of a single default tab."
+    "Name of the layout to open at startup, instead of a single default tab.\n"
+    "\n"
 };
 
 constexpr StringLiteral WordDelimitersConfig { "{comment} Word delimiters when selecting word-wise.\n"
@@ -1933,6 +1992,36 @@ constexpr StringLiteral HintPatternsConfig {
     "{comment}       url: 'https://jira.example.com/browse/{{0}}'\n"
 };
 
+constexpr StringLiteral HintPatternsWeb {
+    "Patterns for hint mode and for the links detected in output.\n"
+    "\n"
+    "The built-in patterns are `url` and `filepath` (clickable), `githash`, `ipv4` and `ipv6` (hint mode "
+    "only). An entry named like a built-in overrides only the keys it gives, and may leave out its regex: `- "
+    "{ name: filepath, clickable: false }` stops underlining paths.\n"
+    "\n"
+    "- `regex`: ECMAScript regular expression; back-references (`\\1` to `\\9`) are not supported.\n"
+    "- `clickable`: `true` to detect it in output, decorate it and open it with Ctrl+click (default: "
+    "`false`; the built-ins keep their own).\n"
+    "- `url`: for your own patterns, what Ctrl+click opens: `{0}` is the match, `{1}` to `{9}` its "
+    "capture groups (default: the match as printed). A group is percent-encoded only where a URL cannot hold "
+    "a character (`/?&=+@:%` pass through): write the scheme and host out, groups after.\n"
+    "\n"
+    "A regex overriding `filepath` names the path with capture group 1, and its location with groups 2 and 3 "
+    "(`:line[:column]`) and 4 and 5 (`(line[,column])`); any other pattern's link is its whole match.\n"
+    "\n"
+    "``` yaml\n"
+    "hint_patterns:\n"
+    "  - name: uuid\n"
+    "    regex: "
+    "'\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b'\n"
+    "  - name: jira\n"
+    "    regex: '\\b[A-Z][A-Z0-9]+-\\d+\\b'\n"
+    "    clickable: true\n"
+    "    url: 'https://jira.example.com/browse/{0}'\n"
+    "```\n"
+    ""
+};
+
 constexpr StringLiteral ExtensionsConfig {
     "\n"
     "{comment} WebAssembly extensions for the status line. Each runs sandboxed, one instance per pane, and\n"
@@ -1956,6 +2045,18 @@ constexpr StringLiteral HintScrollbackLinesConfig {
     "{comment} How many scrollback rows a HintMode action with `scope: Scrollback` scans at most.\n"
     "{comment} Only that scope reads this; `scope: Visible` (the default) never leaves the viewport.\n"
     "hint_scrollback_lines: {}\n"
+};
+
+constexpr StringLiteral HintScrollbackLinesWeb {
+    "How many scrollback rows a `HintMode` action with `scope: Scrollback` scans at most. Only that scope "
+    "reads this; `scope: Visible` (the default) never leaves the viewport.\n"
+    "\n"
+    "``` yaml\n"
+    "profiles:\n"
+    "  profile_name:\n"
+    "    hint_scrollback_lines: 1000\n"
+    "```\n"
+    ""
 };
 
 constexpr StringLiteral IndicatorStatusLineConfig {
@@ -2176,6 +2277,14 @@ constexpr StringLiteral BoxArcStyleConfig {
     "box_arc_style: {}\n"
 };
 
+constexpr StringLiteral BoxArcStyleWeb { "Controls how arcs in box drawing characters are drawn. May be one "
+                                         "of `round` or `ellips`. The default value is `round`.\n"
+                                         "\n"
+                                         "``` yaml\n"
+                                         "box_arc_style: round\n"
+                                         "```\n"
+                                         "" };
+
 constexpr StringLiteral BrailleStyleConfig {
     "\n"
     "{comment} Controls how Unicode Braille characters are rendered.\n "
@@ -2191,6 +2300,25 @@ constexpr StringLiteral BrailleStyleConfig {
     "`aa_square<..>` uses antialiasing.\n"
     "braille_style: {}\n"
 };
+
+constexpr StringLiteral BrailleStyleWeb {
+    "Controls how Unicode Braille characters are rendered. May be one of `font`, `solid`, `circle`, "
+    "`circle_empty`, `square`, `square_empty`, `aa_square`, `aa_square_empty`. The default value is "
+    "`circle`.\n"
+    "\n"
+    "- `font` disables special rendering and uses font characters.\n"
+    "- `solid` splits the character box into 8 rectangles without space between them. No antialiasing is "
+    "used, some font sizes may result in differently sized \"dots\".\n"
+    "- `circle<..>` and `<..>square<..>` groups use circle and square \"dots\" respectively.\n"
+    "- `<..>_empty` draws non-filled \"dots\".\n"
+    "- `square<..>` does not use antialiasing, which may result in differently sized \"dots\". "
+    "`aa_square<..>` uses antialiasing.\n"
+    "\n"
+    "``` yaml\n"
+    "braille_style: circle\n"
+    "```\n"
+    ""
+};
 constexpr StringLiteral GitDrawingsConfig {
     "\n"
     "{comment} Controls how git branch drawings are rendered.\n"
@@ -2204,6 +2332,42 @@ constexpr StringLiteral GitDrawingsConfig {
     "    branch_style:       {}\n"
     "    arc_style:          {}\n"
     "    merge_commit_style: {}\n"
+};
+
+constexpr StringLiteral GitDrawingsWeb {
+    "Contour implements rendering of git branch characters used by e.g. "
+    "[vim-flog](https://github.com/rbong/vim-flog) and "
+    "[gitgraph.nvim](https://github.com/isakbm/gitgraph.nvim). Initially introduced to "
+    "[kitty](https://github.com/kovidgoyal/kitty/pull/7681), the symbol set was later expanded to support "
+    "more commit options.\n"
+    "\n"
+    "The symbols use codepoints U+F5D0 ... U+F60D.\n"
+    "\n"
+    "> **Note:** U+F5D2 ... U+F5D5 are supposed to be fading out symbols but currently are rendered as "
+    "simple lines.\n"
+    "\n"
+    "![f5d0-f5d9-git-branch-drawings](../screenshots/contour-gitbranch-f5d0-f5d9.png)\n"
+    "\n"
+    "![f5da-f5ed-git-branch-drawings](../screenshots/contour-gitbranch-f5da-f5ed.png)\n"
+    "\n"
+    "![f5ee-f60d-git-branch-drawings](../screenshots/contour-gitbranch-f5ee-f60d.png)\n"
+    "\n"
+    "The symbols may be customized via config options:\n"
+    "\n"
+    "- `branch_style` controls the style of connecting branches. May be one of `none`, `thin`, `thick`, "
+    "`double`. The default value is `thin`.\n"
+    "- `arc_style` controls the style of arcs. May be one of `round`, `ellips`. `arc_style` has effect only "
+    "if `branch_style` is `thin`. The default value is `round`.\n"
+    "- `merge_commit_style` controls the style of merge commits. May be one of `solid`, `bullet`. The "
+    "default value is `bullet`.\n"
+    "\n"
+    "``` yaml\n"
+    "git_drawings:\n"
+    "    branch_style:       thin\n"
+    "    arc_style:          round\n"
+    "    merge_commit_style: bullet\n"
+    "```\n"
+    ""
 };
 
 constexpr StringLiteral DefaultsEditionWeb {
@@ -2383,14 +2547,16 @@ constexpr StringLiteral ImagesWeb {
 constexpr StringLiteral QuickTerminalWeb {
     "section sets a global hotkey that slides a terminal down from the top of the screen under the "
     "pointer, full width and 40 % of its height, in Minimal density.\n"
+    "\n"
     "``` yaml\n"
     "quick_terminal:\n"
     "  hotkey: {{ mods: [Control], key: '`' }}\n"
     "  hide_on_focus_loss: true\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==hotkey== The chord, spelled as an input mapping spells it; it needs at "
+    "\n"
+    "- `hotkey`: The chord, spelled as an input mapping spells it; it needs at "
     "least one of `Control`, `Alt` and `Super`. Unbound (`~`) by default.\n"
-    ":octicons-horizontal-rule-16: ==hide_on_focus_loss== Whether the quick terminal hides when it loses "
+    "- `hide_on_focus_loss`: Whether the quick terminal hides when it loses "
     "the focus.\n"
 };
 
@@ -2409,6 +2575,7 @@ constexpr StringLiteral QuickTerminalConfig {
 
 constexpr StringLiteral DaemonWeb {
     "section decides whether sessions are hosted by a daemon process, so they outlive the window.\n"
+    "\n"
     "``` yaml\n"
     "daemon:\n"
     "  mode: auto\n"
@@ -2430,40 +2597,42 @@ constexpr StringLiteral DaemonWeb {
     "    startup_timeout: 30\n"
     "    stop_timeout: 60\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==mode== `in_process` keeps sessions in the GUI process, `auto` uses a "
+    "\n"
+    "- `mode`: `in_process` keeps sessions in the GUI process, `auto` uses a "
     "daemon and falls back to in-process with a notice, `required` fails when no daemon can be reached.\n"
-    ":octicons-horizontal-rule-16: ==socket== The daemon's socket path; empty selects the default.\n"
-    ":octicons-horizontal-rule-16: ==size_policy== Which client's size wins when several are attached: "
+    "- `socket`: The daemon's socket path; empty selects the default.\n"
+    "- `size_policy`: Which client's size wins when several are attached: "
     "`latest`, `smallest` or `largest`.\n"
-    ":octicons-horizontal-rule-16: ==default_cell_pixel_size== The cell size in pixels images are laid out "
+    "- `default_cell_pixel_size`: The cell size in pixels images are laid out "
     "on before any client has reported one; 10×20 is the VT340's text cell.\n"
-    ":octicons-horizontal-rule-16: ==history_limit== Scrollback lines per session, `-1` for unlimited; "
+    "- `history_limit`: Scrollback lines per session, `-1` for unlimited; "
     "unset uses the hosting profile's `history.limit`.\n"
-    ":octicons-horizontal-rule-16: ==restore.scrollback== Whether a restored pane gets its scrollback back; "
+    "- `restore.scrollback`: Whether a restored pane gets its scrollback back; "
     "the snapshot file may hold secrets that were on screen, and is readable by your user only.\n"
-    ":octicons-horizontal-rule-16: ==restore.scrollback_lines== The most scrollback lines kept per pane, "
+    "- `restore.scrollback_lines`: The most scrollback lines kept per pane, "
     "from `0` to `100000`; the live scrollback stays `history_limit`.\n"
-    ":octicons-horizontal-rule-16: ==restore.rerun_programs== Programs a restored pane runs again when it "
+    "- `restore.rerun_programs`: Programs a restored pane runs again when it "
     "was running one of them, such as `[vim, htop]`; nothing is re-run unless listed.\n"
-    ":octicons-horizontal-rule-16: ==restore.interval== How often, in seconds, a changed workspace is "
+    "- `restore.interval`: How often, in seconds, a changed workspace is "
     "written; at least `5`.\n"
-    ":octicons-horizontal-rule-16: ==keeper.restart_hung== Whether the PTY keeper, the process `contour "
+    "- `keeper.restart_hung`: Whether the PTY keeper, the process `contour "
     "daemon` "
     "runs the daemon behind, restarts a daemon that stops answering for 30 seconds.\n"
-    ":octicons-horizontal-rule-16: ==keeper.give_up_crashes== and ==keeper.give_up_window== A daemon that "
+    "- `keeper.give_up_crashes` and `keeper.give_up_window`: A daemon that "
     "crashes this many times within this many seconds is not restarted at once again: the keeper waits two "
     "minutes, then tries once more, and ends with the shells if that one crashes too.\n"
-    ":octicons-horizontal-rule-16: ==keeper.backoff_start== and ==keeper.backoff_cap== How many seconds the "
+    "- `keeper.backoff_start` and `keeper.backoff_cap`: How many seconds the "
     "restart after a crash soon after another waits, doubling from the first up to the second.\n"
-    ":octicons-horizontal-rule-16: ==keeper.startup_timeout== How many seconds a starting daemon may be "
+    "- `keeper.startup_timeout`: How many seconds a starting daemon may be "
     "silent before it serves, or is killed as hung: until its first heartbeat, and between heartbeats after "
     "it.\n"
-    ":octicons-horizontal-rule-16: ==keeper.stop_timeout== How many seconds a stopping daemon has to end "
+    "- `keeper.stop_timeout`: How many seconds a stopping daemon has to end "
     "before the keeper kills it; keep it below a service manager's own stop timeout (systemd: 90).\n"
 };
 
 constexpr StringLiteral ProfilesWeb { "All profiles inside configuration files share parent node `profiles`. "
                                       "To create profile you need to specify child node\n"
+                                      "\n"
                                       "```yaml\n"
                                       "profiles:\n"
                                       "    main:\n"
@@ -2482,17 +2651,19 @@ constexpr StringLiteral ShellWeb {
 
     "configuration section allows you to specify the process to be started inside the terminal. It provides "
     "flexibility to override the default login shell and supports logging in to a remote host.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
     "    shell: \"/bin/bash\"\n"
     "    arguments: [\"some\", \"optional\", \"arguments\", \"for\", \"the\", \"shell\"]\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==arguments== (optional) Allows you to provide additional command-line "
+    "\n"
+    "- `arguments`: (optional) Allows you to provide additional command-line "
     "arguments to the shell executable. These arguments will be passed to the shell when it is started "
     "inside the terminal.\n"
     "\n"
-    ":octicons-horizontal-rule-16: ==environment== Variables for the shell the profile opens. A local "
+    "- `environment`: Variables for the shell the profile opens. A local "
     "profile passes them to its child process. A built-in SSH profile sends them to its remote host.\n"
     "\n"
 };
@@ -2501,6 +2672,7 @@ constexpr StringLiteral EscapeSandboxWeb {
     "option in the configuration file allows you to control the sandboxing behavior when the terminal is "
     "executed from within Flatpak. This configuration is relevant only if the terminal is running in a "
     "Flatpak environment.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -2532,17 +2704,17 @@ constexpr StringLiteral SshHostConfigWeb {
     "above.\n"
     "These values can be overridden in the local Contour configuration as follows:\n"
     "\n"
-    ":octicons-horizontal-rule-16: ==ssh.host== SSH server to establish the connection to.\n"
-    ":octicons-horizontal-rule-16: ==ssh.port== SSH port (defaults to `22`). Only specify this value if it "
+    "- `ssh.host`: SSH server to establish the connection to.\n"
+    "- `ssh.port`: SSH port (defaults to `22`). Only specify this value if it "
     "is deviating from the default value `22`.\n"
-    ":octicons-horizontal-rule-16: ==ssh.private_key== Path to private key to use for key based "
+    "- `ssh.private_key`: Path to private key to use for key based "
     "authentication.\n"
-    ":octicons-horizontal-rule-16: ==ssh.public_key== Path to public key that belongs to the private key. "
+    "- `ssh.public_key`: Path to public key that belongs to the private key. "
     "When using key based authentication, it depends on the underlying backend, if the public key is also "
     "required. OpenSSL for example does not require it.\n"
-    ":octicons-horizontal-rule-16: ==ssh.known_hosts== Path to `known_hosts` file. This defaults to and "
+    "- `ssh.known_hosts`: Path to `known_hosts` file. This defaults to and "
     "usually is located in `~/.ssh/known_hosts`.\n"
-    ":octicons-horizontal-rule-16: ==ssh.forward_agent== Boolean, indicating whether or not the local SSH "
+    "- `ssh.forward_agent`: Boolean, indicating whether or not the local SSH "
     "auth agent should be requested to be forwarded. Note: this is currently not working due to an issue "
     "related to the underlying library being used, but is hopefully resolved soon.\n"
     "\n"
@@ -2593,9 +2765,10 @@ constexpr StringLiteral BellWeb {
     "      sound: \"default\"\n"
     "      alert: false\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==sound== This option determines the sound of `BEL` (also `\a` or `0x07`) "
-    "to `off` or `default` or sound generated by a file located at `path`. <br />\n"
-    ":octicons-horizontal-rule-16: ==alert== This option determines whether or not a window alert will be "
+    "\n"
+    "- `sound`: This option determines the sound of `BEL` (also `\a` or `0x07`) "
+    "to `off` or `default` or sound generated by a file located at `path`.\n"
+    "- `alert`: This option determines whether or not a window alert will be "
     "raised each time a bell is ringed. Useful for tiling window managers like i3 or sway.\n"
     "\n"
 };
@@ -2605,6 +2778,12 @@ constexpr StringLiteral WMClassWeb {
     "Configuration option defines the class part of the `WM_CLASS` property of the terminal window. The "
     "`WM_CLASS` property is a standard X11 property used to identify and classify windows by their class and "
     "instance.\n"
+    "\n"
+    "``` yaml\n"
+    "profiles:\n"
+    "  profile_name:\n"
+    "    wm_class: contour\n"
+    "```\n"
     "\n"
 };
 
@@ -2627,6 +2806,12 @@ constexpr StringLiteral TabLabelWeb {
     "may itself contain the "
     "same placeholders (so renaming a tab to `{{WindowTitle}}` tracks its title). A tab holding a split is "
     "shown as `Multiple panes`.\n"
+    "\n"
+    "``` yaml\n"
+    "profiles:\n"
+    "  profile_name:\n"
+    "    tab_label: \"{{TabName}}\"\n"
+    "```\n"
     "\n"
 };
 
@@ -2676,7 +2861,8 @@ constexpr StringLiteral AccessibilityCaretReportingWeb {
 
 constexpr StringLiteral HyperlinkHoverTooltipWeb {
     "\n"
-    "Whether hovering a link ([OSC 8](../vt-extensions/index.md) or detected) shows its target without "
+    "Whether hovering a link ([OSC 8](../vt-extensions/clickable-links.md) or detected) shows its target "
+    "without "
     "holding the follow modifier. While the modifier is held the target always shows. A local `file://` "
     "target is shown as a plain path. Defaults to `false`; a configuration written before the 2026 "
     "defaults keeps `true`.\n"
@@ -2759,17 +2945,19 @@ constexpr StringLiteral TabPlacementWeb {
 constexpr StringLiteral SidebarWeb {
     "configuration controls the workspace sidebar: the list of workspaces, and with "
     "[`tab_placement`](#tab_placement) `Sidebar` their tabs, at the window's left edge.\n"
+    "\n"
     "``` yaml\n"
     "sidebar:\n"
     "  visible: true\n"
     "  width: null\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==visible== Whether the sidebar starts shown. This is `false` for the "
+    "\n"
+    "- `visible`: Whether the sidebar starts shown. This is `false` for the "
     "`classic` defaults and `true` for the `native2026` ones. What you last chose in a window is "
-    "remembered, and wins over this. <br/>\n"
-    ":octicons-horizontal-rule-16: ==width== The sidebar's starting width in logical pixels, or in cells "
+    "remembered, and wins over this.\n"
+    "- `width`: The sidebar's starting width in logical pixels, or in cells "
     "under `ui_style: terminal`, kept within the bounds of the chrome style; a width dragged in a window is "
-    "remembered likewise. Omit it or use `null` for the style's own width. <br/>\n"
+    "remembered likewise. Omit it or use `null` for the style's own width.\n"
     "\n"
 };
 
@@ -2849,7 +3037,7 @@ constexpr StringLiteral UiFontFamilyWeb {
     "\n"
     "Font family the terminal-style chrome is drawn with. When empty (the default) the chrome inherits "
     "the regular font family of the profile the window is running (`-p`/`--profile`, else "
-    "[`default_profile`](#default_profile_name)), which is what makes it match the terminal grid below it. "
+    "[`default_profile`](#default_profile)), which is what makes it match the terminal grid below it. "
     "Ignored while [`ui_style`](#ui_style) is `native`, where the chrome uses the platform UI font. "
     "Takes effect on the next start.\n"
     "\n"
@@ -2905,6 +3093,7 @@ constexpr StringLiteral TerminalIdWeb {
 constexpr StringLiteral TerminalSizeWeb {
     "configuration option allows you to specify the initial size of the terminal window in terms of the "
     "number of columns and lines.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -2912,16 +3101,18 @@ constexpr StringLiteral TerminalSizeWeb {
     "      columns: 80\n"
     "      lines: 25\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==columns== This option specifies the number of columns (characters) to "
-    "be displayed in the terminal window. In the provided example, the value is set to 80. <br/>\n"
-    ":octicons-horizontal-rule-16: ==lines== This option specifies the number of lines to be displayed in "
-    "the terminal window. In the provided example, the value is set to 25. <br/>\n"
+    "\n"
+    "- `columns`: This option specifies the number of columns (characters) to "
+    "be displayed in the terminal window. In the provided example, the value is set to 80.\n"
+    "- `lines`: This option specifies the number of lines to be displayed in "
+    "the terminal window. In the provided example, the value is set to 25.\n"
     "\n"
 };
 
 constexpr StringLiteral HistoryWeb {
     "configuration allows you to customize the behavior and settings related to the terminal's history, "
     "including the number of preserved lines, auto-scrolling, and scroll events.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -2931,10 +3122,11 @@ constexpr StringLiteral HistoryWeb {
     "      auto_scroll_on_update: false\n"
     "      scroll_multiplier: 3\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==limit== This option specifies the number of lines to preserve in the "
+    "\n"
+    "- `limit`: This option specifies the number of lines to preserve in the "
     "terminal's history. A value of -1 indicates unlimited history, meaning that all lines are preserved. In "
-    "the provided example, the limit is set to 1000. <br/>\n"
-    ":octicons-horizontal-rule-16: ==hard_limit== The upper bound on the scrollback, and what makes "
+    "the provided example, the limit is set to 1000.\n"
+    "- `hard_limit`: The upper bound on the scrollback, and what makes "
     "eviction command-aware. Anything above `limit` is headroom: the buffer is allowed to grow into it, "
     "and when it fills, whole (prompt, output) blocks are dropped from the top rather than a slice taken "
     "wherever `limit` fell. The oldest line kept is then a prompt with its command's output intact, "
@@ -2944,17 +3136,16 @@ constexpr StringLiteral HistoryWeb {
     "headroom -- there is no boundary to honour and the buffer simply bounds at this value, evicting "
     "line by line as before. Values below `limit` are raised to it, which disables the feature; -1 "
     "means infinite, and an infinite `limit` makes this infinite too since nothing is ever evicted. "
-    "Defaults to `limit`. <br/>\n"
-    ":octicons-horizontal-rule-16: ==auto_scroll_on_update== This boolean option determines whether "
+    "Defaults to `limit`.\n"
+    "- `auto_scroll_on_update`: This boolean option determines whether "
     "new output brings a view scrolled back into the history down to the bottom. Only output that adds "
     "lines counts: a prompt, a progress bar or a clock repainted in place does not, so a shell that "
     "redraws its prompt on a timer leaves the view where you put it. If set to false, the terminal "
     "maintains the current scroll position until you type, which always brings the view down. Defaults "
-    "to false. <br/>\n"
-    ":octicons-horizontal-rule-16: ==scroll_multiplier== This option defines the number of lines to scroll "
+    "to false.\n"
+    "- `scroll_multiplier`: This option defines the number of lines to scroll "
     "when the ScrollUp or ScrollDown events occur. By default, scrolling up or down moves three lines at a "
-    "time. You can adjust this value as needed. In the provided example, scroll_multiplier is set to 3. "
-    "<br/>\n"
+    "time. You can adjust this value as needed. In the provided example, scroll_multiplier is set to 3.\n"
     "\n"
 };
 
@@ -2962,6 +3153,7 @@ constexpr StringLiteral OscContextWeb {
     "configuration controls whether Contour reads OSC 3008, systemd's hierarchical context signalling "
     "(UAPI.15): the nested stack of contexts a shell, `run0`, `ssh` or a container runtime opens around "
     "whatever runs inside it.\n"
+    "\n"
     "``` yaml\n"
     "osc_context:\n"
     "  enabled: true\n"
@@ -2974,28 +3166,30 @@ constexpr StringLiteral OscContextWeb {
     "command with no configuration at all, so on such a system Contour learns command boundaries, exit "
     "statuses (including whether a command crashed or was interrupted, which OSC 133 cannot express) "
     "and working directories without any shell integration being installed.\n"
-    ":octicons-horizontal-rule-16: ==enabled== Whether the sequences are read at all. When false "
-    "nothing is tracked, nothing is derived and nothing is tinted. <br/>\n"
-    ":octicons-horizontal-rule-16: ==max_depth== How deep the context stack may grow. Beyond it, "
+    "\n"
+    "- `enabled`: Whether the sequences are read at all. When false "
+    "nothing is tracked, nothing is derived and nothing is tinted.\n"
+    "- `max_depth`: How deep the context stack may grow. Beyond it, "
     "further contexts are ignored -- the NEWER ones, so that a program cannot push the context "
-    "established above it out of the stack. <br/>\n"
-    ":octicons-horizontal-rule-16: ==max_retained_contexts== How many contexts are remembered for "
+    "established above it out of the stack.\n"
+    "- `max_retained_contexts`: How many contexts are remembered for "
     "scrolled-back output that still refers to them. Older ones are forgotten, and output belonging to "
-    "them simply stops being attributed. <br/>\n"
-    ":octicons-horizontal-rule-16: ==derive_markers== Whether OSC 3008 may stand in for a shell "
+    "them simply stops being attributed.\n"
+    "- `derive_markers`: Whether OSC 3008 may stand in for a shell "
     "integration that is not installed. `when_alone` derives prompt and command marks from it only "
     "while OSC 133 has said nothing; once a shell integration speaks, it owns the marks for the rest of "
-    "the session. `never` leaves marks entirely to OSC 133. <br/>\n"
-    ":octicons-horizontal-rule-16: ==tinting== Which contexts may tint the page background. The "
+    "the session. `never` leaves marks entirely to OSC 133.\n"
+    "- `tinting`: Which contexts may tint the page background. The "
     "colours themselves come from the colour scheme's `tint:` map, which no shipped scheme sets, so "
     "nothing is tinted until you choose a colour there. Note that a context is something the session "
     "**announced**: anything that can write to your terminal can announce one, or fail to announce one, "
-    "so the absence of a tint is not a statement that nothing is elevated. <br/>\n"
+    "so the absence of a tint is not a statement that nothing is elevated.\n"
 };
 
 constexpr StringLiteral FoldingWeb {
     "configuration controls output folding: collapsing a finished command's output down to the prompt "
     "line it was entered at, and expanding it again.\n"
+    "\n"
     "``` yaml\n"
     "folding:\n"
     "  enabled: true\n"
@@ -3006,24 +3200,25 @@ constexpr StringLiteral FoldingWeb {
     "Folding is driven entirely by the OSC 133 semantic marks a shell with shell integration emits, so "
     "no additional escape sequence is involved and any shell that already speaks OSC 133 works. Only "
     "FINISHED commands fold, which is why the prompt you are typing at never does.\n"
-    ":octicons-horizontal-rule-16: ==enabled== Whether folding is available at all. When false the "
-    "actions below do nothing and no fold markers are drawn. <br/>\n"
-    ":octicons-horizontal-rule-16: ==show_markers== Whether the gutter's block column, left of the grid, "
+    "\n"
+    "- `enabled`: Whether folding is available at all. When false the "
+    "actions below do nothing and no fold markers are drawn.\n"
+    "- `show_markers`: Whether the gutter's block column, left of the grid, "
     "draws fold markers: a boxed minus on a foldable prompt line whose output is showing, a boxed plus "
     "once it is collapsed, and a bar down the side of the block joining the two. Clicking anywhere on "
     "that column toggles the fold. Note that the column costs one column of terminal width; it is "
-    "reserved while this, `gutter.exit_status` or `gutter.user_marks` is on. <br/>\n"
-    ":octicons-horizontal-rule-16: ==auto_collapse_on_new_command== Whether a command's output is "
+    "reserved while this, `gutter.exit_status` or `gutter.user_marks` is on.\n"
+    "- `auto_collapse_on_new_command`: Whether a command's output is "
     "collapsed automatically as soon as the next prompt appears, so that only the command you are "
-    "running now is shown in full. <br/>\n"
-    ":octicons-horizontal-rule-16: ==on_jump_into_fold== What a Vi-mode jump that targets a line "
+    "running now is shown in full.\n"
+    "- `on_jump_into_fold`: What a Vi-mode jump that targets a line "
     "inside a collapsed block does: `expand` opens the block so the cursor lands on what it was "
     "aiming at, `skip` leaves it collapsed and stops at its prompt line instead. Plain motions "
     "(`j`, `k`, `{{`, `}}`, ++ctrl+d++, ++ctrl+u++) always step over a collapsed block regardless of "
-    "this setting. <br/>\n"
+    "this setting.\n"
     "\n"
-    "The actions ==CollapseAllFolds==, ==ExpandAllFolds==, ==CollapseLastFold==, ==ToggleLastFold== and "
-    "==ToggleFold== can be bound to keys; ==ScrollMarkUp== and ==ScrollMarkDown== already move the "
+    "The actions `CollapseAllFolds`, `ExpandAllFolds`, `CollapseLastFold`, `ToggleLastFold` and "
+    "`ToggleFold` can be bound to keys; `ScrollMarkUp` and `ScrollMarkDown` already move the "
     "viewport from one prompt to the next.\n"
     "\n"
 };
@@ -3031,6 +3226,7 @@ constexpr StringLiteral FoldingWeb {
 constexpr StringLiteral GutterWeb {
     "configuration controls the gutter: the strip left of the grid that carries per-line timestamps, "
     "line numbers and the block column.\n"
+    "\n"
     "``` yaml\n"
     "gutter:\n"
     "  exit_status: true\n"
@@ -3047,39 +3243,37 @@ constexpr StringLiteral GutterWeb {
     "cannot resize the page in the middle of a command's output. The block column is reserved while "
     "fold markers (`folding.show_markers`), exit status or user marks are on, `block_column_width` cells "
     "wide.\n"
-    ":octicons-horizontal-rule-16: ==exit_status== Colour each command's fold controls by how it ended "
+    "\n"
+    "- `exit_status`: Colour each command's fold controls by how it ended "
     "-- the colour scheme's `block_status` colours -- draw a triangle beside a running command, and a "
     "dot beside a finished one that shows no fold control: one with nothing to fold, or any one while "
     "fold markers are off. Hovering the block column shows the exit code, duration, start time, working "
-    "directory and command line. <br/>\n"
-    ":octicons-horizontal-rule-16: ==user_marks== Draw a diamond beside every row marked with vi-mode "
-    "`mm`. <br/>\n"
-    ":octicons-horizontal-rule-16: ==block_column_width== The block column's width in cells, 1 or 2. At "
+    "directory and command line.\n"
+    "- `user_marks`: Draw a diamond beside every row marked with vi-mode "
+    "`mm`.\n"
+    "- `block_column_width`: The block column's width in cells, 1 or 2. At "
     "2, the default, its fold controls and marks are drawn across both cells at twice the size, and a "
-    "click anywhere in the column -- the blank strip left of it included -- lands on it. <br/>\n"
-    ":octicons-horizontal-rule-16: ==rail_thickness== Native command-block rail thickness in UI points, "
-    "0 to hide the line or 1 to 8. Omit or use null for the style default. Takes effect for new sessions. "
-    "<br/>\n"
-    ":octicons-horizontal-rule-16: ==bold_on_hover== Draw the fold under the pointer -- its line, its box "
+    "click anywhere in the column -- the blank strip left of it included -- lands on it.\n"
+    "- `rail_thickness`: Native command-block rail thickness in UI points, "
+    "0 to hide the line or 1 to 8. Omit or use null for the style default. Takes effect for new sessions.\n"
+    "- `bold_on_hover`: Draw the fold under the pointer -- its line, its box "
     "and its end -- one stroke heavier, as well as at full strength: a failed command's, already heavy, "
-    "heavier still. Its colours are the color scheme's `fold_marker.hover` and `block_status_hover`. "
-    "<br/>\n"
-    ":octicons-horizontal-rule-16: ==line_numbers== `off`, `absolute` (every row's number, counted from "
+    "heavier still. Its colours are the color scheme's `fold_marker.hover` and `block_status_hover`.\n"
+    "- `line_numbers`: `off`, `absolute` (every row's number, counted from "
     "the session's first row, so the numbers stay put while history scrolls away), `relative` (every "
     "row's distance from the cursor row, counting a collapsed block as one row -- exactly what `j` and "
     "`k` count) or `hybrid` (the cursor row's own number, every other row's distance), as vim's `nu` and "
-    "`rnu`. In vi mode the distance counts from the vi cursor. <br/>\n"
-    ":octicons-horizontal-rule-16: ==line_number_width== Columns the line numbers take, 3 to 10. A "
-    "longer number shows its last digits after an ellipsis. <br/>\n"
-    ":octicons-horizontal-rule-16: ==timestamps== Show the time each row was first reached. A row shows "
-    "it only where it differs from the row above, so a long output does not repeat one second. <br/>\n"
-    ":octicons-horizontal-rule-16: ==timestamp_format== A `std::format` chrono specification in local "
+    "`rnu`. In vi mode the distance counts from the vi cursor.\n"
+    "- `line_number_width`: Columns the line numbers take, 3 to 10. A "
+    "longer number shows its last digits after an ellipsis.\n"
+    "- `timestamps`: Show the time each row was first reached. A row shows "
+    "it only where it differs from the row above, so a long output does not repeat one second.\n"
+    "- `timestamp_format`: A `std::format` chrono specification in local "
     "time, such as `%H:%M` or `%a %H:%M:%S`. It must begin with a `%` conversion, so a leading literal "
     "such as `[%H:%M]` is refused, and so is a leading width or alignment such as `8%H` or `>%H`, which "
     "`std::format` would pad the timestamp with. Every character it spells must take exactly one "
     "column, so a double-width character (a CJK ideograph, say) or a combining mark is refused as well. "
-    "A format that cannot be drawn is reported when the configuration loads, and the default is kept. "
-    "<br/>\n"
+    "A format that cannot be drawn is reported when the configuration loads, and the default is kept.\n"
     "\n"
     "In vi normal mode, `za`, `zo`, `zc`, `zM` and `zR` toggle, open and close the block under the "
     "cursor, and close or open all of them, as in vim.\n"
@@ -3087,6 +3281,7 @@ constexpr StringLiteral GutterWeb {
 
 constexpr StringLiteral CommandBlocksWeb {
     "configuration controls what the terminal remembers about each shell command it saw run.\n"
+    "\n"
     "``` yaml\n"
     "command_blocks:\n"
     "  max_records: 1000\n"
@@ -3102,24 +3297,26 @@ constexpr StringLiteral CommandBlocksWeb {
     "marks a shell with shell integration emits -- or, without one, by systemd's OSC 3008 contexts. For "
     "each block the terminal keeps its command line, exit status, duration, start time and working "
     "directory, even after the block's rows have left the scrollback.\n"
-    ":octicons-horizontal-rule-16: ==max_records== How many blocks one session remembers; the oldest are "
-    "forgotten first. At least 1, at most 1000000. A change applies to sessions opened afterwards. <br/>\n"
-    ":octicons-horizontal-rule-16: ==pager== The program the OpenCommandOutput action (\"Open Output in "
+    "\n"
+    "- `max_records`: How many blocks one session remembers; the oldest are "
+    "forgotten first. At least 1, at most 1000000. A change applies to sessions opened afterwards.\n"
+    "- `pager`: The program the OpenCommandOutput action (\"Open Output in "
     "Pager\", Ctrl+Shift+G) opens a command's output with when its binding names none. It is read as a "
     "profile's `shell:` is: a string naming a program runs as it is; otherwise its first word is the "
     "program and the rest its arguments -- on Windows passed on as written, so `C:\\Tools\\less.exe -R` "
     "needs no quoting. A binding's own `program:` is read the same way. The output is written to a "
     "private file that is appended as the last argument and deleted when the pane closes. Defaults to "
-    "`less -R` (`more` on Windows). <br/>\n"
-    ":octicons-horizontal-rule-16: ==pager_format== Whether the pager renders colours: `sgr` writes the "
+    "`less -R` (`more` on Windows).\n"
+    "- `pager_format`: Whether the pager renders colours: `sgr` writes the "
     "output with its SGR sequences, `plain` as text only. Defaults to `sgr`, which both `less -R` and "
     "Windows `more` (inside the terminal's pseudo console) render. A binding's own `format:` wins, and a "
-    "binding that names its own `program:` gets `sgr`. <br/>\n"
+    "binding that names its own `program:` gets `sgr`.\n"
 };
 
 constexpr StringLiteral ScrollbarWeb {
     "configuration allows you to customize the appearance and behavior of the visual scrollbar in the "
     "terminal.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3129,22 +3326,23 @@ constexpr StringLiteral ScrollbarWeb {
     "      hide_in_alt_screen: true\n"
     "      marks: [failures, commands, running, user_marks, search_matches]\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==position==  This option specifies the position of the scrollbar in the "
+    "\n"
+    "- `position`:  This option specifies the position of the scrollbar in the "
     "terminal window. It can be set to one of the following values: Left, Right, Hidden. The default is "
     "Right for new configurations; a `contour.yml` written by an earlier version keeps `Hidden`, so set "
     "`position: Right` there to see the marks. Hidden turns the scrollbar, and with it the command marks, "
     "off. The scrollbar floats over the edge of the terminal, takes no column from it, and is shown only "
-    "while there is history to scroll through. <br/>\n"
-    ":octicons-horizontal-rule-16: ==mode== `system` follows the operating system's scroll bar setting; "
+    "while there is history to scroll through.\n"
+    "- `mode`: `system` follows the operating system's scroll bar setting; "
     "`overlay` hides the bar at the bottom of the scrollback, unless a failed or running command or a "
     "user mark is above the view; `always` shows it while there is scrollback. Defaults to `system`; a "
     "configuration written before the 2026 defaults keeps `always`. Where the system publishes no "
-    "setting, `system` means `overlay`. <br/>\n"
-    ":octicons-horizontal-rule-16: ==hide_in_alt_screen== This boolean option determines whether the "
+    "setting, `system` means `overlay`.\n"
+    "- `hide_in_alt_screen`: This boolean option determines whether the "
     "scrollbar should be hidden when the terminal is in the alternate screen mode. If set to true, the "
     "scrollbar will be hidden when the terminal switches to the alternate screen. If set to false, the "
-    "scrollbar will remain visible even in the alternate screen mode. <br/>\n"
-    ":octicons-horizontal-rule-16: ==marks== Which marks the scrollbar shows as thin ticks; clicking a tick "
+    "scrollbar will remain visible even in the alternate screen mode.\n"
+    "- `marks`: Which marks the scrollbar shows as thin ticks; clicking a tick "
     "scrolls its line to the top of the view, opening it if it is folded. A list of `failures` (commands "
     "that exited with an error), `commands` (every command that did not fail; `running` is listed on its "
     "own), `running` (commands still running, drawn as hollow ticks), `user_marks` (lines marked with `mm` "
@@ -3152,13 +3350,14 @@ constexpr StringLiteral ScrollbarWeb {
     "none. The default is `[failures, running, search_matches]`, or, in a configuration written before the "
     "2026 defaults, `[failures, commands, running, user_marks]`. Command ticks need the OSC "
     "133 marks a shell with shell integration emits -- or, without one, systemd's OSC 3008 contexts. "
-    "Ticks are hidden whenever the scrollbar is. <br/>\n"
+    "Ticks are hidden whenever the scrollbar is.\n"
     "\n"
 };
 
 constexpr StringLiteral NotifyOnCommandFinishWeb {
     "configuration tells you when a command you are not watching finishes: a desktop notification, the "
     "bell, or both.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3174,25 +3373,27 @@ constexpr StringLiteral NotifyOnCommandFinishWeb {
     "`✗ make killed (SIGSEGV)`, with how long it took, where it ran and the tab's name below. A newer "
     "finish in the same pane replaces the older notification, and clicking it brings the pane forward "
     "where the desktop reports clicks.\n"
-    ":octicons-horizontal-rule-16: ==when== `never`, `unfocused` (unless it is the focused pane of the "
+    "\n"
+    "- `when`: `never`, `unfocused` (unless it is the focused pane of the "
     "active window), `hidden` (only while the pane is off screen: another tab is active, a sibling pane "
-    "is zoomed, or the window is minimised) or `always`. <br/>\n"
-    ":octicons-horizontal-rule-16: ==min_duration== Commands that ran for fewer seconds than this never "
-    "notify. <br/>\n"
-    ":octicons-horizontal-rule-16: ==outcome== `any`, or `failure` for commands that exited non-zero or "
-    "died of a signal. <br/>\n"
-    ":octicons-horizontal-rule-16: ==action== `notify` (a desktop notification), `bell` (the profile's "
-    "bell sound and window alert) or `notify_bell` (both). <br/>\n"
-    ":octicons-horizontal-rule-16: ==clear_on== When a notification still on screen is withdrawn: "
+    "is zoomed, or the window is minimised) or `always`.\n"
+    "- `min_duration`: Commands that ran for fewer seconds than this never "
+    "notify.\n"
+    "- `outcome`: `any`, or `failure` for commands that exited non-zero or "
+    "died of a signal.\n"
+    "- `action`: `notify` (a desktop notification), `bell` (the profile's "
+    "bell sound and window alert) or `notify_bell` (both).\n"
+    "- `clear_on`: When a notification still on screen is withdrawn: "
     "`focus` (the pane is focused), `next` (the pane's next command starts) or `never`. Only a desktop "
     "notification can be withdrawn, which is what Linux shows; on Windows and macOS the notice is a tray "
-    "message, which stays until it times out whatever `clear_on` says. <br/>\n"
+    "message, which stays until it times out whatever `clear_on` says.\n"
     "\n"
 };
 
 constexpr StringLiteral StickyHeaderWeb {
     "configuration pins the command line of the block you are reading over the top row of the terminal, "
     "once that command has scrolled out of view above its own output.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3200,34 +3401,38 @@ constexpr StringLiteral StickyHeaderWeb {
     "      mode: scrolled\n"
     "      show_evicted: true\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==mode== When the header appears: `never`, `scrolled` (only while the "
+    "\n"
+    "- `mode`: When the header appears: `never`, `scrolled` (only while the "
     "viewport is scrolled back into history; the default) or `always` (also while following live output, so "
     "a long build keeps its command in view). It needs prompt marks (OSC 133;A), never appears on the "
     "alternate screen, shows the command's exit status and duration on its right, and a click on it scrolls "
-    "to the command. A shell that marks only where its commands run (`;C`, `;D`) gets no header. <br/>\n"
-    ":octicons-horizontal-rule-16: ==show_evicted== Whether the header still names a command whose own line "
+    "to the command. A shell that marks only where its commands run (`;C`, `;D`) gets no header.\n"
+    "- `show_evicted`: Whether the header still names a command whose own line "
     "has already been dropped from the scrollback, as `⋯ <command> — earlier output evicted`, so a long "
     "output does not lose its header when its prompt is evicted. At the very top of the scrollback it shows "
-    "whatever `mode` says (even `never`); anywhere else it shows wherever `mode` would show a header. <br/>\n"
+    "whatever `mode` says (even `never`); anywhere else it shows wherever `mode` would show a header.\n"
     "\n"
 };
 
 constexpr StringLiteral MouseWeb {
     "configuration allows you to control the behavior of the mouse in the terminal.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
     "    mouse:\n"
     "      hide_while_typing: true\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==hide_while_typing== This boolean option determines whether the mouse "
+    "\n"
+    "- `hide_while_typing`: This boolean option determines whether the mouse "
     "cursor should be hidden while typing in the terminal. When set to true, the mouse cursor will be hidden "
-    "when you start typing. When set to false, the mouse cursor will remain visible while typing. <br/>\n"
+    "when you start typing. When set to false, the mouse cursor will remain visible while typing.\n"
     "\n"
 };
 
 constexpr StringLiteral PermissionsWeb {
     "configuration allows you to control the access permissions for specific VT sequences in the terminal.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3236,40 +3441,45 @@ constexpr StringLiteral PermissionsWeb {
     "      capture_buffer: ask\n"
     "      display_host_writable_statusline: ask\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==change_font== This option determines the access permission for changing "
-    "the font using the VT sequence `OSC 50 ; Pt ST`. The possible values are: allow, deny, ask. <br/>\n"
-    ":octicons-horizontal-rule-16: ==capture_buffer== This option determines the access permission for "
+    "\n"
+    "- `change_font`: This option determines the access permission for changing "
+    "the font using the VT sequence `OSC 50 ; Pt ST`. The possible values are: allow, deny, ask.\n"
+    "- `capture_buffer`: This option determines the access permission for "
     "capturing the screen buffer using the VT sequence `CSI > Pm ; Ps ; Pc ST`. The response can be read "
     "from stdin as the sequence `OSC 314 ; <screen capture> ST`. The possible values are: allow, deny, "
-    "ask.<br/>\n"
-    ":octicons-horizontal-rule-16: ==display_host_writable_statusline== This option determines the access "
+    "ask.\n"
+    "- `display_host_writable_statusline`: This option determines the access "
     "permission for displaying the \"Host Writable Statusline\" programmatically using the VT sequence "
-    "`DECSSDT 2`. The possible values are: allow, deny, ask. <br/>\n"
+    "`DECSSDT 2`. The possible values are: allow, deny, ask.\n"
     "\n"
 };
 
 constexpr StringLiteral HighlightDoubleClickerWordWeb {
     "configuration option enables the highlighting of a word and its matches when double-clicked on the "
     "primary screen in the terminal.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
     "    highlight_word_and_matches_on_double_click: true\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==change_font==  When this option is enabled (true), the following "
-    "behavior occurs: <br/>\n"
+    "\n"
+    "- `highlight_word_and_matches_on_double_click`: When this option is enabled (true), the following "
+    "behavior occurs:\n"
+    "\n"
     "    - Double-clicking on a word in the primary screen will select and highlight the double-clicked "
-    "word. <br/>\n"
+    "word.\n"
     "    - Additionally, all other occurrences of the same word will also be highlighted without being "
-    "selected. <br/>\n"
-    "    - This feature is implemented by initiating a search for the double-clicked word. <br/>\n"
+    "selected.\n"
+    "    - This feature is implemented by initiating a search for the double-clicked word.\n"
     "    - You can use the FocusNextSearchMatch and FocusPreviousSearchMatch actions to navigate to the next "
-    "or previous occurrence of the same word, even if it is outside the current viewport. <br/>\n"
+    "or previous occurrence of the same word, even if it is outside the current viewport.\n"
     "\n"
 };
 
 constexpr StringLiteral FontsWeb {
     "section of the configuration allows you to customize the font settings for the terminal.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3289,37 +3499,38 @@ constexpr StringLiteral FontsWeb {
     "        features: []\n"
     "      emoji: \"emoji\"\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==size== Specifies the initial font size in pixels. The default value is "
-    "12, and 13 on macOS under the `native2026` defaults. <br/>\n"
-    ":octicons-horizontal-rule-16: ==locator==  Determines the font locator engine to use for locating font "
-    "files and font fallback. Possible values are `native` and `mock`.<br/> `native` will use the "
+    "\n"
+    "- `size`: Specifies the initial font size in pixels. The default value is "
+    "12, and 13 on macOS under the `native2026` defaults.\n"
+    "- `locator`:  Determines the font locator engine to use for locating font "
+    "files and font fallback. Possible values are `native` and `mock`. `native` will use the "
     "operating-system native font location service (e.g. CoreText on macOS and DirectWrite on Windows), "
-    "whereas `mock` is solely used for testing the software (not recommended by end-users)<br/>\n"
-    ":octicons-horizontal-rule-16: ==text_shaping.engine== Selects the text shaping and font rendering "
-    "engine. Supported values are native, DirectWrite, CoreText, and OpenShaper.  <br/>\n"
-    ":octicons-horizontal-rule-16: ==builtin_box_drawing== Specifies whether to use built-in textures for "
+    "whereas `mock` is solely used for testing the software (not recommended by end-users)\n"
+    "- `text_shaping.engine`: Selects the text shaping and font rendering "
+    "engine. Supported values are native, DirectWrite, CoreText, and OpenShaper. \n"
+    "- `builtin_box_drawing`: Specifies whether to use built-in textures for "
     "pixel-perfect box drawing. If disabled, the font's provided box drawing characters will be used. The "
-    "default value is true.<br/>\n"
-    ":octicons-horizontal-rule-16: ==max_fallback_count== Maximum number of fallback fonts per font style. "
-    "Set to -1 for unlimited, 0 to disable fallbacks entirely. The default value is 16.<br/>\n"
-    ":octicons-horizontal-rule-16: ==render_mode== Specifies the font render mode, which tells the font "
+    "default value is true.\n"
+    "- `max_fallback_count`: Maximum number of fallback fonts per font style. "
+    "Set to -1 for unlimited, 0 to disable fallbacks entirely. The default value is 16.\n"
+    "- `render_mode`: Specifies the font render mode, which tells the font "
     "rasterizer engine what rendering technique to use. Available modes are lcd, light, gray, color and "
-    "monochrome.  <br/>\n"
-    ":octicons-horizontal-rule-16: ==strict_spacing== Indicates whether only monospace fonts should be "
-    "included in the font and font fallback list. The default value is false.  <br/>\n"
-    ":octicons-horizontal-rule-16: ==regular== Defines the regular font style with the following parameters: "
-    " <br/>\n"
-    ":octicons-horizontal-rule-16: ==regular.family==  Specifies the font family name, such as "
-    "\"monospace\", \"Courier New\", or \"Fira Code\". <br/>\n"
-    ":octicons-horizontal-rule-16: ==regular.weight==  Specifies the font weight, such as thin, extra_light, "
-    "light, demilight, book, normal, medium, demibold, bold, extra_bold, black, or extra_black. <br/>\n"
-    ":octicons-horizontal-rule-16: ==regular.slant==  Specifies the font slant, which can be normal, italic, "
+    "monochrome. \n"
+    "- `strict_spacing`: Indicates whether only monospace fonts should be "
+    "included in the font and font fallback list. The default value is false. \n"
+    "- `regular`: Defines the regular font style with the following parameters: "
+    "\n"
+    "- `regular.family`: Specifies the font family name, such as "
+    "\"monospace\", \"Courier New\", or \"Fira Code\".\n"
+    "- `regular.weight`: Specifies the font weight, such as thin, extra_light, "
+    "light, demilight, book, normal, medium, demibold, bold, extra_bold, black, or extra_black.\n"
+    "- `regular.slant`: Specifies the font slant, which can be normal, italic, "
     "or oblique.\n"
-    ":octicons-horizontal-rule-16: ==regular.features== Sets optional font features to be enabled. This is "
+    "- `regular.features`: Sets optional font features to be enabled. This is "
     "usually a 4-letter code, such as ss01 or ss02. Refer to your font's documentation for supported "
-    "features. By default, no features are enabled. <br/>\n"
-    ":octicons-horizontal-rule-16: ==emoji== Specifies the font to be used for displaying Unicode symbols "
-    "with emoji presentation. The default value is \"emoji\". <br/>\n"
+    "features. By default, no features are enabled.\n"
+    "- `emoji`: Specifies the font to be used for displaying Unicode symbols "
+    "with emoji presentation. The default value is \"emoji\".\n"
     "\n"
 
 };
@@ -3327,6 +3538,7 @@ constexpr StringLiteral FontsWeb {
 constexpr StringLiteral DrawBoldTextWithBrightColorsWeb {
     "Specifies whether bold text should be rendered in bright colors for indexed colors. If disabled, normal "
     "colors will be used for bold text. The default value is false.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3338,6 +3550,7 @@ constexpr StringLiteral DrawBoldTextWithBrightColorsWeb {
 constexpr StringLiteral ModeInsertWeb {
     "section of the configuration allows you to customize the appearance and behavior of the terminal "
     "cursor.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3346,22 +3559,26 @@ constexpr StringLiteral ModeInsertWeb {
     "    blinking: false\n"
     "    blinking_interval: 500\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==shape== Specifies the shape of the cursor. You can choose from the "
-    "following options: <br/>\n"
-    "-block: A filled rectangle. <br/>\n"
-    "-rectangle: Just the outline of a block. <br/>\n"
-    "-underscore: A line under the text. <br/>\n"
-    "-bar: The well-known i-Beam cursor. <br/>\n"
-    ":octicons-horizontal-rule-16: ==blinking== Determines whether the cursor should blink over time. If set "
-    "to true, the cursor will blink; if set to false, the cursor will remain static. <br/>\n"
-    ":octicons-horizontal-rule-16: ==blinking_interval== Specifies the blinking interval in milliseconds. "
+    "\n"
+    "- `shape`: Specifies the shape of the cursor. You can choose from the "
+    "following options:\n"
+    "\n"
+    "    - `block`: A filled rectangle.\n"
+    "    - `rectangle`: Just the outline of a block.\n"
+    "    - `underscore`: A line under the text.\n"
+    "    - `bar`: The well-known i-Beam cursor.\n"
+    "\n"
+    "- `blinking`: Determines whether the cursor should blink over time. If set "
+    "to true, the cursor will blink; if set to false, the cursor will remain static.\n"
+    "- `blinking_interval`: Specifies the blinking interval in milliseconds. "
     "This value defines how quickly the cursor alternates between being visible and invisible when blinking "
-    "is enabled. <br/>\n"
+    "is enabled.\n"
     "\n"
 };
 
 constexpr StringLiteral ModeNormalWeb { "section in the configuration allows you to customize the appearance "
                                         "and behavior of the cursor specifically in vi-like normal mode.\n"
+                                        "\n"
                                         "``` yaml\n"
                                         "profiles:\n"
                                         "  profile_name:\n"
@@ -3375,6 +3592,7 @@ constexpr StringLiteral ModeNormalWeb { "section in the configuration allows you
 constexpr StringLiteral ModeVisualWeb {
     "section in the configuration allows you to customize the appearance and behavior of the cursor "
     "specifically in vi-like normal mode.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3392,6 +3610,7 @@ constexpr StringLiteral HighlightTimeoutWeb {
     "shown in vi mode. After yanking (copying) text in vi mode, the yanked text is typically highlighted "
     "momentarily to provide visual feedback. This configuration option allows you to specify the duration of "
     "this highlight.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3405,6 +3624,7 @@ constexpr StringLiteral ModalCursorScrollOffWeb {
     "modes. The scrolloff value determines the minimum number of lines to keep visible above and below the "
     "cursor when scrolling. In other words, it controls the amount of margin or padding around the cursor "
     "during scrolling operations.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3417,6 +3637,7 @@ constexpr StringLiteral StatusLineWeb {
 
     "section in the configuration file allows you to customize the behavior and appearance of the status "
     "line in the terminal.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3425,18 +3646,19 @@ constexpr StringLiteral StatusLineWeb {
     "      position: bottom\n"
     "      sync_to_window_title: false\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==display== specifies whether the status line should be shown or not. The "
+    "\n"
+    "- `display`: specifies whether the status line should be shown or not. The "
     "possible values are none (status line is not shown) and indicator (status line is shown). In the "
-    "example, the status line is set to none, meaning it will not be displayed initially. <br/>\n"
-    ":octicons-horizontal-rule-16: ==position== determines the placement of the status line. It can be set "
+    "example, the status line is set to none, meaning it will not be displayed initially.\n"
+    "\n"
+    "- `position`: determines the placement of the status line. It can be set "
     "to top or bottom. In the example, the status line is set to bottom, indicating that it will appear at "
-    "the bottom of the terminal window if enabled. <br/>\n"
-    ":octicons-horizontal-rule-16: ==sync_to_window_title== controls whether the window title should be "
+    "the bottom of the terminal window if enabled.\n"
+    "- `sync_to_window_title`: controls whether the window title should be "
     "synchronized with the Host Writable status line. If the Host Writable status line is denied, enabling "
-    "this option will update the window title accordingly. By default, this option is set to false. <br/>\n"
-    ":octicons-horizontal-rule-16: ==extension== names an entry of the profile's `extensions` section that "
-    "takes the whole status line over. By default it is null, which keeps the template-driven status line. "
-    "<br/>\n"
+    "this option will update the window title accordingly. By default, this option is set to false.\n"
+    "- `extension`: names an entry of the profile's `extensions` section that "
+    "takes the whole status line over. By default it is null, which keeps the template-driven status line.\n"
     "\n"
 };
 
@@ -3444,6 +3666,7 @@ constexpr StringLiteral ExtensionsWeb {
     "section in the configuration file declares the WebAssembly extensions that may draw into the status "
     "line "
     "of a profile. None is configured by default.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3456,11 +3679,12 @@ constexpr StringLiteral ExtensionsWeb {
     "      indicator:\n"
     "        right: \"{{Extension:git}} | {{Clock:Bold}}\"\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==path== is the module to load; a leading `~` is the home directory. "
-    "Without it, the entry's name selects an extension bundled with Contour. <br/>\n"
-    ":octicons-horizontal-rule-16: ==config== holds text values the extension reads by key. <br/>\n"
-    ":octicons-horizontal-rule-16: ==run_command== decides whether the extension may run the commands its "
-    "manifest declares: `allow`, `deny` or `ask`. The default is `ask`. <br/>\n"
+    "\n"
+    "- `path`: is the module to load; a leading `~` is the home directory. "
+    "Without it, the entry's name selects an extension bundled with Contour.\n"
+    "- `config`: holds text values the extension reads by key.\n"
+    "- `run_command`: decides whether the extension may run the commands its "
+    "manifest declares: `allow`, `deny` or `ask`. The default is `ask`.\n"
     "\n"
     "An extension is used by naming it in a status line template as `{{Extension:name}}`, or, with "
     "`status_line.extension`, by letting it take the whole line over.\n"
@@ -3469,6 +3693,7 @@ constexpr StringLiteral ExtensionsWeb {
 
 constexpr StringLiteral BackgroundWeb {
     "section in the configuration file allows you to customize the background settings for the terminal.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3476,12 +3701,13 @@ constexpr StringLiteral BackgroundWeb {
     "      opacity: 1.0\n"
     "      blur: false\n"
     "```\n"
-    ":octicons-horizontal-rule-16: ==opacity== specifies the background opacity to use. The value ranges "
+    "\n"
+    "- `opacity`: specifies the background opacity to use. The value ranges "
     "from 0.0 to 1.0, where 0.0 represents fully transparent and 1.0 represents fully opaque. You can adjust "
-    "this value to control the transparency level of the terminal's background. <br/>\n"
-    ":octicons-horizontal-rule-16: ==blur== determines whether the transparent background should be blurred "
+    "this value to control the transparency level of the terminal's background.\n"
+    "- `blur`: determines whether the transparent background should be blurred "
     "on platforms that support it. Currently, only Windows 10 is supported for background blurring. By "
-    "default, this option is set to false, meaning no background blurring will be applied. <br/>\n"
+    "default, this option is set to false, meaning no background blurring will be applied.\n"
     "\n"
 };
 
@@ -3541,8 +3767,8 @@ constexpr StringLiteral HyperlinkDecorationWeb {
     "      hover: underline\n"
     "```\n"
     "\n"
-    ":octicons-horizontal-rule-16: ==mode== when links are decorated: `always`, `hover` (only the one under "
-    "the pointer), `modifier` (all of them while the follow modifier is held), `never`. <br/>\n"
+    "- `mode`: when links are decorated: `always`, `hover` (only the one under "
+    "the pointer), `modifier` (all of them while the follow modifier is held), `never`.\n"
 
 };
 
@@ -3601,6 +3827,7 @@ constexpr StringLiteral OptionKeyAsAltWeb {
     "The other Option key keeps typing accents like \u00e9 and \u00fc. `true` and `false` are still read, as "
     "`both` and `off`.\n"
     "This value is ignored on other platforms.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3613,6 +3840,7 @@ constexpr StringLiteral FullscreenWeb {
     "configuration option determines whether the terminal's screen should be put into fullscreen mode when "
     "the terminal profile is activated. Fullscreen mode expands the terminal window to occupy the entire "
     "screen, providing a distraction-free environment for your terminal sessions.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3629,6 +3857,7 @@ constexpr StringLiteral ShowTitleBarWeb {
     "frame (KWin, Mutter, or a tiling WM's border or none), and the header "
     "bar keeps the tabs, new tab, search and menu: only the window buttons "
     "move out of it.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3646,6 +3875,7 @@ constexpr StringLiteral WindowShadowWeb {
     "configuration option sets how far the drop shadow around a frameless window reaches.\n"
     "One of `None`, `Small`, `Medium`, `Large` or `VeryLarge` — the same names and sizes Breeze "
     "offers, so a Contour window matches the rest of a Plasma desktop.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3664,6 +3894,7 @@ constexpr StringLiteral DimUnfocusedWeb {
     "any pane of an unfocused window) by blending it toward its own background color. The value is the "
     "blend amount between 0.0 (dimming disabled; the `classic` default) and 1.0 (fully blended to the "
     "background). The `native2026` default is 0.15.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3675,6 +3906,7 @@ constexpr StringLiteral DimUnfocusedWeb {
 constexpr StringLiteral ShowIndicatorOnResizeWeb {
     "configuration option determines whether or not the size indicator will be shown when terminal will "
     "resized.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3694,6 +3926,7 @@ constexpr StringLiteral SearchCaseSensitivityWeb {
     "\n"
     "The find bar's `Aa` button cycles the same three at any time; this only selects the one it "
     "starts from.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3715,6 +3948,7 @@ constexpr StringLiteral MouseForwardingWeb {
     "\n"
     "The `ToggleMouseForwarding` action flips this at runtime. A profile switch or a configuration "
     "reload re-imposes the profile's value.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3728,6 +3962,7 @@ constexpr StringLiteral InsertAfterYankWeb {
     "to insert mode after executing a yank command. When enabled, the terminal will enter insert mode, "
     "allowing for immediate text input. If disabled, the terminal will remain in normal mode, maintaining "
     "command functionality.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3740,6 +3975,7 @@ constexpr StringLiteral CopyLastMarkRangeOffsetWeb {
     "configuration option is an advanced setting that is useful when using the CopyPreviousMarkRange feature "
     "with multiline prompts. It allows you to specify an offset value that is added to the current cursor's "
     "line number minus 1 (i.e., the line above the current cursor).\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3751,6 +3987,7 @@ constexpr StringLiteral CopyLastMarkRangeOffsetWeb {
 constexpr StringLiteral SmoothLineScrollingWeb {
     "Defines the number of milliseconds to wait before actually executing the LF (linefeed) control code\n"
     "in case DEC mode `DECSCLM` is enabled.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3765,6 +4002,7 @@ constexpr StringLiteral SmoothScrollingWeb {
     "When enabled, scrolling will be performed in pixel increments rather than jumping by full lines,\n"
     "providing a smoother visual experience similar to GNOME Terminal/VTE.\n"
     "This applies to mouse wheel and trackpad scrolling on the primary screen.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3780,6 +4018,7 @@ constexpr StringLiteral MomentumScrollingWeb {
     "the natural scrolling behaviour of macOS and iOS.\n"
     "This governs touchpad finger-lift inertia only. Mouse-wheel smoothness is controlled by\n"
     "`smooth_scrolling`, which glides discrete wheel notches with the same physics.\n"
+    "\n"
     "``` yaml\n"
     "profiles:\n"
     "  profile_name:\n"
@@ -3797,7 +4036,7 @@ struct Text<EscapeSandbox>: DocumentationEntry<EscapeSandboxConfig, EscapeSandbo
 {
 };
 template <>
-struct Text<SshHostConfig>: DocumentationEntry<SshHostConfigConfig, SshHostConfigWeb>
+struct Text<SshHostConfig>: DocumentationEntry<SshHostConfigConfig, SshHostConfigWeb, "ssh">
 {
 };
 template <>
@@ -3846,11 +4085,11 @@ struct Text<CopyLastMarkRangeOffset>:
 {
 };
 template <>
-struct Text<WMClass>: DocumentationEntry<WMClassConfig, WMClassWeb>
+struct Text<WMClass>: DocumentationEntry<WMClassConfig, WMClassWeb, "wm_class">
 {
 };
 template <>
-struct Text<TabLabel>: DocumentationEntry<TabLabelConfig, TabLabelWeb>
+struct Text<TabLabel>: DocumentationEntry<TabLabelConfig, TabLabelWeb, "tab_label">
 {
 };
 template <>
@@ -4012,6 +4251,7 @@ constexpr StringLiteral BlinkStyleWeb {
     "Determines the visual style of cell blink animation (SGR attributes 5 and 6).\n"
     "\n"
     "Valid values are:\n"
+    "\n"
     "- `classic` - abrupt on/off toggle\n"
     "- `smooth` - continuous cosine-based pulse\n"
     "- `linger` - like smooth but stays visible longer\n"
@@ -4046,6 +4286,7 @@ constexpr StringLiteral ScreenTransitionStyleWeb {
     "this setting controls whether the transition is instant or animated.\n"
     "\n"
     "Valid values are:\n"
+    "\n"
     "- `classic` - instant switch (no animation)\n"
     "- `fade` - smooth fade-out/fade-in (250ms by default; 150ms under the `native2026` defaults)\n"
     "\n"
@@ -4164,7 +4405,7 @@ struct Text<Bell>: DocumentationEntry<BellConfig, BellWeb>
 {
 };
 template <>
-struct Text<FrozenDecMode>: DocumentationEntry<FrozenDecModeConfig, Dummy>
+struct Text<FrozenDecMode>: DocumentationEntry<FrozenDecModeConfig, FrozenDecModeWeb, "frozen_dec_modes">
 {
 };
 template <>
@@ -4252,7 +4493,7 @@ struct Text<Layouts>: DocumentationEntry<LayoutsConfig, LayoutsWeb>
 {
 };
 template <>
-struct Text<Hosts>: DocumentationEntry<HostsConfig, HostsWeb>
+struct Text<Hosts>: DocumentationEntry<HostsConfig, HostsWeb, "hosts">
 {
 };
 constexpr StringLiteral DefaultLayoutConfig { "default_layout: {}\n" };
@@ -4317,7 +4558,8 @@ struct Text<QuickTerminal>: DocumentationEntry<QuickTerminalConfig, QuickTermina
 };
 constexpr StringLiteral ExperimentalFeaturesWeb { "" };
 template <>
-struct Text<ExperimentalFeatures>: DocumentationEntry<ExperimentalFeaturesConfig, ExperimentalFeaturesWeb>
+struct Text<ExperimentalFeatures>:
+    DocumentationEntry<ExperimentalFeaturesConfig, ExperimentalFeaturesWeb, "experimental">
 {
 };
 template <>
@@ -4381,15 +4623,15 @@ struct Text<HintMatch>: DocumentationEntry<HintMatchConfig, Dummy>
 {
 };
 template <>
-struct Text<HintPatterns>: DocumentationEntry<HintPatternsConfig, Dummy>
+struct Text<HintPatterns>: DocumentationEntry<HintPatternsConfig, HintPatternsWeb, "hint_patterns">
 {
 };
 template <>
-struct Text<Extensions>: DocumentationEntry<ExtensionsConfig, ExtensionsWeb>
+struct Text<Extensions>: DocumentationEntry<ExtensionsConfig, ExtensionsWeb, "extensions">
 {
 };
 template <>
-struct Text<HintScrollbackLines>: DocumentationEntry<HintScrollbackLinesConfig, Dummy>
+struct Text<HintScrollbackLines>: DocumentationEntry<HintScrollbackLinesConfig, HintScrollbackLinesWeb>
 {
 };
 template <>
@@ -4461,7 +4703,8 @@ struct Text<InputMethodEditor>: DocumentationEntry<InputMethodEditorConfig, Dumm
 {
 };
 template <>
-struct Text<InputMethodEditorSupport>: DocumentationEntry<InputMethodEditorSupportConfig, Dummy>
+struct Text<InputMethodEditorSupport>:
+    DocumentationEntry<InputMethodEditorSupportConfig, InputMethodEditorSupportWeb>
 {
 };
 template <>
@@ -4482,15 +4725,15 @@ struct Text<DimColors>: DocumentationEntry<DimColorsConfig, Dummy>
 {
 };
 template <>
-struct Text<GitDrawings>: DocumentationEntry<GitDrawingsConfig, Dummy>
+struct Text<GitDrawings>: DocumentationEntry<GitDrawingsConfig, GitDrawingsWeb>
 {
 };
 template <>
-struct Text<BoxArcStyle>: DocumentationEntry<BoxArcStyleConfig, Dummy>
+struct Text<BoxArcStyle>: DocumentationEntry<BoxArcStyleConfig, BoxArcStyleWeb>
 {
 };
 template <>
-struct Text<BrailleStyle>: DocumentationEntry<BrailleStyleConfig, Dummy>
+struct Text<BrailleStyle>: DocumentationEntry<BrailleStyleConfig, BrailleStyleWeb>
 {
 };
 
