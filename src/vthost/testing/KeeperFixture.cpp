@@ -38,6 +38,12 @@
     #include <libproc.h>
 #endif
 
+#ifdef __FreeBSD__
+    #include <sys/sysctl.h>
+    #include <sys/types.h>
+    #include <sys/user.h>
+#endif
+
 #include <fcntl.h>
 #include <poll.h>
 #include <spawn.h>
@@ -426,6 +432,14 @@ int parentProcessOf(int pid)
     if (::proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, sizeof(info)) != static_cast<int>(sizeof(info)))
         return 0;
     return static_cast<int>(info.pbi_ppid);
+#elifdef __FreeBSD__
+    // No /proc there unless mounted: the kernel's process record says.
+    auto name = std::array { CTL_KERN, KERN_PROC, KERN_PROC_PID, pid };
+    auto info = kinfo_proc {};
+    auto size = sizeof(info);
+    if (::sysctl(name.data(), static_cast<u_int>(name.size()), &info, &size, nullptr, 0) != 0 || size == 0)
+        return 0;
+    return static_cast<int>(info.ki_ppid);
 #else
     auto file = std::ifstream { std::format("/proc/{}/stat", pid) };
     auto const stat =
