@@ -8036,9 +8036,21 @@ TEST_CASE("SelectWorkspace 0 creates a workspace and selects it", "[vthost][nati
     REQUIRE(h.host.createTab() != nullptr);
     auto const first = h.host.workspaceId().value;
 
+    // Until the created workspace's session has been snapshotted, not until a second snapshot run: the hello
+    // and the selection are sent together, and the daemon may answer both in one run (flushes coalesce), so
+    // waiting for two ran out the exchange's whole bound -- a minute of every suite run -- before passing.
+    auto const showsCreated = [&h, first](std::vector<proto::DecodedFrame> const& got) {
+        auto const workspaces = layoutWorkspaces(got);
+        if (workspaces.size() != 2)
+            return false;
+        auto const created =
+            *std::ranges::find_if(workspaces, [first](uint64_t workspace) { return workspace != first; });
+        auto const sessions = sessionsOf(h.host, created);
+        return !sessions.empty() && snapshotSessions(got).contains(*sessions.begin());
+    };
     auto const received = h.exchangeUntil(
         { followingHello(proto::AttachIntentKind::Default), proto::SelectWorkspace { .workspace = 0 } },
-        [](auto const& got) { return layoutWorkspaces(got).size() == 2 && snapshotRunCount(got) >= 2; });
+        showsCreated);
 
     auto const workspaces = layoutWorkspaces(received);
     REQUIRE(workspaces.size() == 2);

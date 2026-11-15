@@ -530,10 +530,12 @@ if(VTHOST_TESTING)
     # `ctest -L daemon` selects everything daemon mode must pass to be trusted -- see the same
     # label on vtworkspace, a layer it is built on. The other two, core::async and core::net, are
     # vendored in vendor/core-cpp, and their suites run in core-cpp's own CI.
-    # TIMEOUT: the suite runs in under half a minute everywhere, sanitizers included, so a run five minutes
-    # long is a case that hangs -- failed here, with its output (and CONTOUR_TEST_TRACE's case names) shown,
-    # rather than left to eat a CI step's whole budget.
-    set_tests_properties(vthost_test PROPERTIES LABELS daemon TIMEOUT 300)
+    # TIMEOUT: a bound for a case that hangs -- failed here, with its output (and CONTOUR_TEST_TRACE's case
+    # names) shown, rather than left to eat a CI step's whole budget. Not the half minute the suite once took:
+    # with the keeper's suites it takes about four minutes on a fast machine (237 s, debug, on an M-series
+    # Mac), two cases of which wait out the daemon's real 20 s pre-authentication deadline, and "300 sessions
+    # recover" about 40 s. FreeBSD's two-CPU VM runs it slower still, and timed out at 300 s.
+    set_tests_properties(vthost_test PROPERTIES LABELS daemon TIMEOUT 600)
 
     if(NOT WIN32)
         # Catch2's TEST_CASE expands __COUNTER__, which Clang flags as a C2y extension under -Werror.
