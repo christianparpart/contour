@@ -319,7 +319,7 @@ so reopening Contour finds your sessions where you left them. The same holds acr
 
 | Option | What it does |
 | --- | --- |
-| `--daemon PATH\|HOST:PORT\|URL\|NAME` | Which daemon to attach to, as every control verb reads it: a socket path, a TCP daemon, an `ssh://` URL, or a name, which is a local daemon's, else a saved host's (`name:NAME` and `host:NAME` say which; a name both have is refused). A local daemon resolves as above, `daemon.socket` of the client's configuration included. Not together with `--socket`, `--host` or `--connect-tcp`. Until 0.9.0, `--label NAME` still works, as `--daemon name:NAME`. |
+| `--daemon PATH\|HOST:PORT\|URL\|NAME` | Which daemon to attach to, as every control verb reads it: a socket path, a TCP daemon, an `ssh://` URL, or a name, which is a local daemon's, else a saved host's (`name:NAME` picks a local daemon and `host:NAME` a saved host; a number after them that names no such daemon or host is a port, so `host:2222` reaches a machine called `host`; a bare name both have is refused). A local daemon resolves as above, `daemon.socket` of the client's configuration included. Not together with `--socket`, `--host` or `--connect-tcp`. Until 0.9.0, `--label NAME` still works, as `--daemon name:NAME`. |
 | `--socket PATH` | The control socket of the daemon to attach to. |
 | `--workspace WORKSPACE` | Show only that daemon workspace instead of what a launch brings back, named as every control verb names one: its id or an id suffix (as `contour ls` prints it), its name, or its 1-based position. Fails, saying why, when it names no workspace or several. It also works with `--host`. |
 | `--size-policy POLICY` | The policy a daemon this client auto-starts runs with; defaults to `daemon.size_policy`. |

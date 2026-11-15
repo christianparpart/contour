@@ -127,8 +127,9 @@ namespace
             "daemon",
             CLI::Value { ""s },
             "The daemon to talk to: a socket path, HOST:PORT, an ssh:// URL, or a name: a local "
-            "daemon's, else a host of hosts:. `name:NAME` and `host:NAME` say which. Defaults to "
-            "$CONTOUR_DAEMON, then the default socket.",
+            "daemon's, else a host of hosts:. `name:NAME` picks a local daemon, `host:NAME` a saved host; a "
+            "number after them that names no such daemon or host is a port. Defaults to $CONTOUR_DAEMON, "
+            "then the default socket.",
             "PATH|HOST:PORT|URL|NAME" });
         options.emplace_back(CLI::Option { "token-file",
                                            CLI::Value { ""s },

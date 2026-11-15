@@ -14,6 +14,8 @@
 #include <string_view>
 #include <vector>
 
+#include <vthost/client/DaemonWord.hpp>
+
 using contour::cli::LegacyArgumentRow;
 using contour::cli::LegacyPlace;
 using contour::cli::rewriteLegacyArguments;
@@ -227,6 +229,20 @@ TEST_CASE("--label picks a daemon by its name, or names one", "[contour][cli][co
         CHECK(result.notes.front().contains("--daemon name:NAME"));
         CHECK(rewrite("contour", "ls", "--label=work").arguments
               == Strings { "contour", "ls", "--daemon=name:work" });
+    }
+    SECTION("a daemon named by a number stays that daemon through the rewrite")
+    {
+        // `--label 7` named the local daemon `7`; its rewrite must not read as TCP to a machine called
+        // `name`.
+        auto const result = rewrite("contour", "ls", "--label", "7");
+        REQUIRE(result.arguments == Strings { "contour", "ls", "--daemon", "name:7" });
+        auto const target = vthost::client::resolveDaemonWord(
+            result.arguments.back(),
+            { .contains = [](std::string_view name) { return name == "7"; } },
+            { .contains = [](std::string_view) { return false; } });
+        REQUIRE(target.has_value());
+        CHECK(target->kind == vthost::client::DaemonWordKind::LocalName);
+        CHECK(target->text == "7");
     }
     SECTION("on contour client too")
     {

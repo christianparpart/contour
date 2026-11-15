@@ -102,27 +102,56 @@ TEST_CASE("resolveDaemonWord looks a bare word up as a local daemon, then a save
 }
 
 TEST_CASE(
-    "resolveDaemonWord reads a port after the first colon as HOST:PORT, over the name: and host: prefixes",
+    "resolveDaemonWord reads a number after name: or host: as a port only when no such daemon is called so",
     "[vthost][client][daemon-word]")
 {
-    // A machine may be called `host` or `name`: a port after the colon makes the word an address.
+    // A machine may be called `host` or `name`, and a daemon or a saved host may be called `22`: the prefix
+    // wins where its own lookup knows the number, and HOST:PORT otherwise.
+    auto const none = knowing({});
+    auto const twentyTwo = knowing({ "22" });
     struct Row
     {
         std::string_view word;
+        LocalDaemons local;
+        SavedHosts saved;
         DaemonWordKind kind;
         std::string_view text;
     };
-    auto const everything = [](std::string_view) {
-        return true;
+    auto const rows = {
+        Row { "name:22", { .contains = twentyTwo }, { .contains = none }, DaemonWordKind::LocalName, "22" },
+        Row { "host:22", { .contains = none }, { .contains = twentyTwo }, DaemonWordKind::SavedHost, "22" },
+        Row { "name:22", { .contains = none }, { .contains = none }, DaemonWordKind::HostPort, "name:22" },
+        Row {
+            "host:2222", { .contains = none }, { .contains = none }, DaemonWordKind::HostPort, "host:2222" },
+        // Only the prefix's own kind counts.
+        Row {
+            "host:22", { .contains = twentyTwo }, { .contains = none }, DaemonWordKind::HostPort, "host:22" },
+        Row {
+            "name:22", { .contains = none }, { .contains = twentyTwo }, DaemonWordKind::HostPort, "name:22" },
+        // Not a port (1-65535): a name.
+        Row { "host:0", { .contains = none }, { .contains = none }, DaemonWordKind::SavedHost, "0" },
+        Row { "host:99999", { .contains = none }, { .contains = none }, DaemonWordKind::SavedHost, "99999" },
+        Row { "name:0", { .contains = none }, { .contains = none }, DaemonWordKind::LocalName, "0" },
+        Row { "host:box", { .contains = none }, { .contains = none }, DaemonWordKind::SavedHost, "box" },
+        Row { "name:work", { .contains = none }, { .contains = none }, DaemonWordKind::LocalName, "work" },
     };
-    for (auto const& row: { Row { "host:2222", DaemonWordKind::HostPort, "host:2222" },
-                            Row { "name:22", DaemonWordKind::HostPort, "name:22" },
-                            Row { "host:box", DaemonWordKind::SavedHost, "box" },
-                            Row { "name:work", DaemonWordKind::LocalName, "work" } })
+    for (auto const& row: rows)
     {
         INFO(row.word);
-        auto const target = resolved(row.word, { .contains = everything }, { .contains = everything });
+        auto const target = resolved(row.word, row.local, row.saved);
         CHECK(target.kind == row.kind);
         CHECK(target.text == row.text);
     }
+}
+
+TEST_CASE("the spellings an ambiguous number is told to use pick each kind", "[vthost][client][daemon-word]")
+{
+    auto const seven = knowing({ "7" });
+    auto const ambiguous = resolveDaemonWord("7", { .contains = seven }, { .contains = seven });
+    REQUIRE_FALSE(ambiguous.has_value());
+    auto const message = vthost::client::describe(ambiguous.error(), "7");
+    REQUIRE(message.contains("--daemon name:7"));
+    REQUIRE(message.contains("--daemon host:7"));
+    CHECK(resolved("name:7", { .contains = seven }, { .contains = seven }).kind == DaemonWordKind::LocalName);
+    CHECK(resolved("host:7", { .contains = seven }, { .contains = seven }).kind == DaemonWordKind::SavedHost);
 }

@@ -19,7 +19,9 @@ namespace vthost::client
 enum class DaemonWordKind : uint8_t
 {
     SocketPath = 0, ///< A control socket's path: one starting with `/` or `.`, or holding `/`, `\` or `:`.
-    HostPort,  ///< A TCP daemon's `HOST:PORT` (or `[v6]:PORT`); `host:2222` and `name:22` too, by their port.
+    /// A TCP daemon's `HOST:PORT` (or `[v6]:PORT`). `host:N` and `name:N` with a port N too, unless a saved
+    /// host (for `host:`) or a local daemon (for `name:`) is called N.
+    HostPort,
     SshUrl,    ///< A URL such as `ssh://box`: anything holding `://`.
     LocalName, ///< A local daemon by its name: `name:X`, or a bare word naming a local daemon.
     SavedHost, ///< A saved host by its name: `host:X`, or any other bare word.

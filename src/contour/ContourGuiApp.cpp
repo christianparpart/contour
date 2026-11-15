@@ -2148,8 +2148,9 @@ core::cli::Command ContourGuiApp::parameterDefinition() const
                     "daemon",
                     CLI::Value { ""s },
                     "The daemon to attach to: a socket path, HOST:PORT, an ssh:// URL, or a name: a "
-                    "local daemon's (default: `default`), else a host of hosts:. `name:NAME` and "
-                    "`host:NAME` say which. Given, it beats $CONTOUR_MUX.",
+                    "local daemon's (default: `default`), else a host of hosts:. `name:NAME` picks a local "
+                    "daemon, `host:NAME` a saved host; a number after them that names no such daemon or host "
+                    "is a port. Given, it beats $CONTOUR_MUX.",
                     "PATH|HOST:PORT|URL|NAME" },
                 CLI::Option { "tmux",
                               CLI::Value { false },

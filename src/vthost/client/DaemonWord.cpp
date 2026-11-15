@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <format>
 #include <optional>
 #include <string>
@@ -37,28 +38,53 @@ namespace
             [](std::string_view word) { return word.find_first_of("/\\:") != std::string_view::npos; } },
     };
 
+    /// Where a prefix looks the name after it up.
+    enum class PrefixLookup : uint8_t
+    {
+        LocalDaemons = 0, ///< LocalDaemons::contains.
+        SavedHosts,       ///< SavedHosts::contains.
+    };
+
     /// The prefixes that say which kind of name a word is, whatever else of that name exists.
     struct PrefixRow
     {
         std::string_view prefix; ///< E.g. `name:`.
         DaemonWordKind kind;     ///< What the name after it names.
+        PrefixLookup lookup;     ///< Where a name of that kind is looked up.
     };
 
     constexpr auto PrefixRows = std::array {
-        PrefixRow { .prefix = "name:"sv, .kind = DaemonWordKind::LocalName },
-        PrefixRow { .prefix = "host:"sv, .kind = DaemonWordKind::SavedHost },
+        PrefixRow {
+            .prefix = "name:"sv, .kind = DaemonWordKind::LocalName, .lookup = PrefixLookup::LocalDaemons },
+        PrefixRow {
+            .prefix = "host:"sv, .kind = DaemonWordKind::SavedHost, .lookup = PrefixLookup::SavedHosts },
     };
-
-    /// @return Whether @p rest, what follows a word's first colon, is a port: then the word is `HOST:PORT`
-    ///         whatever its host is called, `host:2222` and `name:22` included.
-    [[nodiscard]] bool isPort(std::string_view rest) noexcept
-    {
-        return !rest.empty() && std::ranges::all_of(rest, [](char ch) { return ch >= '0' && ch <= '9'; });
-    }
 
     [[nodiscard]] bool contains(std::function<bool(std::string_view)> const& lookup, std::string_view name)
     {
         return lookup && lookup(name);
+    }
+
+    /// @return Whether @p row takes @p word: it starts with the prefix, and what follows is no port (1-65535,
+    ///         as parseHostPort() reads one) or names a daemon of the prefix's kind. So `host:2222` reaches a
+    ///         machine called `host`, unless a saved host is called `2222`; `name:7` a local daemon called
+    ///         `7` where one runs.
+    [[nodiscard]] bool takes(PrefixRow const& row,
+                             std::string_view word,
+                             LocalDaemons const& localDaemons,
+                             SavedHosts const& savedHosts)
+    {
+        if (!word.starts_with(row.prefix))
+            return false;
+        if (!parseHostPort(word))
+            return true;
+        auto const name = word.substr(row.prefix.size());
+        switch (row.lookup)
+        {
+            case PrefixLookup::LocalDaemons: return contains(localDaemons.contains, name);
+            case PrefixLookup::SavedHosts: return contains(savedHosts.contains, name);
+        }
+        return true;
     }
 } // namespace
 
@@ -66,11 +92,8 @@ std::expected<DaemonTarget, DaemonWordError> resolveDaemonWord(std::string_view 
                                                                LocalDaemons const& localDaemons,
                                                                SavedHosts const& savedHosts)
 {
-    if (auto const prefix = std::ranges::find_if(PrefixRows,
-                                                 [word](PrefixRow const& row) {
-                                                     return word.starts_with(row.prefix)
-                                                            && !isPort(word.substr(row.prefix.size()));
-                                                 });
+    if (auto const prefix = std::ranges::find_if(
+            PrefixRows, [&](PrefixRow const& row) { return takes(row, word, localDaemons, savedHosts); });
         prefix != PrefixRows.end())
     {
         auto const name = word.substr(prefix->prefix.size());
