@@ -509,7 +509,7 @@ if(VTHOST_TESTING)
         target_sources(vthost_test PRIVATE
             KeeperCrash_test.cpp keeperlink/KeeperChild_test.cpp keeperlink/KeeperDaemon_test.cpp
             keeperlink/KeeperLink_test.cpp
-            keeperlink/Recovery_test.cpp keeperlink/Structure_test.cpp)
+            keeperlink/Recovery_test.cpp keeperlink/Structure_test.cpp testing/StartTrace_test.cpp)
         target_link_libraries(vthost_test vthost_keeper_harness)
     endif()
     # vthost links no WebAssembly runtime; its tests compose one, as `contour daemon` does.

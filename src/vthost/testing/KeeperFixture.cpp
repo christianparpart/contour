@@ -4,6 +4,7 @@
 #include <vtpty/ExecutablePath.hpp>
 #include <vtpty/UnixUtils.hpp>
 
+#include <core/Environment.hpp>
 #include <core/codec/Stream.hpp>
 #include <core/log/LogSink.hpp>
 #include <core/platform/Clock.hpp>
@@ -49,6 +50,7 @@
 #include <spawn.h>
 #include <unistd.h>
 
+#include <testing/CaseTrace.hpp>
 #include <vthost/Daemon.hpp>
 #include <vthost/Transport.hpp>
 #include <vthost/keeper/DescriptorSocket.hpp>
@@ -56,6 +58,7 @@
 #include <vthost/keeper/PosixPorts.hpp>
 #include <vthost/keeperlink/KeeperAttachment.hpp>
 #include <vthost/testing/FakeExtensionHosting.hpp>
+#include <vthost/testing/StartTrace.hpp>
 
 namespace vthost::testing
 {
@@ -290,9 +293,10 @@ namespace
             ::kill(::getpid(), SIGKILL); // a restart that crashes before it serves
         if (launch.start == HarnessStart::Relays || (launch.start == HarnessStart::RelaysThenServes && first))
             return relayChannel(launch.relayPath, *std::move(attachment));
-        // What the daemon says goes to the keeper's output, for a test to read (KeeperFixture::log()).
+        // What the daemon says goes to the keeper's output, for a test to read (KeeperFixture::log()): its
+        // errors too, which is where a session it could not spawn is reported (see StartTrace.hpp).
         auto const logging = core::log::ScopedOutput::create(
-            { .filter = "vthost.daemon,vthost.session", .file = std::nullopt, .showProcessId = true });
+            { .filter = "vthost.daemon,vthost.session,error", .file = std::nullopt, .showProcessId = true });
         auto config = daemonConfigOf(launch);
         if (launch.start == HarnessStart::ThrowsThenServes && first)
             config.extensions = [trigger = std::filesystem::path { launch.launchLog }.parent_path()
@@ -522,16 +526,50 @@ KeeperFixture::KeeperFixture(HarnessSetup const& setup):
         acceptRelay();
         return;
     }
-    auto const deadline = std::chrono::steady_clock::now() + _startBound;
+    awaitServing();
+}
+
+void KeeperFixture::awaitServing()
+{
+    // How often the log is looked at for a session the daemon could not spawn, and how often the trace
+    // (CONTOUR_TEST_TRACE) says how far the start has come: a suite killed by its timeout then leaves why
+    // the daemon never served in its output.
+    constexpr auto LookInterval = std::chrono::milliseconds { 500 };
+    constexpr auto TraceInterval = std::chrono::seconds { 10 };
+    auto const began = std::chrono::steady_clock::now();
+    auto const deadline = began + _startBound;
+    auto trace =
+        StartTrace { contour::testing::caseTraceEnabled(core::defaultEnvironment()) ? StartTraceMode::On
+                                                                                    : StartTraceMode::Off,
+                     TraceInterval,
+                     began,
+                     [](std::string const& line) { std::cerr << line << '\n'
+                                                             << std::flush; } };
+    auto nextLook = began + LookInterval;
     while (daemonPid() == 0)
     {
-        if (std::chrono::steady_clock::now() >= deadline)
+        auto const now = std::chrono::steady_clock::now();
+        // No destructor runs for a constructor that throws: what it started ends here.
+        if (now >= deadline)
         {
-            // No destructor runs for a constructor that throws: what it started ends here.
             auto const output = log();
             end(Ending::AtOnce);
             throw std::runtime_error { std::format("the keeper's daemon did not serve:\n{}", output) };
         }
+        if (now >= nextLook)
+        {
+            nextLook = now + LookInterval;
+            // A session that cannot be spawned is not retried: the daemon goes on without it, so waiting
+            // out the bound would only say the same, late.
+            auto const output = log();
+            if (auto const failure = firstSpawnFailure(output))
+            {
+                end(Ending::AtOnce);
+                throw std::runtime_error { std::format(
+                    "the keeper's daemon could not spawn a session ({}):\n{}", *failure, output) };
+            }
+        }
+        trace.observe(now, [this] { return log(); });
         std::this_thread::sleep_for(std::chrono::milliseconds { 20 });
     }
 }

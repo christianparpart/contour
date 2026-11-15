@@ -332,6 +332,11 @@ class KeeperFixture
 
     /// For HarnessStart::Relays: accepts the daemon's connection and receives its channel.
     void acceptRelay();
+
+    /// Waits until the daemon serves, within the start bound. Says how far the start has come while it waits
+    /// (CONTOUR_TEST_TRACE), and ends the wait at the first session the daemon reports it could not spawn.
+    /// @throws std::runtime_error with the log, when the daemon does not serve, or cannot spawn a session.
+    void awaitServing();
 };
 
 } // namespace vthost::testing
