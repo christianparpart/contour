@@ -89,7 +89,8 @@ class IDaemonDiscovery
 
 /// The saved hosts a bare `--daemon` word names: those under the configuration's `hosts:`.
 /// @param configPath The configuration file; empty for the default one.
-/// @return The lookup, which reads the configuration each time it is asked.
+/// @return The lookup, which reads the configuration each time it is asked; a missing one names no saved
+///         host, and is not created.
 [[nodiscard]] vthost::client::SavedHosts savedHostsOf(std::string configPath);
 
 } // namespace contour::cli

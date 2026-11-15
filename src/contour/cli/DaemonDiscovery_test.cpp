@@ -7,6 +7,7 @@
 #include <format>
 #include <latch>
 #include <map>
+#include <random>
 #include <ranges>
 #include <string>
 #include <thread>
@@ -145,4 +146,19 @@ TEST_CASE("DaemonDiscovery.two discoveries run at once through the native prober
     // No daemon serves in a directory that does not exist.
     CHECK(first.empty());
     CHECK(second.empty());
+}
+
+TEST_CASE("DaemonDiscovery.saved hosts of a missing configuration are none, and create no file",
+          "[contour][discovery]")
+{
+    auto const directory =
+        fs::temp_directory_path() / std::format("contour-saved-hosts-{}", std::random_device {}());
+    auto const configFile = directory / "contour.yml";
+    REQUIRE_FALSE(fs::exists(configFile));
+
+    auto const saved = contour::cli::savedHostsOf(configFile.string());
+    REQUIRE(saved.contains);
+    CHECK_FALSE(saved.contains("work"));
+    CHECK_FALSE(fs::exists(configFile));
+    CHECK_FALSE(fs::exists(directory));
 }

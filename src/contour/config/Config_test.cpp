@@ -1017,6 +1017,21 @@ hosts:
     }
 }
 
+TEST_CASE("Config: resolveHost of a missing configuration knows no host, and creates no file",
+          "[config][hosts]")
+{
+    QTemporaryDir const dir;
+    auto const path = std::filesystem::path(dir.path().toStdU16String()) / "contour.yml";
+    auto const host = contour::config::resolveHost(path.string(), "home");
+    REQUIRE_FALSE(host.has_value());
+    CHECK(host.error().contains("no host named 'home'"));
+    CHECK_FALSE(std::filesystem::exists(path));
+
+    // An ad-hoc URL needs no configuration either way.
+    CHECK(contour::config::resolveHost(path.string(), "ssh://other").has_value());
+    CHECK_FALSE(std::filesystem::exists(path));
+}
+
 TEST_CASE("Config: resolveHost says (none) when nothing is saved", "[config][hosts]")
 {
     QTemporaryDir dir;

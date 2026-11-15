@@ -993,7 +993,13 @@ std::expected<HostEntry, std::string> resolveHost(std::string const& configPath,
                                    .profile = {} };
             });
 
-    return tryLoadConfigFromFile(configFileNamed(configPath))
+    // A lookup, never a first run: a missing configuration saves no hosts, and is not created (nor loaded,
+    // which would warn about it) for asking.
+    auto const configFile = configFileNamed(configPath);
+    if (auto error = std::error_code {}; !fs::is_regular_file(configFile, error))
+        return std::unexpected { std::format(
+            "no host named '{}': there is no configuration at {}", nameOrUrl, core::pathToUtf8(configFile)) };
+    return tryLoadConfigFromFile(configFile)
         .and_then([&](Config const& loaded) -> std::expected<HostEntry, std::string> {
             auto const& hosts = loaded.hosts.value();
             if (auto const found = hosts.find(std::string { nameOrUrl }); found != hosts.end())
