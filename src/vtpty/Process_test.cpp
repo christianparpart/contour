@@ -556,6 +556,39 @@ TEST_CASE("Process.saysWhyItCannotEnterItsWorkingDirectory", "[process]")
     (void) hangUp(process);
 }
 
+TEST_CASE("Process.keepsWhatItSaidUntilItIsRead", "[process][pty]")
+{
+    // A child that says why it cannot start, and exits, is gone before the reader looks: what it said
+    // must still be there to read. A pty whose slave side closed with output unread lost it (macOS),
+    // so a shell that could not start left no word of why.
+    auto const directory = core::testing::ScopedTempDir { "contour-process" };
+    for ([[maybe_unused]] auto const attempt: std::views::iota(0, 10))
+    {
+        auto exec = execInfo("/bin/sh", { "-c", "exit 0" });
+        exec.workingDirectory = directory.path() / "no-such-directory";
+        auto process = vtpty::testing::unplacedProcess(exec, PageSize);
+        REQUIRE(process.start().has_value());
+        std::this_thread::sleep_for(200ms);
+        REQUIRE(printed(process, "no-such-directory\". No such file or directory"));
+        (void) hangUp(process);
+    }
+}
+
+TEST_CASE("Process.doesNotWaitForeverForAReaderToSayItsPiece", "[process][pty]")
+{
+    // The child waits for its report to be read, but not for good: nobody reading must not keep it alive.
+    auto const directory = core::testing::ScopedTempDir { "contour-process" };
+    auto exec = execInfo("/bin/sh", { "-c", "exit 0" });
+    exec.workingDirectory = directory.path() / "no-such-directory";
+    auto process = vtpty::testing::unplacedProcess(exec, PageSize);
+    REQUIRE(process.start().has_value());
+    auto waiting = std::async(std::launch::async, [&process] { return process.wait(); });
+    REQUIRE(waiting.wait_for(30s) == std::future_status::ready);
+    auto const status = waiting.get();
+    REQUIRE(status.has_value());
+    CHECK(std::holds_alternative<vtpty::Process::NormalExit>(*status));
+}
+
 TEST_CASE("Process.fallsBackFromAProgramThatIsNotThere", "[process]")
 {
     // A single word that names no program has no command line to read: the child says so, and runs the

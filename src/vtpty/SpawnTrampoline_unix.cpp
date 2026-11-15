@@ -47,6 +47,8 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <pthread.h>
+#include <termios.h>
 #include <unistd.h>
 
 using namespace std::string_view_literals;
@@ -135,6 +137,35 @@ namespace
     // }}}
 
     // {{{ trampoline side
+    /// How long the trampoline waits for its terminal's master side to read what it reported, at most.
+    constexpr auto DrainTimeoutSeconds = 2U;
+
+    /// Stands for SIGALRM, so that the wait for the terminal to drain is interrupted rather than the
+    /// trampoline killed.
+    extern "C" void onDrainTimeout(int /*signal*/) noexcept
+    {
+    }
+
+    /// Waits until the master side of the terminal @p fd has read what was written there, if @p fd is one.
+    /// A pty whose slave side closes with output not yet read can lose that output (macOS does), and a
+    /// shell that could not start would then leave no word of why. The wait is bounded by
+    /// DrainTimeoutSeconds, so a master that never reads cannot keep the trampoline alive.
+    void drainTerminal(int fd) noexcept
+    {
+        if (::isatty(fd) != 1)
+            return;
+        struct sigaction handler {};
+        handler.sa_handler = onDrainTimeout; // No SA_RESTART: the wait must end with EINTR.
+        sigemptyset(&handler.sa_mask);
+        ::sigaction(SIGALRM, &handler, nullptr);
+        auto unblock = sigset_t {};
+        sigemptyset(&unblock);
+        sigaddset(&unblock, SIGALRM);
+        ::pthread_sigmask(SIG_UNBLOCK, &unblock, nullptr);
+        ::alarm(DrainTimeoutSeconds);
+        std::ignore = ::tcdrain(fd);
+    }
+
     /// Reports @p message on stderr and ends the trampoline with @p status. Where the Terminal slot holds a
     /// terminal -- a session's tab, which would otherwise just show its shell gone -- it is reported there
     /// too. Asked of the descriptor rather than of the spec, which may be what could not be read.
@@ -144,8 +175,11 @@ namespace
                                      util::DescriptorKind::Stream,
                                      std::format("contour: spawn trampoline: {}\n", message));
         if (auto const terminal = trampolineFd(TrampolineSlot::Terminal); ::isatty(terminal) == 1)
+        {
             std::ignore = util::writeAll(
                 terminal, util::DescriptorKind::Stream, std::format("\r\ncontour: {}\r\n", message));
+            drainTerminal(terminal);
+        }
         ::_exit(static_cast<int>(status));
     }
 
@@ -291,6 +325,14 @@ namespace
             std::ignore = util::writeAll(STDOUT_FILENO, util::DescriptorKind::Stream, text);
     }
 
+    /// Ends the program with @p launch's failure status, once what it reported on its terminal has been read.
+    [[noreturn]] void exitAfterReport(TerminalLaunch const& launch) noexcept
+    {
+        if (launch.failureReport == FailureReport::OnTerminal)
+            drainTerminal(STDOUT_FILENO);
+        ::_exit(failureStatus(launch.failureExit));
+    }
+
     /// @return The text for @p error.
     [[nodiscard]] std::string errorText(int error)
     {
@@ -325,7 +367,7 @@ namespace
             report(
                 launch,
                 std::format("Failed to chdir to \"{}\". {}\n", launch.workingDirectory, errorText(failure)));
-            ::_exit(failureStatus(launch.failureExit));
+            exitAfterReport(launch);
         }
 
         // Its terminal's queues are flushed: what the parent writes from now on reaches the program. Said
@@ -367,7 +409,7 @@ namespace
 
         // Bad luck.
         report(launch, std::format("\r\nOut of luck. {}\r\n\n", errorText(failure)));
-        ::_exit(failureStatus(launch.failureExit));
+        exitAfterReport(launch);
     }
 
     /// The program on its own, in a session of its own: startDetached()'s two levels, with this process as
