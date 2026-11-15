@@ -353,6 +353,11 @@ std::string Tab::title(SessionTitleResolver const& resolver) const
 {
     if (!_name.empty())
         return _name;
+    return programTitle(resolver);
+}
+
+std::string Tab::programTitle(SessionTitleResolver const& resolver) const
+{
     if (usesMultiplePanesLabel())
         return std::string { MultiplePanesLabel };
     return resolver(_activeLeaf->session());

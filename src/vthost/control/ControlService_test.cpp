@@ -382,6 +382,22 @@ TEST_CASE("object.setLabel makes a pane addressable by label", "[vthost][control
     CHECK(list->workspaces[0].tabs[1].label == "build");
 }
 
+TEST_CASE("workspace.list states a named tab's program title, not its name", "[vthost][control][name]")
+{
+    auto h = ControlHarness {};
+    auto const session = h.openTab();
+    h.terminal(session).writeToScreen("\033]2;vim\007");
+    h.drain();
+
+    REQUIRE(callSync<vtcontrol::EmptyReply>(
+                h.service, h.context, vtcontrol::SetLabelRequest { .object = "tab:1", .label = "build" })
+                .has_value());
+    auto const list = callSync<vtcontrol::ListReply>(h.service, h.context, vtcontrol::ListRequest {});
+    REQUIRE(list.has_value());
+    CHECK(list->workspaces[0].tabs[0].label == "build");
+    CHECK(list->workspaces[0].tabs[0].title == "vim");
+}
+
 TEST_CASE("a control call from a pane moved into a new workspace resolves its tab", "[vthost][control][move]")
 {
     auto h = ControlHarness {};

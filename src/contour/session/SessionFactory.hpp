@@ -410,6 +410,19 @@ class SessionFactory
         return RemoteRouting::Local;
     }
 
+    /// Attach mode: the user renamed the tab whose active pane @p pty backs, which the window has named in
+    /// its own model already. A factory whose tabs are another multiplexer's windows (tmux) renames the
+    /// window there too, or that multiplexer's next rename of its own overwrites the user's; a daemon's
+    /// factory does nothing, as the tab's presentation report carries the name (reportTabPresentation()).
+    /// @param pty The tab's active pane's pty.
+    /// @param name The tab's new name; empty clears it.
+    /// @return Routed when the remote end was told, Local otherwise.
+    [[nodiscard]] virtual RemoteRouting requestRemoteWindowRename(vtpty::Pty const* /*pty*/,
+                                                                  std::string const& /*name*/)
+    {
+        return RemoteRouting::Local;
+    }
+
     /// Attach mode: moves the DAEMON's workspace @p workspace to a place in its workspace order; the daemon
     /// states the new order to every window (WorkspaceMeta::position).
     /// @param workspace The daemon's workspace id, as a directory lists it.

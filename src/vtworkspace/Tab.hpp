@@ -275,11 +275,15 @@ class Tab
     /// is how the tab strip and the status line came to disagree about what a zoomed tab is called.
     [[nodiscard]] bool usesMultiplePanesLabel() const noexcept { return hasMultiplePanes() && !_zoomed; }
 
-    /// The resolved title, in precedence order:
+    /// What names the tab on screen, in precedence order:
     ///   1. the user-given name, if set;
-    ///   2. "Multiple panes" if usesMultiplePanesLabel();
-    ///   3. the active leaf session's own title, via @p resolver.
+    ///   2. programTitle().
     [[nodiscard]] std::string title(SessionTitleResolver const& resolver) const;
+
+    /// The tab's title as its programs make it, never the user's name: "Multiple panes" if
+    /// usesMultiplePanesLabel(), else the active leaf session's own title, via @p resolver. What the control
+    /// API states as a tab's title, beside its name.
+    [[nodiscard]] std::string programTitle(SessionTitleResolver const& resolver) const;
 
     /// @return The tab's user-given name, which names it over everything else; empty when it has none.
     [[nodiscard]] std::string const& name() const noexcept { return _name; }

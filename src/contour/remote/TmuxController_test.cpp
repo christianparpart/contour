@@ -99,6 +99,48 @@ TEST_CASE("tmux split/kill commands match the server's command format (B5)", "[a
     CHECK(contour::remote::tmuxNewWindowCommand(std::nullopt) == "new-window");
 }
 
+TEST_CASE("tmux rename-window names the window, and an empty name gives it back to tmux",
+          "[attach][tmux][name]")
+{
+    using contour::remote::tmuxRenameWindowCommand;
+    CHECK(tmuxRenameWindowCommand(7, "build") == "rename-window -t %7 'build'");
+    CHECK(tmuxRenameWindowCommand(7, "my tab") == "rename-window -t %7 'my tab'");
+    CHECK(tmuxRenameWindowCommand(7, "it's") == R"(rename-window -t %7 'it'\''s')");
+    CHECK(tmuxRenameWindowCommand(7, "") == "set-option -w -t %7 automatic-rename on");
+}
+
+TEST_CASE("a GUI rename of a tmux-mirrored tab is the tmux window's rename", "[attach][tmux][name]")
+{
+    auto ctrlOwned = makeTmuxController();
+    auto* ctrl = ctrlOwned.get();
+    contour::test::TestApp app { std::move(ctrlOwned) };
+    contour::test::ScopedController const win { app.manager() };
+
+    ctrl->paneAdded(/*window=*/1, /*pane=*/10, 80, 24);
+    ctrl->adoptPendingPanes(app.manager(), win.id);
+    auto* tab = app.manager().model().workspace(win.id)->tabAt(0);
+    REQUIRE(tab != nullptr);
+    auto* session = app.manager().sessionForId(tab->activePane()->session());
+    REQUIRE(session != nullptr);
+
+    // The pane's pty is bound to tmux pane %10: the rename is the server's, with or without a name.
+    CHECK(ctrl->requestRemoteWindowRename(&session->terminal().device(), "build")
+          == contour::session::RemoteRouting::Routed);
+    CHECK(ctrl->requestRemoteWindowRename(&session->terminal().device(), "")
+          == contour::session::RemoteRouting::Routed);
+
+    // A pty bound to no tmux pane is renamed here alone.
+    auto foreign =
+        vtpty::MockPty { vtbackend::PageSize { vtbackend::LineCount(24), vtbackend::ColumnCount(80) } };
+    CHECK(ctrl->requestRemoteWindowRename(&foreign, "build") == contour::session::RemoteRouting::Local);
+
+    // The strip's rename names the tab in the model as well.
+    win->setTabName(0, QStringLiteral("build"));
+    CHECK(tab->name() == "build");
+
+    ctrl->stop();
+}
+
 TEST_CASE("a hosted operation's tmux command is its row's", "[attach][tmux][operations]")
 {
     // A column of the operation table, beside where the operation runs: a new operation states both in one

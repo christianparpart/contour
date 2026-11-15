@@ -1621,7 +1621,21 @@ void TerminalSessionManager::renameTab(window::WindowController& window, uint64_
     }
     if (!ownsWorkspace(window, vtworkspace::WorkspaceId { listed->workspace->id }))
         return;
-    _model->setTabName(vtworkspace::TabId { tab }, std::move(name));
+    nameTab(vtworkspace::TabId { tab }, std::move(name));
+}
+
+void TerminalSessionManager::nameTab(vtworkspace::TabId tabId, std::string name)
+{
+    _model->setTabName(tabId, std::move(name));
+    auto const* const tab = _model->findTab(tabId);
+    if (tab == nullptr || tab->activePane() == nullptr)
+        return;
+    auto* const session = sessionForId(tab->activePane()->session());
+    if (session == nullptr)
+        return;
+    // As the model holds it: a blank name was cleared.
+    std::ignore = factoryFor(_model->workspaceOfTab(tabId))
+                      .requestRemoteWindowRename(&session->terminal().device(), tab->name());
 }
 
 void TerminalSessionManager::moveWorkspace(window::WindowController& window,

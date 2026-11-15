@@ -15,6 +15,7 @@
 #include <vthost/testing/ControlHarness.hpp>
 #include <vtworkspace/Pane.hpp>
 #include <vtworkspace/Tab.hpp>
+#include <vtworkspace/TabName.hpp>
 
 using vthost::applyTabEdit;
 using vthost::TabEditEffect;
@@ -225,7 +226,7 @@ TEST_CASE("a SetName names the daemon's tab, which is then addressable by it", "
     CHECK(h.host.model().workspace(h.host.workspaceId())->tabAt(1)->name().empty());
 }
 
-TEST_CASE("a tab's name outlasts its pane's title, which names it once the name is cleared",
+TEST_CASE("a tab's name stands beside its program's title, which names it once the name is cleared",
           "[vthost][tab-edits][name]")
 {
     auto h = ControlHarness {};
@@ -235,9 +236,16 @@ TEST_CASE("a tab's name outlasts its pane's title, which names it once the name 
             == TabEditEffect::Changed);
     h.terminal(session).writeToScreen("\033]2;vim\007");
     h.drain();
-    CHECK(listedTab(h, 0).title == "build");
+    // The API states both: the user's name, and the program's title, which the name does not hide.
+    auto const named = listedTab(h, 0);
+    CHECK(named.label == "build");
+    CHECK(named.title == "vim");
+    CHECK(vtworkspace::tabNameOf({ .name = named.label, .title = named.title }, {}) == "build");
 
     REQUIRE(applyOnDaemon(h, { .session = session.value, .kind = TabEditKind::ClearName })
             == TabEditEffect::Changed);
-    CHECK(listedTab(h, 0).title == "vim");
+    auto const cleared = listedTab(h, 0);
+    CHECK(cleared.label.empty());
+    CHECK(cleared.title == "vim");
+    CHECK(vtworkspace::tabNameOf({ .name = cleared.label, .title = cleared.title }, {}) == "vim");
 }

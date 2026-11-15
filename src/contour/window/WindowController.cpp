@@ -1600,7 +1600,7 @@ void WindowController::showAbout()
 void WindowController::setTabName(int index, QString const& name)
 {
     if (auto* tab = tabAtRow(index); tab != nullptr)
-        _manager.model().setTabName(tab->id(), name.toStdString());
+        _manager.nameTab(tab->id(), name.toStdString());
 }
 
 void WindowController::beginActiveTabTitleEdit()

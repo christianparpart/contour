@@ -134,6 +134,13 @@ std::string tmuxKillPaneCommand(uint64_t pane)
     return std::format("kill-pane -t %{}", pane);
 }
 
+std::string tmuxRenameWindowCommand(uint64_t pane, std::string_view name)
+{
+    if (name.empty())
+        return std::format("set-option -w -t %{} automatic-rename on", pane);
+    return std::format("rename-window -t %{} {}", pane, vthost::tmux::quoteArgument(name));
+}
+
 std::string tmuxPaneDirectoryQuery(uint64_t pane)
 {
     return std::format("display-message -p -t %{} '#{{pane_current_path}}'", pane);
@@ -498,6 +505,22 @@ void TmuxController::requestRemoteClose(vtpty::Pty const* pty)
         if (_gateway != nullptr)
             _gateway->sendCommand(tmuxKillPaneCommand(pane));
     });
+}
+
+contour::session::RemoteRouting TmuxController::requestRemoteWindowRename(vtpty::Pty const* pty,
+                                                                          std::string const& name)
+{
+    auto const pane = [&] {
+        auto const lock = std::lock_guard { _mutex };
+        return paneForPtyLocked(pty);
+    }();
+    if (!pane)
+        return contour::session::RemoteRouting::Local; // not one of ours
+    _reactor.post([this, command = tmuxRenameWindowCommand(*pane, name)]() mutable {
+        if (_gateway != nullptr)
+            _gateway->sendCommand(std::move(command));
+    });
+    return contour::session::RemoteRouting::Routed;
 }
 
 contour::session::HostedOperationRoute TmuxController::requestHostedOperation(

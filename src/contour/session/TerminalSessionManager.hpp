@@ -487,6 +487,13 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     /// @param name Its new name; empty clears it, so its title names it again.
     void renameTab(window::WindowController& window, uint64_t tab, std::string name);
 
+    /// Names the tab @p tab of this process's model, as the user renamed it: in the model, and, where its
+    /// window mirrors another multiplexer's windows (tmux), on that multiplexer too
+    /// (SessionFactory::requestRemoteWindowRename()).
+    /// @param tab The tab.
+    /// @param name Its new name; empty (or blank) clears it.
+    void nameTab(vtworkspace::TabId tab, std::string name);
+
     /// Moves the workspace @p workspace that @p window lists to place @p toPosition of its directory, where
     /// a daemon (or this process's model) orders it. The place is clamped.
     /// @param window The window the user acts in.

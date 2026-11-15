@@ -756,6 +756,12 @@ class TestNotifierSessionFactory final: public contour::session::SessionFactory
 
     void requestRemoteClose(vtpty::Pty const* pty) override { _factory->requestRemoteClose(pty); }
 
+    [[nodiscard]] contour::session::RemoteRouting requestRemoteWindowRename(vtpty::Pty const* pty,
+                                                                            std::string const& name) override
+    {
+        return _factory->requestRemoteWindowRename(pty, name);
+    }
+
     [[nodiscard]] contour::session::HostedOperationRoute requestHostedOperation(
         vtpty::Pty const* pty, contour::session::HostedOperationRequest const& request) override
     {

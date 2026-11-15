@@ -411,7 +411,8 @@ vtcontrol::WorkspaceInfo ControlService::workspaceInfoOf(vtworkspace::Workspace 
         auto tabInfo = vtcontrol::TabInfo {};
         tabInfo.id = vtcontrol::toString(tabRef);
         tabInfo.label = std::string { _host.objects().nameOf(tabRef) };
-        tabInfo.title = vtcontrol::toValidUtf8(tab->title(titleOf));
+        // The program's title: the user's name is the label beside it.
+        tabInfo.title = vtcontrol::toValidUtf8(tab->programTitle(titleOf));
         tabInfo.position = static_cast<uint32_t>(index + 1);
         tabInfo.isActive = workspace.activeTab() == tab;
         forEachLeaf(*tab, [&](vtworkspace::Pane const& leaf) {
