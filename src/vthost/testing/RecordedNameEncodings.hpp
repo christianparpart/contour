@@ -4,9 +4,9 @@
 /// @file
 /// The encodings that carry a workspace's, a tab's or a pane's name, as this build wrote them before their
 /// C++ fields were renamed from "label" to "name": a handover stream, a snapshot file, a LayoutState frame
-/// carrying a WireTab, and an EditTab frame. The `[encoding-pin]` tests encode the same values and compare
-/// byte for byte, and decode these bytes and compare field by field, so a rename that changed what crosses an
-/// upgrade fails a test instead of the upgrade.
+/// carrying a WireTab, two EditTab frames, and a WorkspaceMeta frame. The `[encoding-pin]` tests encode the
+/// same values and compare byte for byte, and decode these bytes and compare field by field, so a rename that
+/// changed what crosses an upgrade fails a test instead of the upgrade.
 ///
 /// Recorded once by running those tests with CONTOUR_UPDATE_FIXTURES=1, which prints each array in this
 /// layout instead of comparing. NEVER regenerate them to make a test pass: the bytes are what an old daemon
@@ -109,6 +109,18 @@ inline constexpr std::array<std::uint8_t, 42> RecordedWireTabNames {
 /// The frame (serial 1) of the EditTab that sets a tab's title.
 inline constexpr std::array<std::uint8_t, 11> RecordedEditTabSetTitle {
     0x14, 0x01, 0x1c, 0x07, 0x03, 0x01, 0x78, 0x00, 0x00, 0x00, 0x00,
+};
+
+/// The frame (serial 1) of the EditTab that clears a tab's title.
+inline constexpr std::array<std::uint8_t, 10> RecordedEditTabClearTitle {
+    0x12, 0x01, 0x1c, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+/// The frame (serial 1) of the WorkspaceMeta Pdu_test.cpp builds for the workspace named "ops".
+inline constexpr std::array<std::uint8_t, 36> RecordedWorkspaceMetaName {
+    0x46, 0x01, 0x38, 0x03, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7,
+    0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0x07, 0x03, 0x6f, 0x70,
+    0x73, 0x09, 0x01, 0x04, 0x6d, 0x61, 0x69, 0x6e, 0x03, 0x02, 0x07, 0x05,
 };
 
 } // namespace vthost::testing

@@ -3333,3 +3333,34 @@ TEST_CASE("the EditTab that sets a tab's title is pinned", "[vthost][pdu][encodi
     CHECK(decoded.kind == TabEditKind::SetTitle);
     CHECK(decoded.title == "x");
 }
+
+TEST_CASE("the EditTab that clears a tab's title is pinned", "[vthost][pdu][encoding-pin]")
+{
+    auto const edit = EditTab { .session = 7, .kind = TabEditKind::ClearTitle };
+    checkPinnedFrame("RecordedEditTabClearTitle", edit, vthost::testing::RecordedEditTabClearTitle);
+
+    auto const decoded =
+        decodeAs<EditTab>(std::as_bytes(std::span { vthost::testing::RecordedEditTabClearTitle }));
+    CHECK(decoded == edit);
+    CHECK(decoded.session == 7);
+    CHECK(decoded.kind == TabEditKind::ClearTitle);
+    CHECK(std::to_underlying(decoded.kind) == 4);
+}
+
+TEST_CASE("the WorkspaceMeta of a named workspace is pinned", "[vthost][pdu][encoding-pin]")
+{
+    auto const meta = WorkspaceMeta {
+        .workspace = 3,
+        .controlId = controlIdFrom(0xA0),
+        .label = "ops",
+        .git = WireGitInfo { .branch = "main", .kind = GitHeadKindWire::Branch, .ahead = 2, .behind = 7 },
+        .position = 5,
+    };
+    checkPinnedFrame("RecordedWorkspaceMetaName", meta, vthost::testing::RecordedWorkspaceMetaName);
+
+    auto const decoded =
+        decodeAs<WorkspaceMeta>(std::as_bytes(std::span { vthost::testing::RecordedWorkspaceMetaName }));
+    CHECK(decoded == meta);
+    CHECK(decoded.label == "ops");
+    CHECK(decoded.position == 5);
+}
