@@ -978,6 +978,8 @@ std::expected<vtbackend::Settings, std::string> emulationSettingsFor(Config cons
     });
 }
 
+static Config sideFileHostsOf(fs::path const& configFile);
+
 std::expected<HostEntry, std::string> resolveHost(std::string const& configPath, std::string_view nameOrUrl)
 {
     if (nameOrUrl.contains("://"))
@@ -993,24 +995,24 @@ std::expected<HostEntry, std::string> resolveHost(std::string const& configPath,
                                    .profile = {} };
             });
 
-    // A lookup, never a first run: a missing configuration saves no hosts, and is not created (nor loaded,
-    // which would warn about it) for asking.
+    // A lookup, never a first run: a missing contour.yml holds no inline hosts, and is not created (nor
+    // loaded, which would warn about it) for asking; the hosts/ side files beside it are still read.
     auto const configFile = configFileNamed(configPath);
-    if (auto error = std::error_code {}; !fs::is_regular_file(configFile, error))
-        return std::unexpected { std::format(
-            "no host named '{}': there is no configuration at {}", nameOrUrl, core::pathToUtf8(configFile)) };
-    return tryLoadConfigFromFile(configFile)
-        .and_then([&](Config const& loaded) -> std::expected<HostEntry, std::string> {
-            auto const& hosts = loaded.hosts.value();
-            if (auto const found = hosts.find(std::string { nameOrUrl }); found != hosts.end())
-                return found->second;
-            auto const names = std::ranges::to<std::vector<std::string>>(std::views::keys(hosts));
-            return std::unexpected { std::format("no host named '{}' in {} (saved hosts: {})",
-                                                 nameOrUrl,
-                                                 core::pathToUtf8(loaded.configFile),
-                                                 names.empty() ? std::string { "(none)" }
-                                                               : core::joinHumanReadable(names, ", ")) };
-        });
+    auto error = std::error_code {};
+    auto const loaded = fs::is_regular_file(configFile, error)
+                            ? tryLoadConfigFromFile(configFile)
+                            : std::expected<Config, std::string> { sideFileHostsOf(configFile) };
+    return loaded.and_then([&](Config const& loaded) -> std::expected<HostEntry, std::string> {
+        auto const& hosts = loaded.hosts.value();
+        if (auto const found = hosts.find(std::string { nameOrUrl }); found != hosts.end())
+            return found->second;
+        auto const names = std::ranges::to<std::vector<std::string>>(std::views::keys(hosts));
+        return std::unexpected { std::format("no host named '{}' in {} (saved hosts: {})",
+                                             nameOrUrl,
+                                             core::pathToUtf8(loaded.configFile),
+                                             names.empty() ? std::string { "(none)" }
+                                                           : core::joinHumanReadable(names, ", ")) };
+    });
 }
 
 vtbackend::ColorPalette const* preferredColorPalette(ColorConfig const& colorConfig,
@@ -1442,6 +1444,37 @@ static void mergeSideFilesIn(Config& config,
     }
 }
 
+/// Merges the hosts/<name>.yml side files: a saved host Settings wrote, read as an entry of `hosts:` is. One
+/// that cannot be used is reported and skipped, as there.
+/// @param config The configuration to augment in place (its @c configFile locates the side files).
+/// @param reader The reader that parses a host's body.
+static void mergeHostSideFiles(Config& config, YAMLConfigReader& reader)
+{
+    mergeSideFilesIn(
+        config, "hosts", "host", [&](fs::path const& path, std::string const& name, YAML::Node const& root) {
+            auto host = std::optional<HostEntry> {};
+            reader.readSideFile(path, root, [&]() { host = reader.parseHostNode(root, name); });
+            if (!host)
+                return;
+            config.hosts.value().insert_or_assign(name, std::move(*host));
+            config.hostOrigins[name] = SettingsOrigin::SideFile;
+        });
+}
+
+/// The saved hosts beside a contour.yml that does not exist: those of its hosts/ side files alone. Reads
+/// nothing else and creates nothing, so asking for a host is no first run.
+/// @param configFile Where contour.yml would be.
+/// @return A configuration holding only those hosts, its @c configFile @p configFile.
+static Config sideFileHostsOf(fs::path const& configFile)
+{
+    auto config = Config {};
+    config.configFile = configFile;
+    auto reader = YAMLConfigReader(
+        configFile, YAML::Node {}, configLog, configEnvironment(), BuildKeyboardPlatformKind);
+    mergeHostSideFiles(config, reader);
+    return config;
+}
+
 /// Merges the GUI-managed side files over the just-parsed configuration, mirroring the layouts.yml
 /// merge: the freshest (GUI) content wins, and a broken file is logged and skipped rather than taking
 /// the whole configuration down. Color scheme side files (colorschemes/<name>.yml) are already
@@ -1473,17 +1506,7 @@ static void mergeGuiManagedSideFiles(Config& config, YAMLConfigReader& reader)
             config.profileOrigins[name] = SettingsOrigin::SideFile;
         });
 
-    // hosts/<name>.yml: a saved host Settings wrote, read as an entry of `hosts:` is. One that cannot be used
-    // is reported and skipped, as there.
-    mergeSideFilesIn(
-        config, "hosts", "host", [&](fs::path const& path, std::string const& name, YAML::Node const& root) {
-            auto host = std::optional<HostEntry> {};
-            reader.readSideFile(path, root, [&]() { host = reader.parseHostNode(root, name); });
-            if (!host)
-                return;
-            config.hosts.value().insert_or_assign(name, std::move(*host));
-            config.hostOrigins[name] = SettingsOrigin::SideFile;
-        });
+    mergeHostSideFiles(config, reader);
 
     // settings.yml — GUI-owned globals. Applied last so a default_profile can name a profile the scan
     // above just introduced. Read and parsed once: the overrides applied are the ones listed, even when

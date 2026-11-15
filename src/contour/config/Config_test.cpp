@@ -1032,6 +1032,25 @@ TEST_CASE("Config: resolveHost of a missing configuration knows no host, and cre
     CHECK_FALSE(std::filesystem::exists(path));
 }
 
+TEST_CASE("Config: resolveHost finds a host side file beside a missing configuration, and creates nothing",
+          "[config][hosts]")
+{
+    QTemporaryDir dir;
+    writeSideFile(dir, "hosts/box.yml", "url: ssh://me@box\n");
+    auto const path = std::filesystem::path(dir.path().toStdU16String()) / "contour.yml";
+    auto const host = contour::config::resolveHost(path.string(), "box");
+    REQUIRE(host.has_value());
+    CHECK(host->url.host == "box");
+    CHECK(host->url.user == "me");
+    CHECK_FALSE(std::filesystem::exists(path));
+
+    // A name no side file has lists the ones there are.
+    auto const unknown = contour::config::resolveHost(path.string(), "home");
+    REQUIRE_FALSE(unknown.has_value());
+    CHECK(unknown.error().contains("(saved hosts: box)"));
+    CHECK_FALSE(std::filesystem::exists(path));
+}
+
 TEST_CASE("Config: resolveHost says (none) when nothing is saved", "[config][hosts]")
 {
     QTemporaryDir dir;

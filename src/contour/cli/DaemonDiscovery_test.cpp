@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <latch>
 #include <map>
 #include <random>
@@ -161,4 +162,30 @@ TEST_CASE("DaemonDiscovery.saved hosts of a missing configuration are none, and 
     CHECK_FALSE(saved.contains("work"));
     CHECK_FALSE(fs::exists(configFile));
     CHECK_FALSE(fs::exists(directory));
+}
+
+TEST_CASE("DaemonDiscovery.--daemon names a host side file beside a missing configuration, creating no file",
+          "[contour][discovery]")
+{
+    auto const directory =
+        fs::temp_directory_path() / std::format("contour-saved-hosts-{}", std::random_device {}());
+    fs::create_directories(directory / "hosts");
+    std::ofstream(directory / "hosts" / "box.yml") << "url: ssh://box\n";
+    auto const configFile = directory / "contour.yml";
+
+    auto const saved = contour::cli::savedHostsOf(configFile.string());
+    CHECK(saved.contains("box"));
+    // A local daemon of that name too: a bare word that only a saved host names would fall to the saved hosts
+    // anyway, so ambiguity is what tells the lookup found it.
+    auto const ambiguous = vthost::client::resolveDaemonWord(
+        "box", { .contains = [](std::string_view name) { return name == "box"; } }, saved);
+    CHECK(ambiguous == std::unexpected { vthost::client::DaemonWordError::Ambiguous });
+    auto const target = vthost::client::resolveDaemonWord("host:box", {}, saved);
+    REQUIRE(target.has_value());
+    CHECK(target->kind == vthost::client::DaemonWordKind::SavedHost);
+    CHECK(target->text == "box");
+    CHECK_FALSE(saved.contains("work"));
+    CHECK_FALSE(fs::exists(configFile));
+
+    fs::remove_all(directory);
 }
