@@ -1229,8 +1229,9 @@ struct WireTab
     uint64_t tabId = 0;
     uint64_t activePane = 0;
     uint64_t zoomedPane = 0; ///< 0 = not zoomed.
-    /// An older daemon's runtime title, which it names the tab by under its name; a new daemon writes it
-    /// empty.
+    /// compat(0.9.0): an older daemon's runtime title, which it names the tab by under its name. A new daemon
+    /// writes it empty, or, to a window without Capability::Names, as the name, which an old window names
+    /// the tab by.
     std::string title = {};
     std::string name = {}; ///< The user-given name, which names the tab over its title; empty if none.
     uint8_t hasColor = 0;

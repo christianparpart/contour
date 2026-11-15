@@ -111,8 +111,10 @@ namespace
     /// Serializes the host workspace's whole tab/pane layout for the LayoutState PDU.
     /// @param workspace The workspace.
     /// @param objects Where its tabs' names are.
+    /// @param spelling How the client spells a name: Spelling::Legacy for one without Capability::Names.
     [[nodiscard]] proto::LayoutState serializeLayout(vtworkspace::Workspace& workspace,
-                                                     ObjectRegistry const& objects)
+                                                     ObjectRegistry const& objects,
+                                                     vtcontrol::Spelling spelling)
     {
         auto layout = proto::LayoutState {};
         layout.workspace = workspace.id().value;
@@ -131,6 +133,10 @@ namespace
             if (auto const uuid = objects.uuidOf(tab->id()))
                 wireTab.name = objects.nameOf(
                     vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab, .uuid = *uuid });
+            // compat(0.9.0): an old window names a tab by its runtime title, and clears a name only by
+            // clearing a title it holds (ClearTitle, read as ClearName).
+            if (spelling == vtcontrol::Spelling::Legacy)
+                wireTab.title = wireTab.name;
             if (auto const color = tab->color())
             {
                 wireTab.hasColor = 1;
@@ -992,7 +998,7 @@ void NativeSession::sendWorkspaceLayout(vtworkspace::Workspace& workspace)
     // Asked before the layout goes out, and streamed after it: the client has the pane by then.
     if (workspace.id().value == _selectedWorkspace)
         requestArrivedSnapshots(workspace);
-    sendLayout(serializeLayout(workspace, _host.objects()));
+    sendLayout(serializeLayout(workspace, _host.objects(), controlSpelling()));
     announceWorkspaceMeta(workspace);
 }
 

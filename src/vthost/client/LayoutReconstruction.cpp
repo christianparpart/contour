@@ -126,7 +126,9 @@ TabPresentation presentationOf(proto::WireTab const& tab, TabActivity activity)
     return TabPresentation {
         .activeSession = tab.activePane != 0 ? leafSessionOf(tab.root, tab.activePane) : 0,
         .zoomedSession = tab.zoomedPane != 0 ? leafSessionOf(tab.root, tab.zoomedPane) : 0,
-        .name = tab.name,
+        // compat(0.9.0): an older daemon keeps a window's rename as the tab's runtime title and states no
+        // name.
+        .name = !tab.name.empty() ? tab.name : tab.title,
         .color = tab.hasColor != 0 ? std::optional { tab.color } : std::nullopt,
         .activity = activity,
     };

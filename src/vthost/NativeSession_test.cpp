@@ -5768,8 +5768,9 @@ TEST_CASE("a name one client sets reaches the other client's layout", "[vthost][
     auto const* tab = h.host.createTab();
     REQUIRE(tab != nullptr);
     auto const session = tab->rootPane()->session().value;
-    auto const editing =
-        proto::ClientHello { .capabilities = proto::CapabilitySet::of({ proto::Capability::TabEdits }) };
+    auto const editing = proto::ClientHello {
+        .capabilities = proto::CapabilitySet::of({ proto::Capability::TabEdits, proto::Capability::Names })
+    };
     auto const watcherHello = encodeRequest({ editing });
     auto const editorRequest = encodeRequest(
         { editing,
@@ -5797,6 +5798,48 @@ TEST_CASE("a name one client sets reaches the other client's layout", "[vthost][
 
     CHECK(titled(fromTwo));
     CHECK(tab->name() == "build");
+}
+
+namespace
+{
+/// @return The first tab of the LayoutState a client gets on attaching with @p hello to a host whose only
+///         tab is named "build".
+[[nodiscard]] proto::WireTab namedTabAsAttachedWith(proto::ClientHello hello)
+{
+    auto h = NativeHarness {};
+    auto const session = newSession(h.host);
+    auto const [workspace, tab, pane] = h.host.model().findSessionLeaf(session);
+    REQUIRE(tab != nullptr);
+    h.host.objects().setName(vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab,
+                                                    .uuid = *h.host.objects().uuidOf(tab->id()) },
+                             "build");
+    auto const received = h.exchange({ proto::DecodedPdu { std::move(hello) } }, 2);
+    auto const layout = std::ranges::find_if(
+        received, [](auto const& frame) { return std::holds_alternative<proto::LayoutState>(frame.pdu); });
+    REQUIRE(layout != received.end());
+    auto const& tabs = std::get<proto::LayoutState>(layout->pdu).tabs;
+    REQUIRE(tabs.size() == 1);
+    return tabs.front();
+}
+} // namespace
+
+TEST_CASE("a window with the names capability gets a tab's name, and no title", "[vthost][native][tab-edits]")
+{
+    auto const tab = namedTabAsAttachedWith(proto::ClientHello {
+        .capabilities =
+            proto::CapabilitySet::of({ proto::Capability::TabEdits, proto::Capability::Names }) });
+    CHECK(tab.name == "build");
+    CHECK(tab.title.empty());
+}
+
+TEST_CASE("a window without the names capability gets a tab's name as its title too",
+          "[vthost][native][tab-edits][compat-0.9.0]")
+{
+    // An old window names a tab by its runtime title, and clears a name only by clearing a title it holds.
+    auto const tab = namedTabAsAttachedWith(
+        proto::ClientHello { .capabilities = proto::CapabilitySet::of({ proto::Capability::TabEdits }) });
+    CHECK(tab.name == "build");
+    CHECK(tab.title == "build");
 }
 
 TEST_CASE("an EditTab from a client without TabEdits is answered Unsupported", "[vthost][native][tab-edits]")

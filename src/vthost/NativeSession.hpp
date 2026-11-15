@@ -707,7 +707,7 @@ class NativeSession final: public SessionStreamEvents, public UpgradeObserver
     /// @param request The call.
     void serveControlRequest(uint64_t serial, proto::ControlRequest const& request);
 
-    /// compat(0.9.0): how this connection's client spells the control API.
+    /// compat(0.9.0): how this connection's client spells the control API, and a tab's name in a LayoutState.
     /// @return Spelling::Names when the handshake shared Capability::Names, else Spelling::Legacy.
     [[nodiscard]] vtcontrol::Spelling controlSpelling() const noexcept;
 

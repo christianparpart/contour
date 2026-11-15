@@ -427,11 +427,31 @@ TEST_CASE("presentationOf reads a daemon tab's panes by their leaf sessions", "[
 
     // No name, a colour, a pane id no leaf has.
     tab.name.clear();
+    tab.title.clear();
     tab.zoomedPane = 0;
     tab.activePane = 99;
     tab.hasColor = 1;
     tab.color = 0x00FF00;
     CHECK(presentationOf(tab, TabActivity::Inactive) == TabPresentation { .color = 0x00FF00 });
+}
+
+TEST_CASE("presentationOf names a tab by an older daemon's runtime title when it states no name",
+          "[vthost][layout][sync-back][compat-0.9.0]")
+{
+    using vthost::client::presentationOf;
+    using vthost::client::TabActivity;
+    using vthost::client::TabPresentation;
+
+    // An older daemon keeps a window's rename as the tab's runtime title and states no name: the rename
+    // stays, rather than reverting to the shell's title.
+    auto tab = proto::WireTab {};
+    tab.title = "foo";
+    tab.root = proto::WirePane { .paneId = 10, .session = 7 };
+    CHECK(presentationOf(tab, TabActivity::Inactive) == TabPresentation { .name = "foo" });
+
+    // A name, where one is stated, wins over the title.
+    tab.name = "bar";
+    CHECK(presentationOf(tab, TabActivity::Inactive) == TabPresentation { .name = "bar" });
 }
 
 namespace
