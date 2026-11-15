@@ -104,7 +104,7 @@ namespace
     ///         on Linux and macOS; or by asking for every number below @p limit where neither answers.
     [[nodiscard]] std::size_t countOpenDescriptors(rlim_t limit)
     {
-#if defined(__FreeBSD__)
+#ifdef __FreeBSD__
         // Not /dev/fd: without fdescfs mounted, FreeBSD's lists 0, 1 and 2 whatever is open, and the budget
         // would never move. The kernel counts them instead.
     #ifdef KERN_PROC_NFDS
