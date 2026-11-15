@@ -123,10 +123,9 @@ TEST_CASE("a benchmark child's last output and exit status are kept", "[vthost][
     CHECK(normal->exitCode == 7);
     // The drain thread reads asynchronously; give it a moment to see the last line.
     auto const deadline = std::chrono::steady_clock::now() + 5s;
-    while ((*process)->outputTail().find("last-words") == std::string::npos
-           && std::chrono::steady_clock::now() < deadline)
+    while (!(*process)->outputTail().contains("last-words") && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(10ms);
-    CHECK((*process)->outputTail().find("last-words") != std::string::npos);
+    CHECK((*process)->outputTail().contains("last-words"));
 }
 
 TEST_CASE("a benchmark child that fills its terminal is not left blocked on it", "[vthost][latency]")
