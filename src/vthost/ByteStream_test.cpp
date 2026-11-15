@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <core/log/LogSink.hpp>
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -122,6 +124,21 @@ TEST_CASE("runStdioRelay ends when the daemon closes", "[vthost][stdio][threadin
     CHECK(readTextToEnd(*client.b) == "bye");
 
     client.b->closeWrite(); // lets the detached thread finish
+}
+
+TEST_CASE("runStdioRelay says why the daemon's side failed", "[vthost][stdio][threading]")
+{
+    auto capture = core::log::ScopedCapture {};
+    auto const client = makeMemoryStreamPair();
+    auto const daemon = makeMemoryStreamPair();
+    client.a->closeWrite(); // what the relay hands the client now fails
+    writeText(*daemon.b, "lost");
+
+    CHECK(vthost::runStdioRelay(client.a, daemon.a) == RelayEnd::Failed);
+    CHECK(capture.contains("stdio relay: the daemon's side ended in failure, writing the client:"));
+
+    client.b->closeWrite(); // lets the client→daemon thread finish
+    daemon.b->closeWrite();
 }
 
 TEST_CASE("runStdioRelay half-closes the daemon when the client ends", "[vthost][stdio][threading]")
