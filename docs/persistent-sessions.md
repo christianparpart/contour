@@ -189,13 +189,15 @@ contour --daemon-mode required     # this launch only: fail rather than fall bac
 
 A launch opens one window. So does New Window (a second launch of `contour`, `NewTerminal` on `Cmd+N`
 or `Ctrl+Shift+N`). A new window never shows a workspace another window shows, on this computer or any
-other client attached to the daemon: it takes the daemon's first [hidden](#shown-and-hidden-workspaces)
-workspace, in the daemon's own order, and when there is none it gets a new workspace with one tab. That is
-how a restart or a reattach finds your workspaces again: each launch picks up the next hidden one. A fresh daemon gets its
-first tab in the first window, as before.
+other client attached to the daemon: it takes the [hidden](#shown-and-hidden-workspaces) workspace that was
+left most recently — the one whose window you closed or switched away from last — and when there is none it
+gets a new workspace with one tab. So closing a window by mistake and opening a new one brings it straight
+back, and each further launch picks up the hidden workspace left before that. Workspaces no window has left
+since the daemon started, such as those a restarted daemon restores, are taken in the order the sidebar lists
+them. A fresh daemon gets its first tab in the first window, as before.
 
-The same rule moves a window whose workspace ends (its last tab closes). It moves on to the first hidden workspace
-that holds a tab, as a new window would, and never to one another window shows. When every other workspace is
+The same rule moves a window whose workspace ends (its last tab closes). It moves on to the hidden workspace
+holding a tab that a new window would take, and never to one another window shows. When every other workspace is
 shown by some window, it has nowhere to go and the window closes, as closing the last tab of a window does; the
 other windows stay as they were.
 

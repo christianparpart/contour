@@ -802,8 +802,10 @@ class NativeSession final: public SessionStreamEvents, public UpgradeObserver
     /// none is left. A connection that selected none stays so.
     void refreshSelection();
 
-    /// @return The daemon's workspaces ascending by id, with their tab counts and what an attach sees of them
-    ///         (SessionHost::shownForAttach), as of now.
+    /// @return The daemon's workspaces in the model's order (the sidebar's), with their tab counts, what an
+    /// attach
+    ///         sees of them (SessionHost::shownForAttach) and when each was last left (SessionHost::leftAt),
+    ///         as of now.
     [[nodiscard]] std::vector<WorkspaceSummary> workspaceSummaries() const;
 
     /// @param workingDirectory The directory the attach states; empty when it states none.

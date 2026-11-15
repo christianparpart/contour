@@ -1362,6 +1362,7 @@ void SessionHost::discardWorkspace(WorkspaceId workspace)
     _objects.forget(workspace);
     if (_workspaceGit)
         _workspaceGit->forget(workspace);
+    _leftAt.erase(workspace.value);
     _model.removeWorkspace(workspace);
     // The host's own workspace is what a creation naming no workspace lands in: another takes its place. One
     // is always left, as the only one is never removed.
@@ -1410,6 +1411,7 @@ void SessionHost::noteClientAttached(SessionStreamEvents* client)
     if (std::ranges::contains(_attachedClients, client))
         return;
     _attachedClients.push_back(client);
+    _selectionSeen.insert_or_assign(client, client->selectedWorkspace());
     settleRaiseRole();
     // A window that follows shows the sidebar: bring it up to date now. The poll is armed by the refresh,
     // once a workspace's directory is known, follower or not.
@@ -1423,6 +1425,8 @@ void SessionHost::noteClientDetached(SessionStreamEvents const* client, DetachKi
     if (!counted)
         return;
     _focusSerials.erase(client);
+    _selectionSeen.erase(client);
+    noteLeft(client->selectedWorkspace());
     // A window that said it closes leaves its workspace free at once, a hold from an earlier drop of the same
     // window included; a lost connection is a reconnect.
     if (auto const shown = client->selectedWorkspace(); shown != 0)
@@ -1455,7 +1459,25 @@ void SessionHost::noteSelected(SessionStreamEvents const& client)
 {
     if (!std::ranges::contains(_attachedClients, &client))
         return;
+    auto& seen = _selectionSeen[&client];
+    if (auto const selected = client.selectedWorkspace(); selected != seen)
+    {
+        noteLeft(seen);
+        seen = selected;
+    }
     settleRaiseRole();
+}
+
+void SessionHost::noteLeft(uint64_t workspace)
+{
+    if (workspace != 0)
+        _leftAt.insert_or_assign(workspace, ++_leftClock);
+}
+
+uint64_t SessionHost::leftAt(uint64_t workspace) const noexcept
+{
+    auto const found = _leftAt.find(workspace);
+    return found != _leftAt.end() ? found->second : 0;
 }
 
 void SessionHost::noteFocus(SessionStreamEvents const& client, proto::WindowFocus focus)

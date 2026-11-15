@@ -9,7 +9,7 @@ namespace vthost
 
 namespace
 {
-    /// @return The ids of the workspaces holding at least one tab, ascending.
+    /// @return The ids of the workspaces holding at least one tab, in list order.
     [[nodiscard]] std::vector<uint64_t> workspacesWithTabs(AttachContext const& context)
     {
         return std::ranges::to<std::vector>(
@@ -33,16 +33,15 @@ namespace
         return workspace.visibility == WorkspaceVisibility::Shown;
     }
 
-    /// What a launch selects, as a new window does: the first hidden workspace that holds a tab, in the
-    /// daemon's order -- never one a window shows -- else a new workspace. A daemon with no tab at all gets
-    /// its first one in the primary workspace, unless a window shows that already.
+    /// What a launch selects, as a new window does: the hidden workspace holding a tab that was left most
+    /// recently (pickLaunchable) -- never one a window shows -- else a new workspace. A daemon with no tab at
+    /// all gets its first one in the primary workspace, unless a window shows that already.
     [[nodiscard]] AttachPlan launch(AttachContext const& context)
     {
-        auto const hidden = std::ranges::find_if(context.workspaces, isLaunchable);
-        if (hidden != context.workspaces.end())
+        if (auto const hidden = pickLaunchable(context.workspaces))
             // A launch that names a working directory also opens a tab in it: the workspace it brings back
             // leaves it nothing to create.
-            return { .select = hidden->id,
+            return { .select = hidden,
                      .creation = context.workingDirectory == WorkingDirectoryStated::Yes
                                      ? AttachCreation::TabInSelected
                                      : AttachCreation::None };
@@ -58,6 +57,16 @@ namespace
         return { .select = std::nullopt, .creation = AttachCreation::NewWorkspace };
     }
 } // namespace
+
+std::optional<uint64_t> pickLaunchable(std::span<WorkspaceSummary const> workspaces)
+{
+    auto launchable = workspaces | std::views::filter(isLaunchable);
+    // max_element keeps the first of equal stamps: never-left workspaces, and ties, go by list order.
+    auto const latest = std::ranges::max_element(launchable, {}, &WorkspaceSummary::leftAt);
+    if (latest == std::ranges::end(launchable))
+        return std::nullopt;
+    return latest->id;
+}
 
 AttachPlan planAttach(proto::AttachIntent const& intent, AttachContext const& context)
 {

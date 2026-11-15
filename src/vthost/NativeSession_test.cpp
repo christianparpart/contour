@@ -8256,6 +8256,129 @@ TEST_CASE("a Goodbye frees the workspace at once, and is refused without client-
     }
 }
 
+namespace
+{
+/// A window's hello: attach as @p kind asks, follow the daemon, and say Goodbye on a deliberate close.
+[[nodiscard]] proto::ClientHello windowHello(proto::AttachIntentKind kind,
+                                             std::vector<uint64_t> workspaces = {})
+{
+    auto hello = intentHello(kind, std::move(workspaces));
+    hello.capabilities = proto::CapabilitySet::of({ proto::Capability::AttachIntent,
+                                                    proto::Capability::DaemonFollow,
+                                                    proto::Capability::ClientGoodbye });
+    return hello;
+}
+
+/// Gives @p h a fresh connection of the same host, for the next window; the current one, if any, ends as its
+/// session is destroyed.
+void freshWindow(NativeHarness& h, uint32_t index)
+{
+    h.session.reset();
+    h.pair = makeConnection(h.loop, std::nullopt);
+    h.session = h.makeSession(h.pair, vthost::ConnectionId { .endpoint = "window", .index = index });
+}
+
+/// Attaches @p h's connection with @p pdus (a FetchImage sentinel appended) and returns the workspace its
+/// ServerHello selected.
+[[nodiscard]] uint64_t attachSelecting(NativeHarness& h, std::vector<proto::DecodedPdu> pdus)
+{
+    pdus.emplace_back(proto::FetchImage { .imageId = 4242 });
+    auto const received = h.exchangeUntil(pdus, imageGoneArrived);
+    auto const* hello = serverHelloOf(received);
+    REQUIRE(hello != nullptr);
+    return hello->selectedWorkspace;
+}
+
+/// A host with workspaces 1, 2 and 3 (as many as @p count asks), each holding a tab.
+/// @return Their ids, in creation order.
+[[nodiscard]] std::vector<uint64_t> workspacesWithTabs(NativeHarness& h, int count)
+{
+    REQUIRE(h.host.createTab() != nullptr);
+    auto ids = std::vector<uint64_t> { h.host.workspaceId().value };
+    for ([[maybe_unused]] auto const i: std::views::iota(1, count))
+    {
+        auto const* created = h.host.createWorkspace();
+        REQUIRE(created != nullptr);
+        ids.push_back(created->id().value);
+    }
+    return ids;
+}
+} // namespace
+
+TEST_CASE("a launch after a window closes reopens the workspace that window showed",
+          "[vthost][native][left-at]")
+{
+    auto h = NativeHarness {};
+    auto const ids = workspacesWithTabs(h, 2);
+
+    // Window X shows the first workspace and closes; window Y shows the second and closes after it.
+    CHECK(attachSelecting(h, { windowHello(proto::AttachIntentKind::Select, { ids[0] }), proto::Goodbye {} })
+          == ids[0]);
+    freshWindow(h, 2);
+    CHECK(attachSelecting(h, { windowHello(proto::AttachIntentKind::Select, { ids[1] }), proto::Goodbye {} })
+          == ids[1]);
+
+    // The next launch reopens what was closed last; the one after it, what was closed before.
+    freshWindow(h, 3);
+    CHECK(attachSelecting(h, { windowHello(proto::AttachIntentKind::Default) }) == ids[1]);
+    auto keptSession = std::move(h.session);
+    auto keptPair = std::move(h.pair);
+    freshWindow(h, 4);
+    CHECK(attachSelecting(h, { windowHello(proto::AttachIntentKind::Default) }) == ids[0]);
+}
+
+TEST_CASE("a window switching away leaves its old workspace for the next launch", "[vthost][native][left-at]")
+{
+    auto h = NativeHarness {};
+    auto const ids = workspacesWithTabs(h, 3);
+
+    // The window starts on the first, switches to the third, then to the second, and stays there.
+    CHECK(attachSelecting(h,
+                          { windowHello(proto::AttachIntentKind::Default),
+                            proto::SelectWorkspace { .workspace = ids[2] },
+                            proto::SelectWorkspace { .workspace = ids[1] } })
+          == ids[0]);
+    REQUIRE(h.session->selectedWorkspace() == ids[1]);
+    auto keptSession = std::move(h.session);
+    auto keptPair = std::move(h.pair);
+
+    // The third was left after the first: a launch takes it, not the lowest id.
+    freshWindow(h, 2);
+    CHECK(attachSelecting(h, { windowHello(proto::AttachIntentKind::Default) }) == ids[2]);
+}
+
+TEST_CASE("with nothing left yet, a launch follows the sidebar order", "[vthost][native][left-at]")
+{
+    auto h = NativeHarness {};
+    auto const ids = workspacesWithTabs(h, 2);
+    h.host.model().moveWorkspace(vtworkspace::WorkspaceId { ids[1] }, 0);
+
+    CHECK(attachSelecting(h, { windowHello(proto::AttachIntentKind::Default) }) == ids[1]);
+}
+
+TEST_CASE("a connection whose workspace ends moves to the workspace left most recently",
+          "[vthost][native][left-at]")
+{
+    auto h = NativeHarness {};
+    auto const ids = workspacesWithTabs(h, 3);
+
+    // A window showed the third workspace and closed: it was left, the second never was.
+    auto window = RememberedSelection {};
+    window.selected = ids[2];
+    h.host.noteClientAttached(&window);
+    h.host.noteClientDetached(&window, vthost::DetachKind::Closed);
+
+    auto const movedToThird = [&](auto const& got) {
+        return batchEndSelects(got, ids[2]);
+    };
+    std::ignore =
+        h.exchangeUntil({ daemonFollowHello(proto::AttachIntentKind::Select, ids[0]) },
+                        movedToThird,
+                        closeLastTabOnce(&h, ids[0], [&] { return snapshotRunCount(h.received) >= 1; }));
+
+    CHECK(h.session->selectedWorkspace() == ids[2]);
+}
+
 TEST_CASE("an OpenFirstTab opens a shell in the empty workspace selected, and is refused without "
           "launch-first-tab",
           "[vthost][native][launch-first-tab]")
