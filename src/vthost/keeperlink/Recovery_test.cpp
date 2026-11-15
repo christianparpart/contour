@@ -3,6 +3,7 @@
 
 #include <vtpty/ProcessPlacement.hpp>
 
+#include <core/Environment.hpp>
 #include <core/async/Task.hpp>
 #include <core/net/EventLoop.hpp>
 #include <core/net/IoBackend.hpp>
@@ -20,6 +21,7 @@
 #include <format>
 #include <fstream>
 #include <functional>
+#include <iostream>
 #include <iterator>
 #include <optional>
 #include <ranges>
@@ -27,6 +29,7 @@
 #include <thread>
 #include <vector>
 
+#include <testing/CaseTrace.hpp>
 #include <vthost/SocketPath.hpp>
 #include <vthost/WorkspaceCapture.hpp>
 #include <vthost/keeperlink/KeeperChannel.hpp>
@@ -53,6 +56,34 @@ namespace
 constexpr auto RecoveryBound = std::chrono::milliseconds { 60s };
 /// What a daemon with hundreds of sessions is given to start, and to recover, under a sanitizer.
 constexpr auto ManySessionsBound = std::chrono::milliseconds { 10min };
+
+/// The phases of a long case, on the case trace as each is reached, with the time since the first: a case
+/// that runs out the suite's timeout then says which phase it was in, and how long the others took.
+class PhaseTrace
+{
+  public:
+    /// @param environment Where the case trace's switch is read.
+    explicit PhaseTrace(core::Environment const& environment):
+        _enabled { contour::testing::caseTraceEnabled(environment) },
+        _started { std::chrono::steady_clock::now() }
+    {
+    }
+
+    /// Reports @p phase as reached, if the case trace is on.
+    /// @param phase What the case has just done, or is about to.
+    void reached(std::string_view phase) const
+    {
+        if (!_enabled)
+            return;
+        auto const elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - _started);
+        std::cerr << std::format("[trace]   phase: {} (+{} ms)\n", phase, elapsed.count()) << std::flush;
+    }
+
+  private:
+    bool _enabled;
+    std::chrono::steady_clock::time_point _started;
+};
 
 /// Places nothing: holds each child, parked, and crashes the daemon it plays as it is asked to place one.
 class CrashingPlacement final: public vtpty::ProcessPlacement
@@ -411,6 +442,10 @@ TEST_CASE("a parked child left by a crashed daemon is released by the next", "[k
 TEST_CASE("300 sessions recover", "[keeper][recovery]")
 {
     constexpr auto Sessions = 300;
+    // FreeBSD's job ran out its 600 s timeout in this case, which takes about 40 s on macOS: the phases say
+    // whether it is slow there, and where, or stuck.
+    auto const phases = PhaseTrace { core::defaultEnvironment() };
+    phases.reached(std::format("starting the keeper, and a daemon with {} sessions", Sessions));
     auto f = KeeperFixture { HarnessSetup {
         .start = HarnessStart::Serves,
         .panes = std::ranges::to<std::vector>(std::views::repeat(std::string { "exec sleep 600" }, Sessions)),
@@ -424,11 +459,15 @@ TEST_CASE("300 sessions recover", "[keeper][recovery]")
         .timings = { .startupBoundMs = static_cast<uint64_t>(ManySessionsBound.count()) },
         .startBound = ManySessionsBound } };
     INFO(f.log());
+    phases.reached("serving; attaching");
     auto const before = attach(f);
+    phases.reached(std::format("attached to {} sessions; crashing the daemon", before.sessions.size()));
     REQUIRE(before.sessions.size() == static_cast<std::size_t>(Sessions));
 
     std::ignore = crashAndRecover(f, SIGKILL, ManySessionsBound);
+    phases.reached("recovered; attaching again");
     auto const after = attach(f);
+    phases.reached(std::format("attached to {} sessions", after.sessions.size()));
     CHECK(after.daemonInstance == before.daemonInstance);
     CHECK(after.sessions == before.sessions);
 }
