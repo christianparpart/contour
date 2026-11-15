@@ -2931,6 +2931,153 @@ TEST_CASE("Renderer.softGlyphs.drawnFromTheFrameInEveryPass", "[renderer][softfo
     CHECK((smoothShift != 0) == smooth);
 }
 
+namespace
+{
+
+/// A TextRenderer over one synthetic emoji font, which -- having no ligatures -- draws every emoji
+/// sequence as its pieces, the way a system emoji font older than the sequence does.
+class EmojiRenderEnv
+{
+  public:
+    explicit EmojiRenderEnv(std::vector<text::test::BDFGlyph> const& glyphs): _font { "emoji", true, glyphs }
+    {
+        _description.familyName = "emoji";
+        _description.spacing = text::FontSpacing::Mono;
+        MockFontLocator::configure({ { .description = _description, .source = _font.source() } });
+        auto const fontKey = _shaper.loadFont(_description, text::test::BDFFont::Size);
+        REQUIRE(fontKey.has_value());
+        _fontDescriptions.dpi = text::test::BDFFont::Dpi;
+        _fontDescriptions.size = text::test::BDFFont::Size;
+        _fontDescriptions.textShapingEngine = TextShapingEngine::OpenShaper;
+        _fontKeys = FontKeys { .regular = *fontKey,
+                               .bold = *fontKey,
+                               .italic = *fontKey,
+                               .boldItalic = *fontKey,
+                               .emoji = *fontKey };
+        // The renderer keeps references to the metrics, descriptions and keys: they are members for that.
+        _renderer.emplace(_gridMetrics, _shaper, _fontDescriptions, _fontKeys, _events);
+        _renderer->setRenderTarget(_renderTarget, _allocator);
+        _atlas.emplace(_renderTarget.getMockBackend(),
+                       vtrasterizer::atlas::AtlasProperties { .format = vtrasterizer::atlas::Format::Red,
+                                                              .tileSize = _gridMetrics.cellSize,
+                                                              .hashCount = { 1024 },
+                                                              .tileCount = { 4096 },
+                                                              .directMappingCount = 128 });
+        _renderer->setTextureAtlas(*_atlas);
+    }
+
+    EmojiRenderEnv(EmojiRenderEnv const&) = delete;
+    EmojiRenderEnv(EmojiRenderEnv&&) = delete;
+    EmojiRenderEnv& operator=(EmojiRenderEnv const&) = delete;
+    EmojiRenderEnv& operator=(EmojiRenderEnv&&) = delete;
+    ~EmojiRenderEnv() { MockFontLocator::configure({}); }
+
+    /// One cell of a frame: where it starts, what it holds, and how many grid columns it spans.
+    struct Cell
+    {
+        int column;
+        std::u32string text;
+        uint8_t width;
+    };
+
+    /// Renders @p cells as one line of one frame.
+    /// @return The tiles drawn, in the order they were drawn.
+    [[nodiscard]] std::vector<atlas::RenderTile> render(std::vector<Cell> const& cells)
+    {
+        _renderTarget.getMockBackend().renderCommands.clear();
+        _renderer->beginFrame();
+        for (auto const& [column, text, width]: cells)
+        {
+            auto cell = vtbackend::RenderCell {};
+            cell.groupStart = column == cells.front().column;
+            cell.position = vtbackend::CellLocation { .line = LineOffset(0), .column = ColumnOffset(column) };
+            cell.codepoints = text;
+            cell.width = width;
+            cell.attributes.flags = vtbackend::CellFlags {};
+            cell.attributes.foregroundColor = vtbackend::RGBColor(0xFF, 0xFF, 0xFF);
+            _renderer->renderCell(cell);
+        }
+        _renderer->endFrame();
+        return _renderTarget.getMockBackend().renderCommands;
+    }
+
+  private:
+    text::test::BDFFont _font;
+    text::FontDescription _description {};
+    MockFontLocator _locator {};
+    OpenShaper _shaper { text::test::BDFFont::Dpi, _locator };
+    GridMetrics _gridMetrics { .pageSize = PageSize { LineCount(24), ColumnCount(80) },
+                               .cellSize = ImageSize { Width(CellWidth), Height(20) },
+                               .baseline = 15,
+                               .underline = { .position = 17, .thickness = 1 } };
+    FontDescriptions _fontDescriptions {};
+    FontKeys _fontKeys {};
+    MockTextRendererEvents _events;
+    MockRenderTarget _renderTarget;
+    vtrasterizer::atlas::DirectMappingAllocator<vtrasterizer::RenderTileAttributes> _allocator;
+    std::optional<TextRenderer> _renderer;
+    std::optional<TextureAtlas> _atlas;
+};
+
+} // namespace
+
+TEST_CASE("TextRenderer.fragmented_emoji_cluster_stays_inside_its_cells", "[renderer][emoji]")
+{
+    // Issue #2381. An emoji ZWJ sequence the emoji font cannot combine shapes to its pieces in ONE cluster,
+    // and each piece advances by a whole emoji. Moved by those advances, the pieces landed many cells to
+    // the right, over unrelated text. They are fitted into the cluster's own two cells instead.
+    constexpr auto Person = char32_t { 0x1F9D1 };
+    constexpr auto MediumSkin = char32_t { 0x1F3FD };
+    constexpr auto LightSkin = char32_t { 0x1F3FB };
+    constexpr auto Zwj = char32_t { 0x200D };
+    constexpr auto Rabbit = char32_t { 0x1F430 };
+
+    auto env = EmojiRenderEnv {
+        { { Person, 16 }, { MediumSkin, 16 }, { LightSkin, 16 }, { Zwj, 0 }, { Rabbit, 16 }, { U'x', 8 } }
+    };
+    auto const tiles = env.render({
+        { .column = 0, .text = { Person, MediumSkin, Zwj, Rabbit, Zwj, Person, LightSkin }, .width = 2 },
+        { .column = 2, .text = U"x", .width = 1 },
+    });
+
+    // The fitted cluster is drawn after the rest of its group, so the tiles are told apart by where they
+    // are: exactly one -- the "x" -- may start at column 2, and it must start exactly there.
+    auto const isTheX = [](atlas::RenderTile const& tile) {
+        return tile.x.value >= 2 * CellWidth;
+    };
+    REQUIRE(std::ranges::count_if(tiles, isTheX) == 1);
+    CHECK(std::ranges::find_if(tiles, isTheX)->x.value == 2 * CellWidth);
+    auto pieces = 0;
+    for (auto const& tile: tiles | std::views::filter(std::not_fn(isTheX)))
+    {
+        INFO("tile at x=" << tile.x.value << " width=" << tile.targetSize.width.value);
+        CHECK(tile.x.value >= 0);
+        CHECK(tile.x.value + unbox<int>(tile.targetSize.width) <= 2 * CellWidth);
+        ++pieces;
+    }
+    CHECK(pieces >= 5); // every piece is still drawn: nothing is hidden
+}
+
+TEST_CASE("TextRenderer.a_keycap_drawn_around_its_digit_is_not_fitted", "[renderer][emoji]")
+{
+    // A font without a keycap ligature positions the enclosing keycap mark AROUND its digit, at zero
+    // advance. Two glyphs with ink, but one sequence drawn whole: the shaper resolved it, so the renderer
+    // must draw both where the font put them, not side by side.
+    constexpr auto Vs16 = char32_t { 0xFE0F };
+    constexpr auto Keycap = char32_t { 0x20E3 };
+
+    auto env = EmojiRenderEnv { { { U'1', 16 }, { Vs16, 0 }, { Keycap, 0 } } };
+    auto const tiles = env.render({ { .column = 0, .text = { U'1', Vs16, Keycap }, .width = 2 } });
+
+    // Where the font put them: the digit at the cell's left edge, the mark by its offset from there. Fitted
+    // side by side instead, the pair would be re-centred in the box and start at x=2.
+    REQUIRE(tiles.size() >= 2);
+    CHECK(std::ranges::min(tiles | std::views::transform([](auto const& tile) { return tile.x.value; }))
+          == 0);
+    for (auto const& tile: tiles)
+        CHECK(tile.targetSize == tile.bitmapSize); // drawn at the size it was rasterized at
+}
+
 int main(int argc, char* argv[])
 {
     core::testing::suppressWindowsDialogs();

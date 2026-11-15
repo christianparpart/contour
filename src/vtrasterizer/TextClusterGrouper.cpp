@@ -18,6 +18,7 @@ void TextClusterGrouper::beginFrame() noexcept
     {
         _codepoints.clear();
         _clusters.clear();
+        _cellWidths.clear();
     }
 
     auto constexpr DefaultColor = vtbackend::RGBColor {};
@@ -56,12 +57,18 @@ void TextClusterGrouper::renderLine(std::u32string_view text,
     {
         auto const gridPosition = vtbackend::CellLocation { .line = lineOffset, .column = columnOffset };
         auto const width = unicode::width(cp);
-        renderCell(gridPosition, std::u32string_view(&cp, 1), foregroundColor, style, flags);
+        renderCell(gridPosition,
+                   std::u32string_view(&cp, 1),
+                   static_cast<uint8_t>(std::max(1u, width)),
+                   foregroundColor,
+                   style,
+                   flags);
 
         for (unsigned i = 1; i < width; ++i)
             renderCell(vtbackend::CellLocation { .line = gridPosition.line,
                                                  .column = columnOffset + static_cast<int>(i) * columnScale },
                        U" ",
+                       1,
                        foregroundColor,
                        style,
                        flags);
@@ -75,6 +82,7 @@ void TextClusterGrouper::renderLine(std::u32string_view text,
 
 void TextClusterGrouper::renderCell(vtbackend::CellLocation position,
                                     std::u32string_view graphemeCluster,
+                                    uint8_t width,
                                     vtbackend::RGBColor foregroundColor,
                                     TextStyle style,
                                     vtbackend::LineFlags flags,
@@ -102,11 +110,12 @@ void TextClusterGrouper::renderCell(vtbackend::CellLocation position,
         }
     }
 
-    appendCellTextToClusterGroup(position, graphemeCluster, style, foregroundColor, flags, sizing);
+    appendCellTextToClusterGroup(position, graphemeCluster, width, style, foregroundColor, flags, sizing);
 }
 
 void TextClusterGrouper::appendCellTextToClusterGroup(vtbackend::CellLocation position,
                                                       std::u32string_view codepoints,
+                                                      uint8_t width,
                                                       TextStyle style,
                                                       vtbackend::RGBColor color,
                                                       vtbackend::LineFlags flags,
@@ -138,10 +147,13 @@ void TextClusterGrouper::appendCellTextToClusterGroup(vtbackend::CellLocation po
     if (_codepoints.empty())
         _initialPenPosition = position;
     auto const cluster = static_cast<unsigned>(unbox(position.column - _initialPenPosition.column));
+    auto const columnScale = flags.test(vtbackend::LineFlag::DoubleWidth) ? 2 : 1;
+    auto const displayWidth = static_cast<uint8_t>(width * columnScale);
     for (char32_t const codepoint: codepoints)
     {
         _codepoints.emplace_back(codepoint);
         _clusters.emplace_back(cluster);
+        _cellWidths.emplace_back(displayWidth);
     }
 }
 
@@ -151,6 +163,7 @@ void TextClusterGrouper::flushTextClusterGroup()
     {
         _events.renderTextGroup(std::u32string_view(_codepoints.data(), _codepoints.size()),
                                 gsl::span(_clusters.data(), _clusters.size()),
+                                std::span<uint8_t const>(_cellWidths),
                                 _initialPenPosition,
                                 _style,
                                 _color,
@@ -160,6 +173,7 @@ void TextClusterGrouper::flushTextClusterGroup()
 
     _codepoints.clear();
     _clusters.clear();
+    _cellWidths.clear();
 }
 
 void TextClusterGrouper::endFrame()

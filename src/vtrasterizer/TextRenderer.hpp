@@ -171,6 +171,7 @@ class TextRenderer: public Renderable, public TextClusterGrouper::Events
     //
     void renderTextGroup(std::u32string_view codepoints,
                          gsl::span<unsigned> clusters,
+                         std::span<uint8_t const> cellWidths,
                          vtbackend::CellLocation initialPenPosition,
                          TextStyle style,
                          vtbackend::RGBColor color,
@@ -304,6 +305,30 @@ class TextRenderer: public Renderable, public TextClusterGrouper::Events
     }
 
     AtlasTileAttributes const* ensureRasterizedIfDirectMapped(text::GlyphKey const& glyphKey);
+
+    /// One glyph with ink, as the atlas holds it: its head tile and the slices a wide glyph was cut into.
+    struct InkedGlyph
+    {
+        std::vector<AtlasTileAttributes const*> tiles; ///< Head first, then each slice, left to right.
+        vtbackend::ImageSize drawnSize;                ///< The width of all tiles together, and the height.
+    };
+
+    /// @return The tiles of every glyph of @p cluster that has ink, rasterizing them as needed.
+    [[nodiscard]] std::vector<InkedGlyph> inkedGlyphsOf(std::span<text::GlyphPosition const> cluster);
+
+    /// @return Whether @p cluster is an emoji sequence drawn in more than one inked piece, which no font
+    ///         could render whole -- and which is then fitted into its cells (@see renderFittedCluster).
+    [[nodiscard]] bool isFragmentedEmojiCluster(std::span<text::GlyphPosition const> cluster);
+
+    /// Draws the pieces of a fragmented emoji cluster side by side inside the cluster's own cells.
+    /// @param cluster    The cluster's glyphs.
+    /// @param cellOrigin The bottom-left of the cluster's first cell, as GridMetrics::mapBottomLeft gives it.
+    /// @param boxWidth   The cluster's width in pixels.
+    /// @param color      The text color.
+    void renderFittedCluster(std::span<text::GlyphPosition const> cluster,
+                             crispy::Point cellOrigin,
+                             int boxWidth,
+                             vtbackend::RGBColor color);
 
     // sub-renderer
     //
