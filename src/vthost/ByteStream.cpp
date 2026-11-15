@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <vthost/ByteStream.hpp>
 
+#include <core/log/LogStore.hpp>
+
 #include <chrono>
 #include <concepts>
 #include <condition_variable>
+#include <format>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -36,6 +41,7 @@ namespace
         std::optional<std::chrono::steady_clock::time_point> owedSince;
         DaemonAnswer answer = DaemonAnswer::NotYet;
         std::optional<PumpEnd> daemonEnd; ///< How the daemon→client direction ended, once it has.
+        std::string daemonFailure;        ///< Why it failed, when it did: the read's or the write's error.
 
         /// Updates the progress under the lock, and wakes the waiting caller.
         void update(std::invocable<RelayProgress&> auto&& change)
@@ -46,6 +52,45 @@ namespace
             }
             changed.notify_all();
         }
+    };
+
+    /// A stream that keeps the first error a read or a write of it returned, so a failed relay can say why.
+    class FailureRecorder final: public IByteStream
+    {
+      public:
+        FailureRecorder(IByteStream& inner, std::string_view role, std::string& failure):
+            _inner { inner }, _role { role }, _failure { failure }
+        {
+        }
+
+        [[nodiscard]] std::expected<std::size_t, std::string> readSome(std::span<std::byte> buffer) override
+        {
+            auto result = _inner.readSome(buffer);
+            if (!result)
+                record("reading", result.error());
+            return result;
+        }
+
+        [[nodiscard]] std::expected<void, std::string> writeAll(std::span<std::byte const> bytes) override
+        {
+            auto result = _inner.writeAll(bytes);
+            if (!result)
+                record("writing", result.error());
+            return result;
+        }
+
+        void closeWrite() noexcept override { _inner.closeWrite(); }
+
+      private:
+        void record(std::string_view action, std::string const& error)
+        {
+            if (_failure.empty())
+                _failure = std::format("{} the {}: {}", action, _role, error);
+        }
+
+        IByteStream& _inner;
+        std::string_view _role;
+        std::string& _failure;
     };
 
     /// A stream that reports the first return of its readSome(), whatever it returned.
@@ -116,12 +161,18 @@ RelayEnd runStdioRelay(std::shared_ptr<IByteStream> client,
     // The second thread takes the parameters; the caller keeps a reference of its own to end the client.
     auto const clientSide = client;
     std::thread { [client = std::move(client), daemon = std::move(daemon), progress]() {
+        auto failure = std::string {};
+        auto daemonSide = FailureRecorder { *daemon, "daemon", failure };
+        auto clientSink = FailureRecorder { *client, "client", failure };
         auto source =
-            FirstReadObserver { *daemon, [&progress]() {
+            FirstReadObserver { daemonSide, [&progress]() {
                                    progress->update([](RelayProgress& p) { p.answer = DaemonAnswer::Given; });
                                } };
-        auto const end = pumpBytes(source, *client);
-        progress->update([end](RelayProgress& p) { p.daemonEnd = end; });
+        auto const end = pumpBytes(source, clientSink);
+        progress->update([end, &failure](RelayProgress& p) {
+            p.daemonEnd = end;
+            p.daemonFailure = std::move(failure);
+        });
     } }.detach();
 
     auto lock = std::unique_lock { progress->mutex };
@@ -142,7 +193,10 @@ RelayEnd runStdioRelay(std::shared_ptr<IByteStream> client,
         clientSide->closeWrite();
         return RelayEnd::DaemonSilent;
     }
-    return *progress->daemonEnd == PumpEnd::SourceEnded ? RelayEnd::DaemonEnded : RelayEnd::Failed;
+    if (*progress->daemonEnd == PumpEnd::SourceEnded)
+        return RelayEnd::DaemonEnded;
+    errorLog()("stdio relay: the daemon's side ended in failure, {}", progress->daemonFailure);
+    return RelayEnd::Failed;
 }
 
 } // namespace vthost

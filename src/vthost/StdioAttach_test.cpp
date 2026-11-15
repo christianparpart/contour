@@ -374,8 +374,14 @@ TEST_CASE("stdio attach starts the daemon through the starter when none serves",
         auto attach = std::async(std::launch::async,
                                  [&]() { return vthost::runStdioAttach(client.a, connector, AttachRelay); });
 
-        CHECK(readText(*client.b, vthost::StdioPreambleReady.size()) == vthost::StdioPreambleReady);
+        REQUIRE(readText(*client.b, vthost::StdioPreambleReady.size()) == vthost::StdioPreambleReady);
         CHECK(starts == 1);
+        // A hello and its answer before the client leaves: the answer proves the started daemon accepted and
+        // is reading, so the half-close below reaches it rather than racing its accept. Without it the case
+        // hung (#2318), and later failed on Windows when the daemon never saw the half-close and dropped the
+        // connection after its hello budget (run 43689291823).
+        REQUIRE(client.b->writeAll(clientHelloFrame()).has_value());
+        CHECK(receivesServerHello(*client.b));
         client.b->closeWrite();
         CHECK(attach.get() == EXIT_SUCCESS);
     }
