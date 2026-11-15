@@ -819,6 +819,22 @@ void ContourGuiApp::armLatencyProbe()
 
 void ContourGuiApp::finishLatencyProbe()
 {
+    auto const exitCode = writeLatencyProbeReport();
+    _latencyProbeExitCode = exitCode;
+    _exitEventLoop(exitCode);
+}
+
+int ContourGuiApp::endUnfinishedLatencyProbe()
+{
+    // Exiting 0 without a report hid both that the run failed and how far the probe had got.
+    cerr << "contour: the app ended before the latency probe finished\n";
+    if (_keystrokeProbe)
+        std::ignore = writeLatencyProbeReport();
+    return EXIT_FAILURE;
+}
+
+int ContourGuiApp::writeLatencyProbeReport()
+{
     auto const result = _keystrokeProbe->result();
     auto const report = vthost::latency::formatProbeReport(result, _startupTimeline);
     auto out = std::ofstream(_latencyProbeRequest->reportFile, std::ios::binary | std::ios::trunc);
@@ -831,8 +847,7 @@ void ContourGuiApp::finishLatencyProbe()
                             core::pathToUtf8(_latencyProbeRequest->reportFile));
         exitCode = EXIT_FAILURE;
     }
-    _latencyProbeExitCode = exitCode;
-    _exitEventLoop(exitCode);
+    return exitCode;
 }
 
 void ContourGuiApp::logGpuInUse(QQuickWindow& window)
@@ -3599,6 +3614,9 @@ int ContourGuiApp::terminalGuiAction()
     // so it is unit-testable without the event loop. NB: sequenced explicitly — passing exec() as an
     // argument alongside _exitStatus would read _exitStatus before the loop populated it.
     auto const loopResult = QApplication::exec();
+    // A probe the app quit before has the last word too: a closed window or an ended session is not a run.
+    if (_latencyProbeRequest && !_latencyProbeExitCode)
+        _latencyProbeExitCode = endUnfinishedLatencyProbe();
     // A finished probe has the last word: the echo child it ends exits 0 whether or not the probe succeeded.
     auto const rv = _startupExitCode.value_or(
         _latencyProbeExitCode.value_or(session::exitCodeFor(_exitStatus, loopResult)));
