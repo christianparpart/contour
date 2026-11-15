@@ -4,7 +4,7 @@
   "IgnoreDefaults": false,
   "SpacesAfterTabs": false,
   "NoColor": false,
-  "Exclude": ["docs.*"],
+  "Exclude": ["docs.*", "website/theme/assets/theme/fonts/.*"],
   "AllowedContentTypes": [],
   "PassedFiles": [],
   "Disable": {

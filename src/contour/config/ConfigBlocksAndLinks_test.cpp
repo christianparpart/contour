@@ -2537,14 +2537,15 @@ TEST_CASE("documentation pages are clean web Markdown", "[config][docs]")
     for (auto const& [name, page]: pages)
     {
         INFO("page: " << name);
-        CHECK(page.find(":octicons-") == std::string::npos);
-        CHECK(page.find("fmt formatted doc") == std::string::npos);
-        CHECK(page.find("vt-extensions/index.md") == std::string::npos);
+        CHECK_FALSE(page.contains(":octicons-"));
+        CHECK_FALSE(page.contains("fmt formatted doc"));
+        CHECK_FALSE(page.contains("vt-extensions/index.md"));
         // Web strings take two paths. DocumentationWriter::processEntry runs most of them through
         // std::vformat, so those spell a literal brace doubled ("{{"); the vector and extension overloads
-        // (e.g. HintPatternsWeb) bypass it and spell it single. Either way no doubled brace may reach the page.
-        CHECK(page.find("{{") == std::string::npos);
-        CHECK(page.find("<br") == std::string::npos);
+        // (e.g. HintPatternsWeb) bypass it and spell it single. Either way no doubled brace may reach the
+        // page.
+        CHECK_FALSE(page.contains("{{"));
+        CHECK_FALSE(page.contains("<br"));
 
         auto previous = std::string_view {};
         auto insideFence = false;
@@ -2553,7 +2554,7 @@ TEST_CASE("documentation pages are clean web Markdown", "[config][docs]")
             auto const line = std::string_view { lineRange.begin(), lineRange.end() };
             INFO("line: " << line);
             // Every heading starts its own line, or the Markdown renderer shows it as running text.
-            CHECK((line.find("### ") == std::string_view::npos || line.starts_with("### ")));
+            CHECK((!line.contains("### ") || line.starts_with("### ")));
             // A list needs a blank line before its first item, or the renderer shows it as running text.
             if (line.starts_with("- "))
                 CHECK((previous.empty() || previous.starts_with("- ") || previous.starts_with(" ")));
