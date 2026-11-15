@@ -1,0 +1,8 @@
+<div class="strip" id="cw-strip">
+  {%- for ws in nav if ws.children %}
+  <a class="ws" data-ws="{{ ws.title }}" href="{{ ws.children[0].url|url }}"{% if ws.active %} aria-current="true"{% endif %}><b>{{ loop.index }}</b>:{{ ws.title }}</a>
+  {%- endfor %}
+  <span class="grow"></span>
+  <button class="tool needs-js" id="cw-search" title="Search"><span>search</span></button>
+  <a class="tool" href="{{ config.repo_url }}" target="_blank" rel="noopener"><span>github ↗</span></a>
+</div>

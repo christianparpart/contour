@@ -1,0 +1,17 @@
+{#- All workspaces are rendered so the script knows every page without the search index. -#}
+{%- import "partials/macros.html" as m with context %}
+<nav class="tabs" id="cw-tabs" aria-label="Pages">
+  {%- for ws in nav if ws.children %}
+  <div class="tablist" data-ws="{{ ws.title }}"{% if ws is not sameas shown.ws %} hidden{% endif %}>
+    {{- m.tab_links(ws, true) }}
+  </div>
+  {%- endfor %}
+</nav>
+<details class="tabsel" id="cw-tabsel">
+  <summary>{{ (page.title if page and shown.active else none) or "pages" }}</summary>
+  {%- if shown.ws %}
+  <div class="tabsel-list">
+    {{- m.tab_links(shown.ws, false) }}
+  </div>
+  {%- endif %}
+</details>

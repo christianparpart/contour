@@ -1,0 +1,26 @@
+{%- import "partials/macros.html" as m with context -%}
+{%- macro head(entry) -%}<a data-head="{{ entry.id }}" href="#{{ entry.id }}">{{ entry.title }}</a>{%- endmacro -%}
+<aside class="aside" id="cw-aside" aria-label="{% if is_home %}About{% else %}On this page{% endif %}">
+{%- if is_home %}
+  <div class="blk"><div class="sep">{{ m.rule("latest") }}</div>{% if config.extra.latest_release %}<div class="v">v{{ config.extra.latest_release }}</div>{% endif %}<a href="{{ 'release-notes/'|url }}">release notes →</a></div>
+  <div class="blk"><div class="sep">{{ m.rule("preview") }}</div><img src="{{ 'screenshots/contour-notcurses-ncneofetch.png'|url }}" alt="Contour showing system information with notcurses" width="2532" height="1116" loading="lazy"></div>
+  <div class="blk"><div class="sep">{{ m.rule("start here") }}</div>
+    <a href="{{ 'install/'|url }}">install</a><a href="{{ 'configuration/'|url }}">config file</a><a href="{{ 'features/'|url }}">features</a></div>
+{%- elif page %}
+  {#- Level-aware outline: below h1 roots, their children; below a lone h2 that has only h3s, those. -#}
+  {%- set roots = page.toc.items if page.toc else [] %}
+  {%- set ns = namespace(entries=[]) %}
+  {%- if roots and roots|map(attribute='level')|select('equalto', 1)|list|length == roots|length %}{% for r in roots %}{% set ns.entries = ns.entries + r.children %}{% endfor %}{% else %}{% set ns.entries = roots %}{% endif %}
+  {%- set entries = ns.entries %}
+  {%- if entries|length == 1 and entries[0].level == 2 and entries[0].children %}{% set entries = entries[0].children %}{% endif %}
+  {%- if not (page.meta and page.meta.outline == false) %}
+  <div class="blk"><div class="sep">{{ m.rule("on this page") }}</div>
+    {%- for entry in entries %}{{ head(entry) }}{% else %}<span class="none">(no sections)</span>{% endfor %}
+  </div>
+  {%- endif %}
+  <div class="blk"><div class="sep">{{ m.rule("source") }}</div>
+    {%- if page.file.src_uri in config.extra.generated_pages %}<span class="none">generated from contour</span>
+    {%- elif page.edit_url %}<a href="{{ page.edit_url }}" target="_blank" rel="noopener">edit on github ↗</a>{% endif %}
+  </div>
+{%- endif %}
+</aside>
