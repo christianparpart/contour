@@ -28,6 +28,12 @@
     #include <libproc.h>
 #endif
 
+#ifdef __FreeBSD__
+    #include <sys/sysctl.h>
+    #include <sys/types.h>
+    #include <sys/user.h>
+#endif
+
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -301,6 +307,15 @@ std::optional<std::string> processNameOf(pid_t pid)
         return std::nullopt;
     return std::string { name.data() };
     #endif
+#elifdef __FreeBSD__
+    if (pid <= 0)
+        return std::nullopt;
+    auto name = std::array { CTL_KERN, KERN_PROC, KERN_PROC_PID, static_cast<int>(pid) };
+    auto info = kinfo_proc {};
+    auto size = sizeof(info);
+    if (::sysctl(name.data(), static_cast<u_int>(name.size()), &info, &size, nullptr, 0) != 0 || size == 0)
+        return std::nullopt;
+    return std::string { info.ki_comm };
 #else
     std::ignore = pid;
     return std::nullopt;
@@ -320,6 +335,14 @@ std::optional<std::string> workingDirectoryOf(pid_t pid)
     if (proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof(vpi)) <= 0)
         return std::nullopt;
     return std::string { vpi.pvi_cdir.vip_path };
+#elifdef __FreeBSD__
+    auto name = std::array { CTL_KERN, KERN_PROC, KERN_PROC_CWD, static_cast<int>(pid) };
+    auto info = kinfo_file {};
+    auto size = sizeof(info);
+    if (::sysctl(name.data(), static_cast<u_int>(name.size()), &info, &size, nullptr, 0) != 0 || size == 0
+        || info.kf_path[0] == '\0')
+        return std::nullopt;
+    return std::string { info.kf_path };
 #else
     std::ignore = pid;
     return std::nullopt;
