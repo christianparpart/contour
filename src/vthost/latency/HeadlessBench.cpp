@@ -658,11 +658,11 @@ namespace
         if (!ended)
             return "bench-latency: the daemon still hosts a session after the run\n";
         auto const* const name = keeping == DaemonKeeping::Keeper ? "the daemon's keeper" : "the daemon";
-        if (auto const* const signal = std::get_if<vtpty::Process::SignalExit>(&*ended))
-            return std::format("bench-latency: {} died during the run, of signal {}\n", name, signal->signum);
-        return std::format("bench-latency: {} ended during the run, with status {}\n",
-                           name,
-                           std::get<vtpty::Process::NormalExit>(*ended).exitCode);
+        // With what it printed last: a status alone (Windows CI, run 43731686930: "ended during the run, with
+        // status 1") does not say why.
+        return std::format(
+            "bench-latency: {}\n",
+            describeChildFailure(std::format("{} ended during the run", name), ended, started.outputTail()));
     }
 } // namespace
 
