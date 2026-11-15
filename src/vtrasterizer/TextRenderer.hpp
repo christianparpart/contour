@@ -306,6 +306,24 @@ class TextRenderer: public Renderable, public TextClusterGrouper::Events
 
     AtlasTileAttributes const* ensureRasterizedIfDirectMapped(text::GlyphKey const& glyphKey);
 
+    /// How far to move one cluster's glyphs so that the cluster is centred in its cells.
+    struct ClusterShift
+    {
+        unsigned cluster; ///< The cluster, as shaped.
+        int shift;        ///< The shift, in pixels.
+    };
+
+    /// @return For every cluster with a colour glyph that is not drawn in pieces, how far to move it so it is
+    ///         centred in its cells as a whole (@see centringShift). Rasterizes the glyphs as needed.
+    /// @param glyphPositions The shaped run.
+    /// @param clusters       Per codepoint, the display column its cell starts at.
+    /// @param cellWidths     Per codepoint, the width of its cell in display columns.
+    /// @param lineFlags      The line's flags, which widen the tiles of a double-width line.
+    [[nodiscard]] std::vector<ClusterShift> colourClusterShifts(text::ShapeResult const& glyphPositions,
+                                                                gsl::span<unsigned const> clusters,
+                                                                std::span<uint8_t const> cellWidths,
+                                                                vtbackend::LineFlags lineFlags);
+
     /// One glyph with ink, as the atlas holds it: its head tile and the slices a wide glyph was cut into.
     struct InkedGlyph
     {

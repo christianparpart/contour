@@ -273,6 +273,14 @@ Noto Color Emoji (COLRv1) as the **last** emoji fallback:
    `text::ClusterIntegrity::Pieces`, and `TextRenderer` fits them side by side into the cluster's own cells
    (`vtrasterizer/ClusterFit.hpp`) instead of letting them run into the cells beside it.
 
+A cluster counts as pieces only when more than one of its glyphs advances **and** together they advance
+further than 1.75 em. A font may compose one emoji from several glyphs on purpose -- Segoe UI Emoji draws a
+family as narrower people overlapped by its own offsets, about one emoji wide together -- and that is the font
+drawing the sequence, not failing to. Such a cluster is also centred in its cells **as a whole**
+(`vtrasterizer::centringShift`): each glyph keeps the place the font gave it, and the union of them is centred.
+Centring each colour glyph on its own, as the renderer used to, stacked the people in the middle and the
+advance between them pushed the cluster right of its cells' centre.
+
 The font is installed in `emoji-font/` **beside** the bundled fonts directory (`<prefix>/share/contour/emoji-font`,
 `Contents/Resources/emoji-font`), never inside it: the fonts directory is registered with fontconfig, which scans
 it recursively, and a registered copy would outrank an older bitmap-only Noto Color Emoji of the same family for

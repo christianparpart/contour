@@ -818,6 +818,9 @@ void TextRenderer::renderTextGroup(std::u32string_view codepoints,
     auto const fragmented = fragmentedEmojiClusters(
         glyphPositions, [this](auto cluster) { return isFragmentedEmojiCluster(cluster); });
 
+    // A colour cluster is centred in its cells as a whole, its glyphs keeping the places the font gave them.
+    auto const colourShifts = colourClusterShifts(glyphPositions, clusters, cellWidths, lineFlags);
+
     auto runPen = RunPen { cellWidth, advanceScale };
     for (auto const& glyphPosition: glyphPositions)
     {
@@ -826,6 +829,9 @@ void TextRenderer::renderTextGroup(std::u32string_view codepoints,
 
         auto pen = runOrigin;
         pen.x += runPen.place(glyphPosition.cluster, glyphPosition.advance.x);
+        if (auto const shift = std::ranges::find(colourShifts, glyphPosition.cluster, &ClusterShift::cluster);
+            shift != colourShifts.end())
+            pen.x += shift->shift;
 
         if (auto const* attributes = ensureRasterizedIfDirectMapped(glyphPosition.glyph))
         {
@@ -886,6 +892,67 @@ void TextRenderer::renderTextGroup(std::u32string_view codepoints,
                             columns * cellWidth,
                             color);
     }
+}
+
+std::vector<TextRenderer::ClusterShift> TextRenderer::colourClusterShifts(
+    text::ShapeResult const& glyphPositions,
+    gsl::span<unsigned const> clusters,
+    std::span<uint8_t const> cellWidths,
+    vtbackend::LineFlags lineFlags)
+{
+    auto const cellWidth = unbox<int>(_gridMetrics.cellSize.width);
+    auto shifts = std::vector<ClusterShift> {};
+    auto tiles = std::vector<PlacedTile> {};
+    auto anyColour = false;
+    auto pen = RunPen { cellWidth, lineAdvanceScale(lineFlags) };
+
+    auto const flush = [&](unsigned cluster) {
+        if (anyColour)
+        {
+            auto const columns =
+                cellWidthOf(std::span<unsigned const>(clusters.data(), clusters.size()), cellWidths, cluster);
+            shifts.emplace_back(ClusterShift {
+                .cluster = cluster,
+                .shift = centringShift(tiles, static_cast<int>(cluster) * cellWidth, columns * cellWidth) });
+        }
+        tiles.clear();
+        anyColour = false;
+    };
+
+    for (auto const i: std::views::iota(size_t { 0 }, glyphPositions.size()))
+    {
+        auto const& glyphPosition = glyphPositions[i];
+        if (i > 0 && glyphPositions[i - 1].cluster != glyphPosition.cluster)
+            flush(glyphPositions[i - 1].cluster);
+
+        auto const penX = pen.place(glyphPosition.cluster, glyphPosition.advance.x);
+        // Pieces are fitted, not centred (@see renderFittedCluster); direct-mapped glyphs are never colour.
+        if (glyphPosition.integrity == text::ClusterIntegrity::Pieces
+            || isGlyphDirectMapped(glyphPosition.glyph))
+            continue;
+        auto const glyphHash = hashGlyphKeyAndPresentation(glyphPosition.glyph, glyphPosition.presentation);
+        auto const* head =
+            getOrCreateRasterizedMetadata(glyphHash, glyphPosition.glyph, glyphPosition.presentation);
+        if (!head || unbox<int>(head->bitmapSize.width) == 0)
+            continue;
+        if (head->metadata.fragmentShaderSelector == FRAGMENT_SELECTOR_IMAGE_BGRA)
+            anyColour = true;
+
+        // The drawn width: the head tile and every slice a wide glyph was cut into, as the line draws them.
+        auto width = unbox<int>(adjustTileAttributesForLineFlags(lineFlags, *head).metadata.targetSize.width);
+        auto sliceKey = unbox(textureAtlas().tileSize().width);
+        while (AtlasTileAttributes const* slice = textureAtlas().tryGet(glyphHash * sliceKey))
+        {
+            width +=
+                unbox<int>(adjustTileAttributesForLineFlags(lineFlags, *slice).metadata.targetSize.width);
+            sliceKey += unbox(textureAtlas().tileSize().width);
+        }
+        tiles.emplace_back(
+            PlacedTile { .x = penX + head->metadata.x.value + glyphPosition.offset.x, .width = width });
+    }
+    if (!glyphPositions.empty())
+        flush(glyphPositions.back().cluster);
+    return shifts;
 }
 
 std::vector<TextRenderer::InkedGlyph> TextRenderer::inkedGlyphsOf(
@@ -1355,6 +1422,8 @@ auto TextRenderer::createRasterizedGlyph(atlas::TileLocation tileLocation,
     };
     if (glyph.format == text::BitmapFormat::RGBA)
     {
+        auto const originalPosition = glyph.position;
+        auto scaleFactor = 1.0f;
         if (glyph.bitmapSize.height
                 > vtbackend::Height::cast_from(unbox<double>(emojiBoundingBox.height) * 1.1)
             || glyph.bitmapSize.width
@@ -1367,18 +1436,21 @@ auto TextRenderer::createRasterizedGlyph(atlas::TileLocation tileLocation,
                     glyph.position,
                     emojiBoundingBox,
                     numCells);
-            auto [scaledGlyph, scaleFactor] = text::scale(glyph, emojiBoundingBox);
+            auto [scaledGlyph, factor] = text::scale(glyph, emojiBoundingBox);
 
             glyph = std::move(scaledGlyph);
+            scaleFactor = factor;
 
             if (rasterizerLog)
                 rasterizerLog()(" ==> scaled: {}/{}, factor {}", glyph, emojiBoundingBox, scaleFactor);
         }
 
-        // Assume colored (RGBA) bitmap glyphs to be emoji.
-        // At least on macOS, the emoji font reports bad positioning, so we simply center them ourself.
-        // Center horizontally within the emoji bounding box (numCells * cellWidth).
-        glyph.position.x = unbox<int>(emojiBoundingBox.width - glyph.bitmapSize.width) / 2;
+        // Assume colored (RGBA) bitmap glyphs to be emoji. Emoji fonts place their glyphs inconsistently
+        // (macOS's especially), so an emoji is centred in its cells -- but as a whole cluster, when drawn
+        // (@see centringShift), not glyph by glyph here: a font may compose one emoji from several glyphs,
+        // as Segoe UI Emoji does a family, and their places relative to each other are the font's. So the
+        // font's bearing is kept, scaled with the bitmap.
+        glyph.position.x = static_cast<int>(static_cast<float>(originalPosition.x) / scaleFactor);
         // Center vertically within the full box height, accounting for the baseline offset.
         glyph.position.y =
             ((unbox<int>(_gridMetrics.cellSize.height) + glyph.bitmapSize.height.as<int>()) / 2)

@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <ranges>
 #include <vector>
 
@@ -94,4 +95,28 @@ TEST_CASE("ClusterFit.a_tall_piece_is_bounded_by_the_cell_height", "[ClusterFit]
 TEST_CASE("ClusterFit.no_pieces", "[ClusterFit]")
 {
     CHECK(fitClusterPieces({}, 20, 20).empty());
+}
+
+TEST_CASE("ClusterFit.centringShift", "[ClusterFit]")
+{
+    SECTION("one glyph is centred in its box, wherever its bearing put it")
+    {
+        // A 12 px wide emoji whose bearing placed it at x=3 in a 20 px box starting at 0.
+        auto const tiles = std::array { PlacedTile { .x = 3, .width = 12 } };
+        CHECK(centringShift(tiles, 0, 20) == 1); // drawn at 4: (20 - 12) / 2
+    }
+
+    SECTION("a composed cluster is centred as a whole, its glyphs keeping their places")
+    {
+        // Segoe UI Emoji's family: two narrower people the font overlaps with its own offsets.
+        auto const tiles =
+            std::array { PlacedTile { .x = 2, .width = 9 }, PlacedTile { .x = 8, .width = 9 } };
+        // The union is [2, 17), 15 wide: centred in [10, 30) it starts at 12.5 -> 12, a shift of 10.
+        CHECK(centringShift(tiles, 10, 20) == 10);
+    }
+
+    SECTION("nothing to centre")
+    {
+        CHECK(centringShift({}, 10, 20) == 0);
+    }
 }

@@ -77,4 +77,39 @@ struct FittedPiece
     return fitted;
 }
 
+/// Where one glyph of a colour cluster lands, horizontally, before the cluster is centred.
+struct PlacedTile
+{
+    int x;     ///< Left edge, in pixels: pen position, plus the font's bearing and offset.
+    int width; ///< Drawn width, in pixels.
+};
+
+/// How far to move a colour cluster so that it is centred in its cells as a whole.
+///
+/// An emoji is centred in its cells, because emoji fonts place their glyphs inconsistently. A font may
+/// compose one emoji from several glyphs, though -- Segoe UI Emoji draws a family as narrower people it
+/// overlaps with its own offsets -- and centring each of those on its own stacks them all in the middle,
+/// and the advance between them then pushes the last ones out to the right. So the cluster's glyphs keep
+/// the places the font gave them, and the whole of them is centred instead: for a single glyph, the same.
+///
+/// @param tiles    Each inked glyph of the cluster, where the font put it.
+/// @param boxLeft  The left edge of the cluster's first cell, in the same coordinates as @p tiles.
+/// @param boxWidth The cluster's width in pixels.
+/// @return The shift, in pixels, to add to every glyph of the cluster.
+[[nodiscard]] constexpr int centringShift(std::span<PlacedTile const> tiles,
+                                          int boxLeft,
+                                          int boxWidth) noexcept
+{
+    if (tiles.empty())
+        return 0;
+    auto left = tiles.front().x;
+    auto right = tiles.front().x + tiles.front().width;
+    for (auto const& tile: tiles)
+    {
+        left = std::min(left, tile.x);
+        right = std::max(right, tile.x + tile.width);
+    }
+    return boxLeft + ((boxWidth - (right - left)) / 2) - left;
+}
+
 } // namespace vtrasterizer

@@ -2939,7 +2939,17 @@ namespace
 class EmojiRenderEnv
 {
   public:
-    explicit EmojiRenderEnv(std::vector<text::test::BDFGlyph> const& glyphs): _font { "emoji", true, glyphs }
+    /// Builds the shaper the renderer uses, given the BDF-backed one: the identity, or a test double around
+    /// it.
+    using ShaperFactory = std::function<std::unique_ptr<text::Shaper>(text::Shaper& inner)>;
+
+    /// @param glyphs   The synthetic emoji font's glyphs.
+    /// @param factory  Wraps the shaper the renderer uses; none uses the BDF-backed shaper as it is.
+    /// @param format   The atlas format: Red for alpha-mask glyphs, RGBA for colour ones.
+    explicit EmojiRenderEnv(std::vector<text::test::BDFGlyph> const& glyphs,
+                            ShaperFactory const& factory = {},
+                            vtrasterizer::atlas::Format format = vtrasterizer::atlas::Format::Red):
+        _font { "emoji", true, glyphs }
     {
         _description.familyName = "emoji";
         _description.spacing = text::FontSpacing::Mono;
@@ -2955,10 +2965,16 @@ class EmojiRenderEnv
                                .boldItalic = *fontKey,
                                .emoji = *fontKey };
         // The renderer keeps references to the metrics, descriptions and keys: they are members for that.
-        _renderer.emplace(_gridMetrics, _shaper, _fontDescriptions, _fontKeys, _events);
+        if (factory)
+            _wrapper = factory(_shaper);
+        _renderer.emplace(_gridMetrics,
+                          _wrapper ? *_wrapper : static_cast<text::Shaper&>(_shaper),
+                          _fontDescriptions,
+                          _fontKeys,
+                          _events);
         _renderer->setRenderTarget(_renderTarget, _allocator);
         _atlas.emplace(_renderTarget.getMockBackend(),
-                       vtrasterizer::atlas::AtlasProperties { .format = vtrasterizer::atlas::Format::Red,
+                       vtrasterizer::atlas::AtlasProperties { .format = format,
                                                               .tileSize = _gridMetrics.cellSize,
                                                               .hashCount = { 1024 },
                                                               .tileCount = { 4096 },
@@ -3006,6 +3022,7 @@ class EmojiRenderEnv
     text::FontDescription _description {};
     MockFontLocator _locator {};
     OpenShaper _shaper { text::test::BDFFont::Dpi, _locator };
+    std::unique_ptr<text::Shaper> _wrapper; ///< The test double the renderer shapes through, if any.
     GridMetrics _gridMetrics { .pageSize = PageSize { LineCount(24), ColumnCount(80) },
                                .cellSize = ImageSize { Width(CellWidth), Height(20) },
                                .baseline = 15,
@@ -3056,6 +3073,107 @@ TEST_CASE("TextRenderer.fragmented_emoji_cluster_stays_inside_its_cells", "[rend
         ++pieces;
     }
     CHECK(pieces >= 5); // every piece is still drawn: nothing is hidden
+}
+
+namespace
+{
+
+/// A colour emoji font that composes one emoji from two glyphs, overlapped by its own offsets -- as Segoe UI
+/// Emoji draws a family from narrower people. Shapes any emoji run as those two glyphs, and draws each as a
+/// small colour bitmap at the pen, no bearing.
+class ComposingShaper: public text::Shaper
+{
+  public:
+    explicit ComposingShaper(text::Shaper& inner) noexcept: _inner { inner } {}
+
+    /// The first of the two glyph indices, clear of the indices the renderer maps directly to atlas tiles.
+    static constexpr auto FirstGlyph = uint32_t { 9001 };
+    static constexpr auto PieceWidth = 9;    ///< Each glyph's bitmap width.
+    static constexpr auto FirstOffset = 2;   ///< The first glyph's x offset.
+    static constexpr auto Advance = 13;      ///< The first glyph's advance.
+    static constexpr auto SecondOffset = -7; ///< The second glyph's x offset, pulling it onto the first.
+
+    void setDPI(text::DPI dpi) override { _inner.setDPI(dpi); }
+    void setLocator(text::FontLocator& locator) override { _inner.setLocator(locator); }
+    void clearCache() override { _inner.clearCache(); }
+    void setFontFallbackLimit(int limit) override { _inner.setFontFallbackLimit(limit); }
+    [[nodiscard]] std::optional<text::FontKey> loadFont(text::FontDescription const& description,
+                                                        text::FontSize size) override
+    {
+        return _inner.loadFont(description, size);
+    }
+    [[nodiscard]] text::FontMetrics metrics(text::FontKey key) const override { return _inner.metrics(key); }
+    void shape(text::FontKey font,
+               std::u32string_view text,
+               gsl::span<unsigned> clusters,
+               unicode::Script script,
+               unicode::PresentationStyle presentation,
+               text::ShapeResult& result) override
+    {
+        if (presentation != unicode::PresentationStyle::Emoji)
+        {
+            _inner.shape(font, text, clusters, script, presentation, result);
+            return;
+        }
+        auto const glyph = [&](uint32_t index, int offset, int advance) {
+            auto gpos = text::GlyphPosition {};
+            gpos.glyph = text::GlyphKey { .size = text::test::BDFFont::Size,
+                                          .font = font,
+                                          .index = text::GlyphIndex { index } };
+            gpos.offset = crispy::Point { .x = offset, .y = 0 };
+            gpos.advance = crispy::Point { .x = advance, .y = 0 };
+            gpos.presentation = presentation;
+            gpos.cluster = clusters[0];
+            return gpos;
+        };
+        result.emplace_back(glyph(FirstGlyph, FirstOffset, Advance));
+        result.emplace_back(glyph(FirstGlyph + 1, SecondOffset, 0));
+    }
+    [[nodiscard]] std::optional<text::GlyphPosition> shape(text::FontKey font, char32_t codepoint) override
+    {
+        return _inner.shape(font, codepoint);
+    }
+    [[nodiscard]] std::optional<text::RasterizedGlyph> rasterize(text::GlyphKey glyph,
+                                                                 text::RenderMode mode,
+                                                                 float outlineThickness) override
+    {
+        if (glyph.index.value < FirstGlyph)
+            return _inner.rasterize(glyph, mode, outlineThickness);
+        auto bitmap = text::RasterizedGlyph {};
+        bitmap.index = glyph.index;
+        bitmap.bitmapSize = ImageSize { Width(PieceWidth), Height(4) };
+        bitmap.position = crispy::Point { .x = 0, .y = 4 };
+        bitmap.format = text::BitmapFormat::RGBA;
+        bitmap.bitmap.assign(static_cast<size_t>(PieceWidth) * 4 * 4, uint8_t { 0xFF });
+        return bitmap;
+    }
+
+  private:
+    text::Shaper& _inner;
+};
+
+} // namespace
+
+TEST_CASE("TextRenderer.a_composed_colour_cluster_is_centred_as_a_whole", "[renderer][emoji]")
+{
+    // Issue #2381, as reported from Windows: Segoe UI Emoji composes a family from two narrower people the
+    // font overlaps. Centred one by one, then pushed apart by the first one's advance, they landed right of
+    // the cell's centre. The font's placement must stand, and the pair be centred as one.
+    auto env = EmojiRenderEnv {
+        { { U'x', 8 } },
+        [](text::Shaper& inner) { return std::make_unique<ComposingShaper>(inner); },
+        vtrasterizer::atlas::Format::RGBA,
+    };
+    auto const tiles = env.render({ { .column = 0, .text = U"\U0001F468\u200D\U0001F466", .width = 2 } });
+
+    REQUIRE(tiles.size() == 2);
+    auto const [first, second] = std::minmax(tiles[0].x.value, tiles[1].x.value);
+    // Where the font put them relative to each other: second = first - offset + advance + offset.
+    CHECK(second - first
+          == ComposingShaper::Advance + ComposingShaper::SecondOffset - ComposingShaper::FirstOffset);
+    // And the pair -- (second + width) - first wide -- centred in the cluster's two cells.
+    auto const unionWidth = second + ComposingShaper::PieceWidth - first;
+    CHECK(first == ((2 * CellWidth) - unionWidth) / 2);
 }
 
 TEST_CASE("TextRenderer.a_keycap_drawn_around_its_digit_is_not_fitted", "[renderer][emoji]")
