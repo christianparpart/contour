@@ -127,21 +127,21 @@ std::string daemonExtensionGrantsFileName(DaemonIdentity const& daemon)
     static_assert(DaemonExtensionGrantsFileName.ends_with(Suffix));
     auto name = std::string { DaemonExtensionGrantsFileName.substr(
         0, DaemonExtensionGrantsFileName.size() - Suffix.size()) };
-    if (!daemon.label.empty() && daemon.label != daemon.defaultLabel)
+    if (!daemon.name.empty() && daemon.name != daemon.defaultName)
     {
         auto const keep = [](char c) {
             return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.'
                    || c == '-' || c == '_';
         };
-        auto label = std::string { daemon.label };
-        std::ranges::replace_if(label, [&](char c) { return !keep(c); }, '_');
-        name += std::format(".{}", label);
+        auto spelled = std::string { daemon.name };
+        std::ranges::replace_if(spelled, [&](char c) { return !keep(c); }, '_');
+        name += std::format(".{}", spelled);
     }
     if (auto const socket = daemon.socketPath.lexically_normal();
-        socket != daemon.labelSocketPath.lexically_normal())
+        socket != daemon.nameSocketPath.lexically_normal())
     {
         // FNV-1a over the path's UTF-8: stable across runs and builds, unlike std::hash, and short. A
-        // collision costs two daemons one file, as a shared label always did.
+        // collision costs two daemons one file, as a shared name always did.
         constexpr auto Offset = uint64_t { 14695981039346656037U };
         constexpr auto Prime = uint64_t { 1099511628211U };
         auto hash = Offset;

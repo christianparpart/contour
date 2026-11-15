@@ -102,7 +102,7 @@ namespace
                         addEverything();
                     break;
                 case SwitcherLevel::Daemon: addOneDaemon(_view.daemon); break;
-                case SwitcherLevel::NewDaemon: addLabelAction(); break;
+                case SwitcherLevel::NewDaemon: addNameAction(); break;
             }
             return std::move(_rows);
         }
@@ -314,15 +314,15 @@ namespace
                     "Other daemons");
         }
 
-        /// The New Daemon level's one action, for a label it can act on.
-        void addLabelAction()
+        /// The New Daemon level's one action, for a name it can act on.
+        void addNameAction()
         {
-            auto const running = switcherRunningLabels(_inputs);
-            auto const verdict = switcherLabelVerdict(_view.filter, running);
-            if (verdict != LabelVerdict::Available && verdict != LabelVerdict::Running)
+            auto const running = switcherRunningNames(_inputs);
+            auto const verdict = switcherNameVerdict(_view.filter, running);
+            if (verdict != NameVerdict::Available && verdict != NameVerdict::Running)
                 return;
-            add(plainRow(SwitcherRowKind::LabelAction,
-                         switcherLabelActionTitle(_view.filter, verdict),
+            add(plainRow(SwitcherRowKind::NameAction,
+                         switcherNameActionTitle(_view.filter, verdict),
                          session::SwitchTarget { .kind = SwitchDaemonKind::Name,
                                                  .daemon = std::string { _view.filter },
                                                  .workspace = session::AnyWorkspace {} }),
@@ -347,34 +347,34 @@ std::string_view describe(SwitcherWorkspaceState state) noexcept
     return "hidden";
 }
 
-LabelVerdict switcherLabelVerdict(std::string_view label, std::span<std::string const> runningLabels)
+NameVerdict switcherNameVerdict(std::string_view name, std::span<std::string const> runningNames)
 {
-    if (label.empty())
-        return LabelVerdict::Empty;
-    if (!vthost::validateDaemonName(label))
-        return LabelVerdict::Invalid;
-    return std::ranges::find(runningLabels, label) != runningLabels.end() ? LabelVerdict::Running
-                                                                          : LabelVerdict::Available;
+    if (name.empty())
+        return NameVerdict::Empty;
+    if (!vthost::validateDaemonName(name))
+        return NameVerdict::Invalid;
+    return std::ranges::find(runningNames, name) != runningNames.end() ? NameVerdict::Running
+                                                                       : NameVerdict::Available;
 }
 
-std::vector<std::string> switcherRunningLabels(SwitcherInputs const& inputs)
+std::vector<std::string> switcherRunningNames(SwitcherInputs const& inputs)
 {
-    auto labels = std::vector<std::string> {};
+    auto names = std::vector<std::string> {};
     for (auto const& daemon: inputs.daemons)
         if (daemon.address.kind == SwitchDaemonKind::Name)
-            labels.push_back(daemon.address.daemon);
-    return labels;
+            names.push_back(daemon.address.daemon);
+    return names;
 }
 
-std::string switcherLabelActionTitle(std::string_view label, LabelVerdict verdict)
+std::string switcherNameActionTitle(std::string_view name, NameVerdict verdict)
 {
     switch (verdict)
     {
-        case LabelVerdict::Available:
-            return std::format("Start daemon “{}” and switch this window to it", label);
-        case LabelVerdict::Running: return std::format("Switch this window to daemon “{}”", label);
-        case LabelVerdict::Empty:
-        case LabelVerdict::Invalid: break;
+        case NameVerdict::Available:
+            return std::format("Start daemon “{}” and switch this window to it", name);
+        case NameVerdict::Running: return std::format("Switch this window to daemon “{}”", name);
+        case NameVerdict::Empty:
+        case NameVerdict::Invalid: break;
     }
     return {};
 }

@@ -476,8 +476,8 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     /// window does not own is left alone.
     /// @param window The window the user acts in.
     /// @param workspace The workspace's id, as the window's directory lists it (DirectoryWorkspace::id).
-    /// @param label Its new label; empty clears it.
-    void renameWorkspace(window::WindowController& window, uint64_t workspace, std::string label);
+    /// @param name Its new name; empty clears it.
+    void renameWorkspace(window::WindowController& window, uint64_t workspace, std::string name);
 
     /// Names the tab @p tab, whichever workspace of @p window's directory holds it, shown or not: in its
     /// daemon for a window a daemon serves (named by a session it holds), in this process's model otherwise.
@@ -560,7 +560,7 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     /// @param binding The binding whose directory changed.
     void notifyWorkspaceDirectoryChanged(WindowBinding const& binding) const;
 
-    /// Asks for a label (the switcher popup's label prompt), starts a new local daemon under it, and opens a
+    /// Asks for a name (the switcher popup's name prompt), starts a new local daemon under it, and opens a
     /// new window on it, for the window hosting @p acting.
     /// @param acting The session that triggered the action.
     void newDaemon(TerminalSession const& acting);

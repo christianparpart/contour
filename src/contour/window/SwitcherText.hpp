@@ -5,7 +5,7 @@
 /// What the switcher says, as plain text decided here rather than in QML: a row's detail (its git text and
 /// tab count, or, when it asks for the user, its reason and time), the footer's description of what Return
 /// does and its key hints, the field's drawn hint, the empty state, the level title, and the New Daemon
-/// prompt's verdict on the label typed. Pure and Qt-free.
+/// prompt's verdict on the name typed. Pure and Qt-free.
 
 #include <contour/command/Shortcut.hpp>
 #include <contour/session/WindowSwitching.hpp>
@@ -163,7 +163,7 @@ static_assert(std::ranges::all_of(std::views::iota(std::size_t { 0 }, SwitcherHi
 
 /// @param row The selected row.
 /// @return What the footer's hints are about; None for a row that only says something, and for the New Daemon
-///         level's action, whose subject the label's verdict decides (SwitcherLabelState::subject).
+///         level's action, whose subject the name's verdict decides (SwitcherNameState::subject).
 [[nodiscard]] SwitcherHintSubject switcherHintSubject(SwitcherRow const& row) noexcept;
 
 /// A key the footer hints at.
@@ -228,31 +228,31 @@ static_assert(std::ranges::all_of(std::views::iota(std::size_t { 0 }, SwitcherHi
                                                               session::SwitchMode mode,
                                                               SwitcherScope scope);
 
-/// The New Daemon prompt's state for the label typed.
-struct SwitcherLabelState
+/// The New Daemon prompt's state for the name typed.
+struct SwitcherNameState
 {
-    LabelVerdict verdict = LabelVerdict::Empty; ///< What the label amounts to.
-    std::string message;                        ///< The verdict line; empty for an empty label.
-    std::string actionTitle;                    ///< The one action row; empty for none.
-    std::string equivalentCommand;              ///< `contour daemon --name ‹name›`, when Available.
+    NameVerdict verdict = NameVerdict::Empty; ///< What the name amounts to.
+    std::string message;                      ///< The verdict line; empty for an empty name.
+    std::string actionTitle;                  ///< The one action row; empty for none.
+    std::string equivalentCommand;            ///< `contour daemon --name ‹name›`, when Available.
     SwitcherHintSubject subject = SwitcherHintSubject::None; ///< What the footer's hints are about.
 
-    bool operator==(SwitcherLabelState const&) const = default;
+    bool operator==(SwitcherNameState const&) const = default;
 };
 
-/// Judges a label as it is typed.
-/// @param label What the user typed.
-/// @param runningLabels The labels of the local daemons running now.
+/// Judges a name as it is typed.
+/// @param name What the user typed.
+/// @param runningNames The names of the local daemons running now.
 /// @param style How to spell the Return key the running message names.
 /// @return The verdict, its message, the action row, the equivalent command and the hints' subject.
-[[nodiscard]] SwitcherLabelState switcherLabelState(std::string_view label,
-                                                    std::span<std::string const> runningLabels,
-                                                    command::ShortcutStyle style);
+[[nodiscard]] SwitcherNameState switcherNameState(std::string_view name,
+                                                  std::span<std::string const> runningNames,
+                                                  command::ShortcutStyle style);
 
 /// @param view Where the user is.
 /// @param daemonName The name of the daemon the level or the scope is about.
 /// @return The field's drawn hint: `Switch workspace or daemon…`, `Filter workspaces on ‹daemon›…`, or
-///         `Label, such as work2`.
+///         `Name, such as work2`.
 [[nodiscard]] std::string switcherHintText(SwitcherView const& view, std::string_view daemonName);
 
 /// @param filter What the user typed.

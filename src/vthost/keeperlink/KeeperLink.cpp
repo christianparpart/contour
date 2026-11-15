@@ -606,7 +606,7 @@ void KeeperLink::announceShutdown(uint8_t cause, std::chrono::milliseconds bound
         state.lose();
     else
         errorLog()("the keeper did not take note of the shutdown within {} ms; a new instance may find the "
-                   "label still held for a moment",
+                   "name still held for a moment",
                    bound.count());
 }
 

@@ -48,7 +48,7 @@ struct SwitcherWorkspace
     /// What choosing it re-enters a switch with: its control id, which nothing reads again as text.
     vtcontrol::ObjectRef ref {};
     uint32_t position = 0; ///< Its 1-based position among the daemon's workspaces.
-    std::string name {};   ///< Its label, else its active tab's title, else "workspace N".
+    std::string name {};   ///< Its name, else its active tab's title, else "workspace N".
     std::size_t tabs = 0;  ///< How many tabs it holds.
     SwitcherWorkspaceState state = SwitcherWorkspaceState::Hidden; ///< Where it is shown.
     SwitcherStatus status {}; ///< What it asks of the user, its git text, reason and time.
@@ -89,7 +89,7 @@ enum class SwitcherHostLink : uint8_t
 /// One daemon the popup lists, with what is known of its workspaces.
 struct SwitcherDaemon
 {
-    session::SwitchTarget address {}; ///< The daemon (Label or Host, and its name; Same for this window's
+    session::SwitchTarget address {}; ///< The daemon (Name or Host, and its name; Same for this window's
                                       ///< unnameable one); its workspace spec is empty.
     std::optional<std::size_t>
         workspaceCount {}; ///< How many workspaces discovery counted; none when unknown.
@@ -110,7 +110,7 @@ enum class SwitcherLevel : uint8_t
 {
     Top = 0,   ///< The window's daemon, the other daemons and the actions; or, scoped, one daemon.
     Daemon,    ///< One daemon's workspaces, drilled into from its row.
-    NewDaemon, ///< The label of a new daemon to start.
+    NewDaemon, ///< The name of a new daemon to start.
 };
 
 /// Where the popup opened from, which decides where it hangs and what its chip scope offers.
@@ -183,10 +183,10 @@ enum class SwitcherRowKind : uint8_t
     Workspace = 0, ///< One of a daemon's workspaces: choosing it switches to it.
     Daemon,        ///< Another daemon: choosing it drills into its level.
     NewWorkspace,  ///< `New Workspace`, or `New Workspace “query”`: creates one and switches to it.
-    NewDaemon,     ///< `New Daemon…`: drills into the label prompt.
+    NewDaemon,     ///< `New Daemon…`: drills into the name prompt.
     Discovering,   ///< `Looking for other daemons…`, while discovery runs.
     Connecting,    ///< `Connecting to host…`, while a daemon drilled into is being listed.
-    LabelAction,   ///< The New Daemon level's one action: start the daemon, or switch to the running one.
+    NameAction,    ///< The New Daemon level's one action: start the daemon, or switch to the running one.
     Failure,       ///< Why the daemon drilled into could not be listed; choosing it does nothing.
 };
 
@@ -198,8 +198,8 @@ enum class SwitcherHintSubject : uint8_t
     Daemon,          ///< A daemon row.
     NewWorkspace,    ///< New Workspace.
     NewDaemon,       ///< New Daemon….
-    CreateDaemon,    ///< The New Daemon level's action for an available label.
-    SwitchToRunning, ///< The New Daemon level's action for a label that runs already.
+    CreateDaemon,    ///< The New Daemon level's action for an available name.
+    SwitchToRunning, ///< The New Daemon level's action for a name that runs already.
 };
 
 /// Whether a row of a kind leads into another level (→, and Return).
@@ -249,7 +249,7 @@ struct SwitcherRowKindRule
     OpensInNewWindow newWindow = OpensInNewWindow::No;     ///< Whether Shift+Return opens a window.
     SwitcherHintSubject hints = SwitcherHintSubject::None; ///< What its footer hints are about.
     SwitcherRowRole role = SwitcherRowRole::Workspace;     ///< What it is to assistive technology.
-    /// Whether it waits for an answer. The LabelAction row waits only while its start runs, which the
+    /// Whether it waits for an answer. The NameAction row waits only while its start runs, which the
     /// controller knows: No here.
     AwaitsAnswer awaits = AwaitsAnswer::No;
     NewWindowButton button = NewWindowButton::No; ///< Whether it wears the new-window button.
@@ -300,8 +300,8 @@ inline constexpr auto SwitcherRowKindRules = std::array {
                           .role = SwitcherRowRole::Progress,
                           .awaits = AwaitsAnswer::Yes,
                           .button = NewWindowButton::No },
-    // Its verdict decides its hints (SwitcherLabelState::subject).
-    SwitcherRowKindRule { .kind = SwitcherRowKind::LabelAction,
+    // Its verdict decides its hints (SwitcherNameState::subject).
+    SwitcherRowKindRule { .kind = SwitcherRowKind::NameAction,
                           .drillsIn = DrillsIn::No,
                           .newWindow = OpensInNewWindow::Yes,
                           .hints = SwitcherHintSubject::None,
@@ -377,14 +377,14 @@ struct SwitcherView
     std::size_t daemon = 0;
     SwitcherOrigin origin = SwitcherOrigin::Centred; ///< Where the popup opened from.
     SwitcherScope scope = SwitcherScope::Everything; ///< Every daemon, or one, at the top level.
-    std::string_view filter {};                      ///< What the user typed; the New Daemon level's label.
+    std::string_view filter {};                      ///< What the user typed; the New Daemon level's name.
 };
 
 /// What the popup shows, as it opens.
 enum class SwitcherPrompt : uint8_t
 {
     Browse = 0, ///< The daemons and their workspaces.
-    NewDaemon,  ///< The label of a new daemon to start.
+    NewDaemon,  ///< The name of a new daemon to start.
 };
 
 /// What opens the popup, over which window.
@@ -410,30 +410,30 @@ struct SwitcherOpening
     std::string windowHostLabel {};
 };
 
-/// What a typed label for a new daemon amounts to.
-enum class LabelVerdict : uint8_t
+/// What a typed name for a new daemon amounts to.
+enum class NameVerdict : uint8_t
 {
     Empty = 0, ///< Nothing typed yet.
-    Available, ///< A valid label no running daemon has: a daemon can start under it.
-    Running,   ///< A daemon of that label runs already: Return switches to it.
-    Invalid,   ///< Not a label a daemon can have (vthost::validateDaemonName).
+    Available, ///< A valid name no running daemon has: a daemon can start under it.
+    Running,   ///< A daemon of that name runs already: Return switches to it.
+    Invalid,   ///< Not a name a daemon can have (vthost::validateDaemonName).
 };
 
-/// @param label What the user typed.
-/// @param runningLabels The labels of the local daemons running now.
+/// @param name What the user typed.
+/// @param runningNames The names of the local daemons running now.
 /// @return What it amounts to.
-[[nodiscard]] LabelVerdict switcherLabelVerdict(std::string_view label,
-                                                std::span<std::string const> runningLabels);
+[[nodiscard]] NameVerdict switcherNameVerdict(std::string_view name,
+                                              std::span<std::string const> runningNames);
 
 /// @param inputs What the list is made of.
-/// @return The labels of its local daemons.
-[[nodiscard]] std::vector<std::string> switcherRunningLabels(SwitcherInputs const& inputs);
+/// @return The names of its local daemons.
+[[nodiscard]] std::vector<std::string> switcherRunningNames(SwitcherInputs const& inputs);
 
-/// @param label A label to act on.
+/// @param name A name to act on.
 /// @param verdict Its verdict.
 /// @return The New Daemon level's action row title: start it (Available), switch to it (Running); empty
 ///         otherwise.
-[[nodiscard]] std::string switcherLabelActionTitle(std::string_view label, LabelVerdict verdict);
+[[nodiscard]] std::string switcherNameActionTitle(std::string_view name, NameVerdict verdict);
 
 /// The popup's rows for where the user is.
 ///
@@ -446,7 +446,7 @@ enum class LabelVerdict : uint8_t
 /// - Top, one daemon (a pick, or a window with no daemon), or the Daemon level: that daemon's workspaces
 ///   (those matching, best first, when typed), kept while a listing refreshes them; a connecting row while it
 ///   is listed for the first time; a failure row saying why it could not be listed; then its New Workspace.
-/// - NewDaemon: the one action a valid label offers, else nothing.
+/// - NewDaemon: the one action a valid name offers, else nothing.
 /// @param inputs What the list is made of.
 /// @param view Where the user is and what they typed.
 /// @return The rows, in display order.
@@ -459,7 +459,7 @@ enum class LabelVerdict : uint8_t
 /// @param address   A daemon.
 /// @param hostLabel What the window on it calls it; empty for none.
 /// @return How the popup names it, as the location chip names it (locationDaemonName): the host label where
-///         there is one, else its label or host name, or `this daemon` for an unnameable one.
+///         there is one, else its name or host name, or `this daemon` for an unnameable one.
 [[nodiscard]] std::string switcherDaemonName(session::SwitchTarget const& address,
                                              std::string_view hostLabel);
 
@@ -468,7 +468,7 @@ enum class LabelVerdict : uint8_t
 [[nodiscard]] std::string switcherDaemonName(SwitcherDaemon const& daemon);
 
 /// What tells one row from every other across a rebuild: its kind and its target. Every row bound to a daemon
-/// names that daemon in its target (a workspace, a daemon, a New Workspace, a label action); the rows without
+/// names that daemon in its target (a workspace, a daemon, a New Workspace, a name action); the rows without
 /// a target (New Daemon…, the looking, connecting and failure rows) are one of a kind in a
 /// view, so their kind alone tells them apart. A daemon's index is not part of it: discovery reorders the
 /// daemons.

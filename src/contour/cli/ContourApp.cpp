@@ -1168,20 +1168,20 @@ namespace
         return nullptr;
     }
 
-    /// @param env The environment the state directory and the label's own socket are derived from.
-    /// @param label The daemon's label.
+    /// @param env The environment the state directory and the name's own socket are derived from.
+    /// @param name The daemon's name.
     /// @param socket The socket the daemon listens on.
-    /// @return The file the daemon labelled @p label at @p socket keeps its workspace in; nullopt for a label
+    /// @return The file the daemon named @p name at @p socket keeps its workspace in; nullopt for a name
     ///         no file can be named for.
     [[nodiscard]] std::optional<std::filesystem::path> snapshotPathOf(core::Environment const& env,
-                                                                      std::string_view label,
+                                                                      std::string_view name,
                                                                       std::filesystem::path const& socket)
     {
         auto const& fileSystem = core::platform::NativeFileSystem::instance();
         return vthost::daemonSnapshotPath(vthost::daemonStateDirectory(env),
-                                          label,
+                                          name,
                                           fileSystem.weaklyCanonical(socket),
-                                          fileSystem.weaklyCanonical(vthost::namedSocketPath(label, env)));
+                                          fileSystem.weaklyCanonical(vthost::namedSocketPath(name, env)));
     }
 
     /// @param handover What a live upgrade handed over; nullopt for a daemon that starts afresh.
@@ -1552,12 +1552,12 @@ int ContourApp::serveDaemon(DaemonVerbOptions const& options,
     auto const& resolved = ownProfile->resolved;
     // Read before the configuration moves into the catalog. Not reloaded: a running daemon keeps the file
     // and the schedule it started with.
-    auto const daemonLabel = vthost::daemonNameFromOption(options.name).name;
-    if (auto snapshotPath = snapshotPathOf(processEnvironment(), daemonLabel, config.socketPath))
+    auto const daemonName = vthost::daemonNameFromOption(options.name).name;
+    if (auto snapshotPath = snapshotPathOf(processEnvironment(), daemonName, config.socketPath))
         config.persistence =
             workspacePersistenceOf(hostConfig->daemon.value().restore, *std::move(snapshotPath));
     else
-        errorLog()("the name '{}' names no snapshot file; this daemon keeps no workspaces", daemonLabel);
+        errorLog()("the name '{}' names no snapshot file; this daemon keeps no workspaces", daemonName);
     auto profiles = std::make_shared<ConfigProfileCatalog const>(
         *std::move(hostConfig), daemonProfile, vthost::HostedColorPreference);
     // Edits of the configuration reach the sessions spawned afterwards, and the scrollback of those
@@ -1592,15 +1592,14 @@ int ContourApp::serveDaemon(DaemonVerbOptions const& options,
     // The extensions' modules and configuration are resolved here, on the daemon's side, as its sessions'
     // shells are; they run in the daemon, where each session's terminal is.
     auto extensionServices = DaemonExtensionResources { childDescriptorLimitOf(keeper) };
-    auto const label = vthost::daemonNameFromOption(options.name).name;
     auto const& fileSystem = core::platform::NativeFileSystem::instance();
     config.extensions = daemonExtensionsOf(
         resolved,
-        vtextension::DaemonIdentity { .label = label,
-                                      .defaultLabel = vthost::DefaultDaemonName,
+        vtextension::DaemonIdentity { .name = daemonName,
+                                      .defaultName = vthost::DefaultDaemonName,
                                       .socketPath = fileSystem.weaklyCanonical(config.socketPath),
-                                      .labelSocketPath =
-                                          fileSystem.weaklyCanonical(vthost::namedSocketPath(label)) },
+                                      .nameSocketPath =
+                                          fileSystem.weaklyCanonical(vthost::namedSocketPath(daemonName)) },
         std::filesystem::absolute(
             core::pathFromUtf8(commandLine().front()).value_or(std::filesystem::path {}))
             .parent_path(),
@@ -1646,7 +1645,7 @@ int ContourApp::serveDaemon(DaemonVerbOptions const& options,
     config.defaultCellPixelSize = daemonSettings.defaultCellPixelSize;
 
     // A handed-over daemon serves no TCP at all rather than one it cannot authenticate as asked.
-    if (auto nativeTcp = nativeTcpOption(options, daemonLabel))
+    if (auto nativeTcp = nativeTcpOption(options, daemonName))
         config.nativeTcp = *std::move(nativeTcp);
     else if (auto const refused =
                  failures.fail(std::format("the TCP listener is not served: {}", nativeTcp.error()));
@@ -1815,7 +1814,7 @@ std::expected<void, std::string> ContourApp::installDaemonLogging(DaemonVerbOpti
 }
 
 std::expected<std::optional<vthost::NativeTcpListenerConfig>, std::string> ContourApp::nativeTcpOption(
-    DaemonVerbOptions const& options, std::string_view daemonLabel)
+    DaemonVerbOptions const& options, std::string_view daemonName)
 {
     // Opt-in TCP listener: absent unless --listen-tcp is given; always TLS-encrypted
     // (self-signed when no cert/key), token-authenticated, loopback-bound unless the
@@ -1899,9 +1898,9 @@ std::expected<std::optional<vthost::NativeTcpListenerConfig>, std::string> Conto
         return std::unexpected { checked.error() };
 
     auto const identityFile =
-        vthost::daemonIdentityPath(vthost::daemonStateDirectory(processEnvironment()), daemonLabel);
+        vthost::daemonIdentityPath(vthost::daemonStateDirectory(processEnvironment()), daemonName);
     if (!identityFile)
-        return std::unexpected { std::format("the name '{}' names no TLS identity file", daemonLabel) };
+        return std::unexpected { std::format("the name '{}' names no TLS identity file", daemonName) };
 
     return vthost::NativeTcpListenerConfig {
         .host = hostPort->first,

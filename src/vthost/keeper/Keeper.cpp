@@ -38,12 +38,12 @@ namespace
 } // namespace
 
 Keeper::Keeper(KeeperPorts ports,
-               std::unique_ptr<LabelLock> labelLock,
+               std::unique_ptr<NameLock> nameLock,
                RestartPolicyConfig policy,
                std::filesystem::path daemonImage,
                std::vector<uint8_t> launchOptions):
     _ports { ports },
-    _labelLock { std::move(labelLock) },
+    _nameLock { std::move(nameLock) },
     _policy { policy },
     _daemonImage { std::move(daemonImage) },
     _launchOptions { std::move(launchOptions) }
@@ -345,20 +345,20 @@ void Keeper::beginEnding(KeeperOutcome outcome, int exitStatus)
         return;
     _ending = outcome;
     _exitStatus = exitStatus;
-    releaseLabelAndListeners();
+    releaseNameAndListeners();
     _structure.reset();
     _relaunchAt.reset();
     _graceAt.reset();
     _sessions.releaseAll(now() + ShellHangupGrace);
 }
 
-void Keeper::releaseLabelAndListeners()
+void Keeper::releaseNameAndListeners()
 {
-    // Removed while the label is still locked, so no file is a newer keeper's.
+    // Removed while the name is still locked, so no file is a newer keeper's.
     for (auto const& listener: _listeners)
         if (!listener.path.empty())
             _ports.socketFiles.remove(listener.path);
-    _labelLock.reset();
+    _nameLock.reset();
     _listeners.clear();
 }
 
@@ -732,12 +732,12 @@ void Keeper::handle(Shutdown const& /*message*/, std::vector<UniqueFd>& /*fds*/)
 {
     if (!_daemon)
         return;
-    // The label is free for a new instance and the listeners close at once, their socket files gone; the
+    // The name is free for a new instance and the listeners close at once, their socket files gone; the
     // shells wait for the daemon's exit, so its final snapshot still sees them.
-    releaseLabelAndListeners();
+    releaseNameAndListeners();
     _daemon->state = DaemonEndState::ShutdownAnnounced;
     earliest(_daemon->killAt, now() + _policy.config().daemonExitBound);
-    // The daemon closes its own listeners once it hears this: by then nothing of this keeper holds the label.
+    // The daemon closes its own listeners once it hears this: by then nothing of this keeper holds the name.
     send(ShutdownNoted {});
 }
 

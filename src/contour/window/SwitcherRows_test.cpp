@@ -381,7 +381,7 @@ TEST_CASE("the new daemon level offers one action for a label it can act on", "[
 
     auto const fresh = rowsFor("research");
     REQUIRE(fresh.size() == 1);
-    CHECK(fresh[0].kind == LabelAction);
+    CHECK(fresh[0].kind == NameAction);
     CHECK(fresh[0].title == "Start daemon “research” and switch this window to it");
     CHECK(fresh[0].target == label("research", contour::session::AnyWorkspace {}));
 

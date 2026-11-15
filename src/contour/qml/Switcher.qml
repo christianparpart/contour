@@ -2,7 +2,7 @@
 // The daemon and workspace switcher: a member of the command palette's family, drawn in the window's scene on
 // the palette's frame (PickerPopup). Its top level lists the window's daemon's workspaces, the other daemons
 // and the actions; typing finds the workspaces of every listed local daemon; a daemon row drills into that
-// daemon's level, and "New Daemon…" into the label prompt. Opened by ShowSwitcher, NewDaemon or a switch's
+// daemon's level, and "New Daemon…" into the name prompt. Opened by ShowSwitcher, NewDaemon or a switch's
 // pick it is centred like the palette; opened by the workspace chip it hangs below the chip.
 //
 // It decides nothing: the rows, their groups, what each says, the footer, what a key does and what choosing a
@@ -35,7 +35,7 @@ PickerPopup {
     footerHints: root.switcher ? root.switcher.footerHints : ""
     footerHintSets: root.switcher ? root.switcher.footerHintSets : []
     fieldName: root.switcher ? root.switcher.fieldName : ""
-    body: root.switcher && root.switcher.isAskingLabel ? labelBody : null
+    body: root.switcher && root.switcher.isAskingName ? nameBody : null
 
     // The row under a pointer that moved, or -1: it wears the hover fill and its button, and the selection
     // stays where the keys put it (board 6; unlike the palette, hover does not select).
@@ -404,12 +404,12 @@ PickerPopup {
         }
     }
 
-    // The New Daemon level's body: what a label is, the verdict on the one typed, and the command that does
+    // The New Daemon level's body: what a name is, the verdict on the one typed, and the command that does
     // the same from a shell.
     Component {
-        id: labelBody
+        id: nameBody
         Column {
-            objectName: "switcherLabelBody"
+            objectName: "switcherNameBody"
             spacing: chromeStyle.space.s2
             topPadding: chromeStyle.space.s3
             bottomPadding: chromeStyle.space.s3
@@ -417,11 +417,11 @@ PickerPopup {
             rightPadding: root.textInset
 
             Text {
-                objectName: "switcherLabelCaption"
+                objectName: "switcherNameCaption"
                 width: parent.width - parent.leftPadding - parent.rightPadding
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
-                text: root.switcher ? root.switcher.labelCaption : ""
+                text: root.switcher ? root.switcher.nameCaption : ""
                 font: chromeStyle.type.footnote
                 color: chromeStyle.colors.paletteSecondaryText
             }
@@ -430,17 +430,17 @@ PickerPopup {
                 spacing: chromeStyle.space.s2
                 visible: verdictText.text !== ""
                 TabBadgeSlot {
-                    objectName: "switcherLabelVerdictGlyph"
+                    objectName: "switcherNameVerdictGlyph"
                     anchors.verticalCenter: parent.verticalCenter
-                    kind: root.switcher ? root.switcher.labelVerdictGlyph : 0
+                    kind: root.switcher ? root.switcher.nameVerdictGlyph : 0
                     shaped: !root.cellTree
                     Accessible.ignored: true
                 }
                 Text {
                     id: verdictText
-                    objectName: "switcherLabelVerdict"
+                    objectName: "switcherNameVerdict"
                     textFormat: Text.PlainText
-                    text: root.switcher ? root.switcher.labelMessage : ""
+                    text: root.switcher ? root.switcher.nameMessage : ""
                     font: chromeStyle.type.footnote
                     color: chromeStyle.colors.paletteText
                 }
@@ -450,17 +450,17 @@ PickerPopup {
                 visible: commandText.text !== ""
                 spacing: chromeStyle.space.s1
                 Text {
-                    objectName: "switcherLabelCommandCaption"
+                    objectName: "switcherNameCommandCaption"
                     textFormat: Text.PlainText
-                    text: root.switcher ? root.switcher.labelCommandCaption : ""
+                    text: root.switcher ? root.switcher.nameCommandCaption : ""
                     font: chromeStyle.type.footnote
                     color: chromeStyle.colors.paletteSecondaryText
                 }
                 Text {
                     id: commandText
-                    objectName: "switcherLabelCommand"
+                    objectName: "switcherNameCommand"
                     textFormat: Text.PlainText
-                    text: root.switcher ? root.switcher.labelCommand : ""
+                    text: root.switcher ? root.switcher.nameCommand : ""
                     font: chromeStyle.type.monospaceFootnote
                     color: chromeStyle.colors.paletteText
                 }

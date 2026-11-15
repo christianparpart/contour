@@ -1705,7 +1705,7 @@ class ChromeSnapshotScene
         {
             case ScriptAction::FilterSwitcher: _switcher->setFilter(QStringLiteral("api")); break;
             case ScriptAction::SwitcherNoMatch: _switcher->setFilter(QStringLiteral("zzz")); break;
-            case ScriptAction::NewDaemonSwitcher: _switcher->checkLabel(QStringLiteral("research")); break;
+            case ScriptAction::NewDaemonSwitcher: _switcher->checkName(QStringLiteral("research")); break;
             case ScriptAction::DrillInSwitcher:
                 _switcher->activate(rowTitled("home", window::SwitcherRowKind::Daemon));
                 break;

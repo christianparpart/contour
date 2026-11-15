@@ -604,24 +604,24 @@ TEST_CASE("a list longer than any receive takes in is cut short, and what came i
 #endif
 }
 
-TEST_CASE("a second label lock on the same path fails", "[keeper][posix]")
+TEST_CASE("a second name lock on the same path fails", "[keeper][posix]")
 {
     // Removed with the scope, however the test ends.
     auto const temp = core::testing::ScopedTempDir { "keeper-lock" };
     auto const& directory = temp.path();
     auto const socket = directory / "contour.sock";
-    CHECK(labelLockPath(socket) == directory / "contour.sock.keeper.lock");
+    CHECK(nameLockPath(socket) == directory / "contour.sock.keeper.lock");
 
     {
-        auto first = lockLabel(socket);
+        auto first = lockName(socket);
         REQUIRE(first.has_value());
-        auto const second = lockLabel(socket);
+        auto const second = lockName(socket);
         REQUIRE(!second.has_value());
         CHECK(second.error() == LockError::Held);
         first->reset();
-        CHECK(lockLabel(socket).has_value());
+        CHECK(lockName(socket).has_value());
     }
-    CHECK(lockLabel(directory / "missing" / "contour.sock").error() == LockError::Unopenable);
+    CHECK(lockName(directory / "missing" / "contour.sock").error() == LockError::Unopenable);
 }
 
 TEST_CASE("the daemon child dies with its keeper", "[keeper][posix]")

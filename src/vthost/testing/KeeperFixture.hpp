@@ -118,7 +118,7 @@ struct core::codec::EnumWire<vthost::testing::HarnessTcp>
 namespace vthost::testing
 {
 
-/// The status the harness keeper exits with when it could not start keeping (another keeper holds the label,
+/// The status the harness keeper exits with when it could not start keeping (another keeper holds the name,
 /// among the reasons).
 inline constexpr int HarnessKeeperStartFailureStatus = 70;
 
@@ -281,7 +281,7 @@ class KeeperFixture
     /// @return Its exit status; nullopt when it is still running, or ended by a signal.
     [[nodiscard]] std::optional<int> awaitKeeperExit(std::chrono::milliseconds bound);
 
-    /// Starts another keeper on this fixture's socket, as a second `contour daemon` on the same label would.
+    /// Starts another keeper on this fixture's socket, as a second `contour daemon` on the same name would.
     /// @return Its exit status; nullopt when it did not end within @p bound (it is killed then).
     [[nodiscard]] std::optional<int> runSecondKeeper(std::chrono::milliseconds bound) const;
 

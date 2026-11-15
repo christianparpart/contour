@@ -161,24 +161,24 @@ TEST_CASE("ExtensionGrantStore: answers survive in the side file", "[vtextension
 
 namespace
 {
-constexpr auto TestDefaultLabel = std::string_view { "default" };
+constexpr auto TestDefaultName = std::string_view { "default" };
 
-/// @return The identity of a daemon serving @p label at @p socket, where its label would serve at @p usual.
-[[nodiscard]] vtextension::DaemonIdentity daemonAt(std::string_view label,
+/// @return The identity of a daemon serving @p name at @p socket, where its name would serve at @p usual.
+[[nodiscard]] vtextension::DaemonIdentity daemonAt(std::string_view name,
                                                    std::filesystem::path socket,
                                                    std::filesystem::path usual)
 {
-    return vtextension::DaemonIdentity { .label = label,
-                                         .defaultLabel = TestDefaultLabel,
+    return vtextension::DaemonIdentity { .name = name,
+                                         .defaultName = TestDefaultName,
                                          .socketPath = std::move(socket),
-                                         .labelSocketPath = std::move(usual) };
+                                         .nameSocketPath = std::move(usual) };
 }
 
-/// @return The identity of a daemon serving @p label where that label serves when nothing names a socket.
-[[nodiscard]] vtextension::DaemonIdentity daemonOf(std::string_view label)
+/// @return The identity of a daemon serving @p name where that name serves when nothing names a socket.
+[[nodiscard]] vtextension::DaemonIdentity daemonOf(std::string_view name)
 {
-    auto const usual = std::filesystem::path { "/run/user/1000/contour" } / std::string { label };
-    return daemonAt(label, usual, usual);
+    auto const usual = std::filesystem::path { "/run/user/1000/contour" } / std::string { name };
+    return daemonAt(name, usual, usual);
 }
 } // namespace
 
@@ -186,56 +186,55 @@ TEST_CASE("ExtensionGrants: a daemon keeps its answers in a file of its own", "[
 {
     // A daemon's answers come from whichever client is attached, and govern commands that run on the
     // daemon's machine: another authority than the GUI's, in another file -- one per daemon, as several
-    // daemons can share one configuration directory, told apart by their label or their socket.
+    // daemons can share one configuration directory, told apart by their name or their socket.
     using vtextension::daemonExtensionGrantsFileName;
 
-    SECTION("by label")
+    SECTION("by name")
     {
         struct Case
         {
-            std::string_view label;
+            std::string_view name;
             std::string_view expected;
         };
         constexpr auto Cases = std::array {
-            Case { .label = "default", .expected = "extension-grants.daemon.txt" },
-            Case { .label = "", .expected = "extension-grants.daemon.txt" },
-            Case { .label = "work", .expected = "extension-grants.daemon.work.txt" },
-            Case { .label = "a.b-c_d", .expected = "extension-grants.daemon.a.b-c_d.txt" },
-            // A label is a socket name, never a path: nothing in it leaves the configuration directory.
-            Case { .label = "../../x", .expected = "extension-grants.daemon..._.._x.txt" },
-            Case { .label = "a/b\\c", .expected = "extension-grants.daemon.a_b_c.txt" },
+            Case { .name = "default", .expected = "extension-grants.daemon.txt" },
+            Case { .name = "", .expected = "extension-grants.daemon.txt" },
+            Case { .name = "work", .expected = "extension-grants.daemon.work.txt" },
+            Case { .name = "a.b-c_d", .expected = "extension-grants.daemon.a.b-c_d.txt" },
+            // A name is a socket name, never a path: nothing in it leaves the configuration directory.
+            Case { .name = "../../x", .expected = "extension-grants.daemon..._.._x.txt" },
+            Case { .name = "a/b\\c", .expected = "extension-grants.daemon.a_b_c.txt" },
         };
-        for (auto const& [label, expected]: Cases)
+        for (auto const& [name, expected]: Cases)
         {
-            INFO("label " << label);
-            CHECK(daemonExtensionGrantsFileName(daemonOf(label)) == expected);
+            INFO("name " << name);
+            CHECK(daemonExtensionGrantsFileName(daemonOf(name)) == expected);
         }
-        CHECK(daemonExtensionGrantsFileName(daemonOf(TestDefaultLabel))
+        CHECK(daemonExtensionGrantsFileName(daemonOf(TestDefaultName))
               == vtextension::DaemonExtensionGrantsFileName);
         CHECK(vtextension::DaemonExtensionGrantsFileName != vtextension::ExtensionGrantsFileName);
     }
 
-    SECTION("by socket, where one is named in place of the label's own")
+    SECTION("by socket, where one is named in place of the name's own")
     {
         auto const usual = std::filesystem::path { "/run/user/1000/contour/default" };
-        auto const first = daemonExtensionGrantsFileName(daemonAt(TestDefaultLabel, "/tmp/a/sock", usual));
-        auto const second = daemonExtensionGrantsFileName(daemonAt(TestDefaultLabel, "/tmp/b/sock", usual));
-        // Two daemons on the default label at two sockets: two files, each its own every time.
+        auto const first = daemonExtensionGrantsFileName(daemonAt(TestDefaultName, "/tmp/a/sock", usual));
+        auto const second = daemonExtensionGrantsFileName(daemonAt(TestDefaultName, "/tmp/b/sock", usual));
+        // Two daemons on the default name at two sockets: two files, each its own every time.
         CHECK(first != second);
         CHECK(first != vtextension::DaemonExtensionGrantsFileName);
-        CHECK(first == daemonExtensionGrantsFileName(daemonAt(TestDefaultLabel, "/tmp/a/sock", usual)));
+        CHECK(first == daemonExtensionGrantsFileName(daemonAt(TestDefaultName, "/tmp/a/sock", usual)));
         // Named by the socket's path as it is, not as it was spelled.
-        CHECK(first
-              == daemonExtensionGrantsFileName(daemonAt(TestDefaultLabel, "/tmp/a/./../a/sock", usual)));
+        CHECK(first == daemonExtensionGrantsFileName(daemonAt(TestDefaultName, "/tmp/a/./../a/sock", usual)));
         // A short hash: `extension-grants.daemon.` plus eight hex digits.
         CHECK(first.size() == std::string_view { "extension-grants.daemon.0123abcd.txt" }.size());
         CHECK(first.starts_with("extension-grants.daemon."));
         CHECK(first.ends_with(".txt"));
-        // A label and a socket of its own name both.
-        auto const labelled =
+        // A name and a socket of its own name both.
+        auto const named =
             daemonExtensionGrantsFileName(daemonAt("work", "/tmp/a/sock", "/run/user/1000/contour/work"));
-        CHECK(labelled.starts_with("extension-grants.daemon.work."));
-        CHECK(labelled != daemonExtensionGrantsFileName(daemonOf("work")));
+        CHECK(named.starts_with("extension-grants.daemon.work."));
+        CHECK(named != daemonExtensionGrantsFileName(daemonOf("work")));
     }
 }
 
@@ -246,8 +245,7 @@ TEST_CASE("ExtensionGrantStore: a GUI's denial survives a daemon's record", "[vt
     auto const directory = grantsFile().parent_path();
     auto fileSystem = InMemoryFileSystem { FileEntry { .path = directory, .isDirectory = true } };
     auto const guiFile = directory / vtextension::ExtensionGrantsFileName;
-    auto const daemonFile =
-        directory / vtextension::daemonExtensionGrantsFileName(daemonOf(TestDefaultLabel));
+    auto const daemonFile = directory / vtextension::daemonExtensionGrantsFileName(daemonOf(TestDefaultName));
     {
         auto gui = ExtensionGrantStore { fileSystem, guiFile };
         gui.record(GitId, GitDigest, GrantState::Granted);

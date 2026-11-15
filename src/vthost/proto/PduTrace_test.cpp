@@ -390,7 +390,7 @@ TEST_CASE("the trace names the new PDUs without revealing a name", "[vthost][pro
                                                                       .kind = GitHeadKindWire::Branch,
                                                                       .ahead = 1,
                                                                       .behind = 0 } } })
-          == "workspace=2 label=yes git=branch,ahead:1,behind:0");
+          == "workspace=2 name=yes git=branch,ahead:1,behind:0");
     CHECK(summarize(DecodedPdu { WorkspaceMeta { .workspace = 2, .git = WireGitInfo {} } })
           == "workspace=2 git=none");
     CHECK(summarize(DecodedPdu { CreateTab { .session = 3, .profileName = "ssh" } })

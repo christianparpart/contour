@@ -55,21 +55,20 @@ struct SwitcherServices
     std::function<void(
         vtworkspace::WorkspaceId window, session::SwitchTarget target, session::SwitchMode mode)>
         request;
-    /// Prepares starting a local daemon under a label ("New daemon…"). Called on the GUI thread; the job it
+    /// Prepares starting a local daemon under a name ("New daemon…"). Called on the GUI thread; the job it
     /// returns runs on a worker thread and holds all it needs.
-    std::function<std::function<std::expected<cli::NamedDaemonStart, std::string>()>(
-        std::string const& label)>
+    std::function<std::function<std::expected<cli::NamedDaemonStart, std::string>()>(std::string const& name)>
         startDaemon;
-    /// Creates a workspace labelled @c label on a daemon (`workspace.create`), then switches the window to it
+    /// Creates a workspace named @c name on a daemon (`workspace.create`), then switches the window to it
     /// or opens it in a new one. Called on the GUI thread; never blocks.
     std::function<void(vtworkspace::WorkspaceId window,
                        session::SwitchTarget const& daemon,
-                       std::string label,
+                       std::string name,
                        session::SwitchMode mode)>
         createWorkspace {};
     /// The wall clock another daemon's times are measured against.
     std::function<std::chrono::system_clock::time_point()> now {};
-    /// How the footer, the row menu and the label prompt spell keys.
+    /// How the footer, the row menu and the name prompt spell keys.
     command::ShortcutStyle style = command::ShortcutStyle::Text;
     /// The sidebar's view of one of the window's own daemon's workspaces, by its daemon id, for its row menu.
     std::function<command::WorkspaceMenuState(vtworkspace::WorkspaceId window, uint64_t workspace)>
@@ -99,7 +98,7 @@ enum class SwitcherSelectionOrigin : uint8_t
 class SwitcherController: public QAbstractListModel
 {
     Q_OBJECT
-    /// What the user typed; writing it filters the list. On the New Daemon level, the label.
+    /// What the user typed; writing it filters the list. On the New Daemon level, the name.
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
     /// The selected row, or -1 for an empty list.
     Q_PROPERTY(int currentIndex READ currentIndex WRITE setCurrentIndex NOTIFY currentIndexChanged)
@@ -123,24 +122,24 @@ class SwitcherController: public QAbstractListModel
     Q_PROPERTY(bool isDiscovering READ isDiscovering NOTIFY discoveringChanged)
     /// Whether a daemon is being started. A QML-facing predicate, hence a bool.
     Q_PROPERTY(bool isBusy READ isBusy NOTIFY busyChanged)
-    /// Whether the New Daemon level is shown, which draws the label's body. A QML-facing predicate, hence a
+    /// Whether the New Daemon level is shown, which draws the name's body. A QML-facing predicate, hence a
     /// bool.
-    Q_PROPERTY(bool isAskingLabel READ isAskingLabel NOTIFY levelChanged)
-    /// What a label is, over the verdict.
-    Q_PROPERTY(QString labelCaption READ labelCaption CONSTANT)
+    Q_PROPERTY(bool isAskingName READ isAskingName NOTIFY levelChanged)
+    /// What a name is, over the verdict.
+    Q_PROPERTY(QString nameCaption READ nameCaption CONSTANT)
     /// The caption over the equivalent command.
-    Q_PROPERTY(QString labelCommandCaption READ labelCommandCaption CONSTANT)
-    /// The verdict's glyph, a TabBadgeKind's underlying value: Done for an available label, Error for one
+    Q_PROPERTY(QString nameCommandCaption READ nameCommandCaption CONSTANT)
+    /// The verdict's glyph, a TabBadgeKind's underlying value: Done for an available name, Error for one
     /// that cannot start, None while nothing is typed.
-    Q_PROPERTY(int labelVerdictGlyph READ labelVerdictGlyph NOTIFY labelChanged)
-    /// What the label typed amounts to, a LabelVerdict's underlying value.
-    Q_PROPERTY(int labelVerdict READ labelVerdict NOTIFY labelChanged)
-    /// The verdict line under the label, or why a start failed.
-    Q_PROPERTY(QString labelMessage READ labelMessage NOTIFY labelChanged)
+    Q_PROPERTY(int nameVerdictGlyph READ nameVerdictGlyph NOTIFY nameChanged)
+    /// What the name typed amounts to, a NameVerdict's underlying value.
+    Q_PROPERTY(int nameVerdict READ nameVerdict NOTIFY nameChanged)
+    /// The verdict line under the name, or why a start failed.
+    Q_PROPERTY(QString nameMessage READ nameMessage NOTIFY nameChanged)
     /// The one action row's title; empty for none.
-    Q_PROPERTY(QString labelAction READ labelAction NOTIFY labelChanged)
-    /// `contour daemon --name ‹name›` for an available label; empty otherwise.
-    Q_PROPERTY(QString labelCommand READ labelCommand NOTIFY labelChanged)
+    Q_PROPERTY(QString nameAction READ nameAction NOTIFY nameChanged)
+    /// `contour daemon --name ‹name›` for an available name; empty otherwise.
+    Q_PROPERTY(QString nameCommand READ nameCommand NOTIFY nameChanged)
     /// How many group headers the rows draw: the rows that open a group. With every row the same height, it
     /// gives the list's height without laying the list out (PickerPopup sizes itself from it).
     Q_PROPERTY(int groupCount READ groupCount NOTIFY groupCountChanged)
@@ -221,15 +220,15 @@ class SwitcherController: public QAbstractListModel
     /// @param id The entry's actionId.
     Q_INVOKABLE void triggerRowMenu(int row, int id);
 
-    /// Takes @p label as typed on the New Daemon level: the verdict follows at once.
-    /// @param label The label typed.
-    Q_INVOKABLE void checkLabel(QString const& label);
+    /// Takes @p name as typed on the New Daemon level: the verdict follows at once.
+    /// @param name The name typed.
+    Q_INVOKABLE void checkName(QString const& name);
 
-    /// Acts on @p label (Return on the New Daemon level): starts a daemon under an available one, switches to
+    /// Acts on @p name (Return on the New Daemon level): starts a daemon under an available one, switches to
     /// one already running; does nothing for an empty or invalid one, whose verdict says why.
-    /// @param label The label typed.
+    /// @param name The name typed.
     /// @param mode A session::SwitchMode's underlying value: switch this window, or open a new one.
-    Q_INVOKABLE void submitLabel(QString const& label, int mode);
+    Q_INVOKABLE void submitName(QString const& name, int mode);
 
     /// Drops the start in flight, if any, without closing anything: what closing the window does.
     Q_INVOKABLE void abandon();
@@ -257,17 +256,14 @@ class SwitcherController: public QAbstractListModel
     [[nodiscard]] QStringList footerHintSets() const { return _presentation.footerHintSets; }
     [[nodiscard]] bool isDiscovering() const noexcept { return _discovery == SwitcherDiscovery::Running; }
     [[nodiscard]] bool isBusy() const noexcept { return _isBusy; }
-    [[nodiscard]] bool isAskingLabel() const noexcept { return _level == SwitcherLevel::NewDaemon; }
-    [[nodiscard]] QString labelCaption() const;
-    [[nodiscard]] QString labelCommandCaption() const;
-    [[nodiscard]] int labelVerdictGlyph() const noexcept;
-    [[nodiscard]] int labelVerdict() const noexcept { return static_cast<int>(_labelState.verdict); }
-    [[nodiscard]] QString labelMessage() const;
-    [[nodiscard]] QString labelAction() const { return QString::fromStdString(_labelState.actionTitle); }
-    [[nodiscard]] QString labelCommand() const
-    {
-        return QString::fromStdString(_labelState.equivalentCommand);
-    }
+    [[nodiscard]] bool isAskingName() const noexcept { return _level == SwitcherLevel::NewDaemon; }
+    [[nodiscard]] QString nameCaption() const;
+    [[nodiscard]] QString nameCommandCaption() const;
+    [[nodiscard]] int nameVerdictGlyph() const noexcept;
+    [[nodiscard]] int nameVerdict() const noexcept { return static_cast<int>(_nameState.verdict); }
+    [[nodiscard]] QString nameMessage() const;
+    [[nodiscard]] QString nameAction() const { return QString::fromStdString(_nameState.actionTitle); }
+    [[nodiscard]] QString nameCommand() const { return QString::fromStdString(_nameState.equivalentCommand); }
     [[nodiscard]] int groupCount() const noexcept;
 
     /// @return The rows as shown now.
@@ -286,7 +282,7 @@ class SwitcherController: public QAbstractListModel
     void levelChanged();
     /// Discovery started or settled.
     void discoveringChanged();
-    void labelChanged();
+    void nameChanged();
     void busyChanged();
     /// The rows were rebuilt, and with them their groups.
     void groupCountChanged();
@@ -380,7 +376,7 @@ class SwitcherController: public QAbstractListModel
     /// Leaves the level (or narrows the widened chip), back to where the user was.
     void back();
 
-    /// Creates a workspace from New Workspace @p row: labelled with what was typed, if anything.
+    /// Creates a workspace from New Workspace @p row: named with what was typed, if anything.
     void createWorkspace(SwitcherRow const& row, session::SwitchMode mode);
 
     /// Asks the window switcher, and closes.
@@ -391,7 +387,7 @@ class SwitcherController: public QAbstractListModel
 
     /// The worker's answer to a start: switches to the daemon, or says why not.
     void finishStart(std::uint64_t start,
-                     std::string const& label,
+                     std::string const& name,
                      session::SwitchMode mode,
                      std::expected<cli::NamedDaemonStart, std::string> result);
 
@@ -421,7 +417,7 @@ class SwitcherController: public QAbstractListModel
     DiscoveryJob _discoveryJob = DiscoveryJob::Idle;
     std::uint64_t _discoveryFor = 0; ///< The opening the running discovery's answer serves.
     std::uint64_t _listings = 0;     ///< Counts listings; a host's answer is dropped once backed out of.
-    std::uint64_t _starts = 0; ///< Counts starts; one left (or relabelled) before it answered is dropped.
+    std::uint64_t _starts = 0;       ///< Counts starts; one left (or renamed) before it answered is dropped.
     /// The listing each daemon waits for, by address; a host left before it answered has none.
     std::vector<std::pair<session::SwitchTarget, std::uint64_t>> _pendingListings;
     QString _filter;
@@ -429,9 +425,9 @@ class SwitcherController: public QAbstractListModel
     int _current = -1;
     SwitcherSelectionOrigin _selectionOrigin = SwitcherSelectionOrigin::Opening;
     Presentation _presentation;
-    SwitcherLabelState _labelState;
-    std::string _labelFailure; ///< Why the last start failed; cleared as the label changes.
-    bool _isBusy = false;      ///< @see isBusy(); the QML-facing predicate's member.
+    SwitcherNameState _nameState;
+    std::string _nameFailure; ///< Why the last start failed; cleared as the name changes.
+    bool _isBusy = false;     ///< @see isBusy(); the QML-facing predicate's member.
     RowMenu _rowMenu;
     /// The discoveries and starts under way, their answers handed back here; joined first, as the controller
     /// goes, and the ones that ended as the next one starts.

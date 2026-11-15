@@ -106,7 +106,7 @@ namespace
 
     constexpr auto SwitchDaemonNames = std::array {
         EnumName { .value = SwitchDaemonKind::Same, .name = "same" },
-        EnumName { .value = SwitchDaemonKind::Name, .name = "label" },
+        EnumName { .value = SwitchDaemonKind::Name, .name = "name" },
         EnumName { .value = SwitchDaemonKind::Host, .name = "host" },
     };
 
@@ -689,7 +689,7 @@ namespace
                                           value.workspace,
                                           value.position ? std::format(" position={}", *value.position)
                                                          : std::string {},
-                                          formatPresence("label", value.name),
+                                          formatPresence("name", value.name),
                                           formatGit(value.git));
                    } },
         TraceRow { PduType::MoveWorkspace,
@@ -708,7 +708,7 @@ namespace
                    +[](DecodedPdu const& pdu) {
                        // The name is the user's words: told by its length only.
                        auto const& value = std::get<SetWorkspaceName>(pdu);
-                       return std::format("workspace={} label={} bytes", value.workspace, value.name.size());
+                       return std::format("workspace={} name={} bytes", value.workspace, value.name.size());
                    } },
     };
 

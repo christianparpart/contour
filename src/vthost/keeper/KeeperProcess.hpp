@@ -23,8 +23,8 @@ namespace vthost::keeper
 enum class KeeperStartError : uint8_t
 {
     MultiThreaded = 0, ///< Another thread runs: the signal mask and PR_SET_PDEATHSIG would not hold.
-    LabelHeld,         ///< Another keeper holds the label; no daemon was started.
-    LabelUnlockable,   ///< The label's lock file could not be opened.
+    NameHeld,          ///< Another keeper holds the name; no daemon was started.
+    NameUnlockable,    ///< The name's lock file could not be opened.
     PortsUnavailable,  ///< The signal watch could not be set up.
 };
 
@@ -38,7 +38,7 @@ struct KeeperProcessConfig
     std::filesystem::path daemonImage;        ///< The daemon executable.
     std::vector<std::string> daemonArguments; ///< Its argv after argv[0]: frozen (@see KeeperPortsConfig).
     std::vector<std::string> environment;     ///< The daemon's and every shell's environment, `NAME=value`.
-    std::filesystem::path socketPath;         ///< The label's socket, whose lock (labelLockPath()) is taken.
+    std::filesystem::path socketPath;         ///< The name's socket, whose lock (nameLockPath()) is taken.
     std::vector<uint8_t> launchOptions;       ///< The options record, opaque here; sent with every Launch.
     RestartPolicyConfig policy {};            ///< The crash-loop policy's numbers.
     /// What a crashed daemon is restarted from, and the lease on it; null for the daemon image, always.
@@ -53,7 +53,7 @@ struct KeeperProcessConfig
 ///         nullopt where it cannot be told.
 [[nodiscard]] std::optional<std::size_t> runningThreadCount();
 
-/// Keeps a daemon: asserts that the process is single-threaded, takes the label's lock, builds the POSIX
+/// Keeps a daemon: asserts that the process is single-threaded, takes the name's lock, builds the POSIX
 /// ports and runs the Keeper until it ends. Blocks.
 ///
 /// Called before anything of the process starts a thread: the ports block the stop signals and SIGCHLD in

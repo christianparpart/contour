@@ -495,8 +495,8 @@ struct InventoryEnd
     void visitFields(this auto& /*self*/, auto& /*visitor*/) {}
     [[nodiscard]] bool operator==(InventoryEnd const&) const = default;
 };
-/// Keeper to daemon: the answer to Shutdown. The keeper has let go of the label and closed its copies of the
-/// listeners, so once the daemon closes its own nothing serves the socket and nothing holds the label: a new
+/// Keeper to daemon: the answer to Shutdown. The keeper has let go of the name and closed its copies of the
+/// listeners, so once the daemon closes its own nothing serves the socket and nothing holds the name: a new
 /// instance starts at once.
 struct ShutdownNoted
 {

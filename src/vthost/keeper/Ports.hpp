@@ -22,11 +22,11 @@
 namespace vthost::keeper
 {
 
-/// The exclusive lock on a label (`<socket path>.keeper.lock`), held for as long as the object lives.
-class LabelLock
+/// The exclusive lock on a name (`<socket path>.keeper.lock`), held for as long as the object lives.
+class NameLock
 {
   public:
-    virtual ~LabelLock() = default;
+    virtual ~NameLock() = default;
 };
 
 /// The keeper's end of the private connection to one daemon process.
@@ -255,7 +255,7 @@ class RestartImages
 };
 
 /// Removes the socket files of the listeners the keeper holds as its daemon ends, whichever way it ends: a
-/// daemon behind a keeper never removes them itself, and the keeper does while it still holds the label lock.
+/// daemon behind a keeper never removes them itself, and the keeper does while it still holds the name lock.
 class SocketFiles
 {
   public:

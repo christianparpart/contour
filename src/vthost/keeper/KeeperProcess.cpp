@@ -30,8 +30,8 @@ std::string_view describe(KeeperStartError error) noexcept
     {
         case KeeperStartError::MultiThreaded:
             return "the keeper process runs more than one thread, which its signal handling cannot allow";
-        case KeeperStartError::LabelHeld: return "another keeper already keeps a daemon on this socket";
-        case KeeperStartError::LabelUnlockable: return "the socket's keeper lock file cannot be opened";
+        case KeeperStartError::NameHeld: return "another keeper already keeps a daemon on this socket";
+        case KeeperStartError::NameUnlockable: return "the socket's keeper lock file cannot be opened";
         case KeeperStartError::PortsUnavailable: return "the keeper's signal watch cannot be set up";
     }
     return "the keeper cannot start";
@@ -109,11 +109,11 @@ std::expected<int, KeeperStartError> runKeeperProcess(KeeperProcessConfig config
     ::prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
 #endif
 
-    // A second keeper on the label fails here, before any daemon is started or any socket touched.
-    auto lock = lockLabel(config.socketPath);
+    // A second keeper on the name fails here, before any daemon is started or any socket touched.
+    auto lock = lockName(config.socketPath);
     if (!lock)
-        return std::unexpected { lock.error() == LockError::Held ? KeeperStartError::LabelHeld
-                                                                 : KeeperStartError::LabelUnlockable };
+        return std::unexpected { lock.error() == LockError::Held ? KeeperStartError::NameHeld
+                                                                 : KeeperStartError::NameUnlockable };
 
     auto ports =
         makePosixKeeperPorts(KeeperPortsConfig { .daemonArguments = std::move(config.daemonArguments),

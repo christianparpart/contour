@@ -386,15 +386,15 @@ class SessionFactory
         return RemoteRouting::Local;
     }
 
-    /// Attach mode: renames the DAEMON's workspace @p workspace; the daemon's label change reaches every
+    /// Attach mode: renames the DAEMON's workspace @p workspace; the daemon's name change reaches every
     /// window listing it (WorkspaceMeta).
     /// @param workspace The daemon's workspace id, as a directory lists it.
-    /// @param label The new label; empty clears it.
-    /// @return Routed if handed to the daemon; Refused if the daemon owns the labels and cannot take it (the
-    ///         capability not shared, no connection); Local for a local factory, whose caller labels the
+    /// @param name The new name; empty clears it.
+    /// @return Routed if handed to the daemon; Refused if the daemon owns the names and cannot take it (the
+    ///         capability not shared, no connection); Local for a local factory, whose caller names the
     ///         workspace itself.
     [[nodiscard]] virtual RemoteRouting requestRemoteRenameWorkspace(uint64_t /*workspace*/,
-                                                                     std::string_view /*label*/)
+                                                                     std::string_view /*name*/)
     {
         return RemoteRouting::Local;
     }

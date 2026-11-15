@@ -1585,18 +1585,18 @@ bool TerminalSessionManager::ownsWorkspace(window::WindowController const& windo
 
 void TerminalSessionManager::renameWorkspace(window::WindowController& window,
                                              uint64_t workspace,
-                                             std::string label)
+                                             std::string name)
 {
     if (listsRemotely(window))
     {
-        // The daemon's label change comes back as the window's new directory.
-        if (factoryFor(window.displayedWorkspace()).requestRemoteRenameWorkspace(workspace, label)
+        // The daemon's name change comes back as the window's new directory.
+        if (factoryFor(window.displayedWorkspace()).requestRemoteRenameWorkspace(workspace, name)
             == RemoteRouting::Refused)
             managerLog()("The daemon cannot rename workspace {}.", workspace);
         return;
     }
     if (ownsWorkspace(window, vtworkspace::WorkspaceId { workspace }))
-        setWorkspaceName(vtworkspace::WorkspaceId { workspace }, std::move(label));
+        setWorkspaceName(vtworkspace::WorkspaceId { workspace }, std::move(name));
 }
 
 void TerminalSessionManager::renameTab(window::WindowController& window, uint64_t tab, std::string name)

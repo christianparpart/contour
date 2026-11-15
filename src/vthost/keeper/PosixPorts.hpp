@@ -87,21 +87,21 @@ struct PosixKeeperPorts
 /// @return The channel; the event source in the same ports watches it.
 [[nodiscard]] std::unique_ptr<Channel> makePosixChannel(UniqueFd socket);
 
-/// Why a label could not be locked.
+/// Why a name could not be locked.
 enum class LockError : uint8_t
 {
     Unopenable = 0, ///< The lock file could not be opened or created.
-    Held,           ///< Another keeper holds the label.
+    Held,           ///< Another keeper holds the name.
 };
 
-/// @param socketPath The label's socket path.
+/// @param socketPath The name's socket path.
 /// @return Its lock file, `<socket path>.keeper.lock`.
-[[nodiscard]] std::filesystem::path labelLockPath(std::filesystem::path const& socketPath);
+[[nodiscard]] std::filesystem::path nameLockPath(std::filesystem::path const& socketPath);
 
-/// Takes the label's exclusive lock (`flock(LOCK_EX | LOCK_NB)` on labelLockPath()), without waiting.
-/// @param socketPath The label's socket path.
+/// Takes the name's exclusive lock (`flock(LOCK_EX | LOCK_NB)` on nameLockPath()), without waiting.
+/// @param socketPath The name's socket path.
 /// @return The lock, held until it is destroyed; or why it could not be taken.
-[[nodiscard]] std::expected<std::unique_ptr<LabelLock>, LockError> lockLabel(
+[[nodiscard]] std::expected<std::unique_ptr<NameLock>, LockError> lockName(
     std::filesystem::path const& socketPath);
 
 } // namespace vthost::keeper
