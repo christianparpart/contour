@@ -10,6 +10,8 @@
 #include <filesystem>
 #include <iosfwd>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace vthost::latency
 {
@@ -46,6 +48,28 @@ struct E2eOptions
     FramePacing pacing = FramePacing::Unpaced;   ///< Whether the GUI's swaps wait for the vertical blank.
     std::optional<std::filesystem::path> record; ///< Where to write the TSV record.
 };
+
+/// Which GUI a launch runs.
+enum class LaunchMode : uint8_t
+{
+    InProcess = 0, ///< `contour terminal`.
+    Daemon,        ///< `contour client`.
+};
+
+/// What one GUI launch is started with.
+struct GuiLaunch
+{
+    LaunchMode mode = LaunchMode::InProcess; ///< Which GUI.
+    std::filesystem::path socket;     ///< The benchmark's daemon socket, which a client launch attaches to.
+    std::filesystem::path config;     ///< The configuration file both GUIs read.
+    std::filesystem::path reportFile; ///< Where the GUI writes its probe report.
+    std::size_t keys = 0;             ///< Measured keys.
+    FramePacing pacing = FramePacing::Unpaced; ///< Whether the GUI's swaps wait for the vertical blank.
+};
+
+/// @param launch What the GUI is started with.
+/// @return The `contour` arguments (without the program) that start the GUI of @p launch.
+[[nodiscard]] std::vector<std::string> guiLaunchArguments(GuiLaunch const& launch);
 
 /// Runs the benchmark and prints its table and the gate line.
 /// @param given How it runs; the executable's path is made absolute, as the children start elsewhere.

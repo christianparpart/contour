@@ -49,6 +49,13 @@ namespace
         PrefixRow { .prefix = "host:"sv, .kind = DaemonWordKind::SavedHost },
     };
 
+    /// @return Whether @p rest, what follows a word's first colon, is a port: then the word is `HOST:PORT`
+    ///         whatever its host is called, `host:2222` and `name:22` included.
+    [[nodiscard]] bool isPort(std::string_view rest) noexcept
+    {
+        return !rest.empty() && std::ranges::all_of(rest, [](char ch) { return ch >= '0' && ch <= '9'; });
+    }
+
     [[nodiscard]] bool contains(std::function<bool(std::string_view)> const& lookup, std::string_view name)
     {
         return lookup && lookup(name);
@@ -59,8 +66,11 @@ std::expected<DaemonTarget, DaemonWordError> resolveDaemonWord(std::string_view 
                                                                LocalDaemons const& localDaemons,
                                                                SavedHosts const& savedHosts)
 {
-    if (auto const prefix = std::ranges::find_if(
-            PrefixRows, [word](PrefixRow const& row) { return word.starts_with(row.prefix); });
+    if (auto const prefix = std::ranges::find_if(PrefixRows,
+                                                 [word](PrefixRow const& row) {
+                                                     return word.starts_with(row.prefix)
+                                                            && !isPort(word.substr(row.prefix.size()));
+                                                 });
         prefix != PrefixRows.end())
     {
         auto const name = word.substr(prefix->prefix.size());

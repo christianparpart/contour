@@ -100,3 +100,29 @@ TEST_CASE("resolveDaemonWord looks a bare word up as a local daemon, then a save
         CHECK(resolveDaemonWord("host:", {}, {}) == std::unexpected { DaemonWordError::EmptyName });
     }
 }
+
+TEST_CASE(
+    "resolveDaemonWord reads a port after the first colon as HOST:PORT, over the name: and host: prefixes",
+    "[vthost][client][daemon-word]")
+{
+    // A machine may be called `host` or `name`: a port after the colon makes the word an address.
+    struct Row
+    {
+        std::string_view word;
+        DaemonWordKind kind;
+        std::string_view text;
+    };
+    auto const everything = [](std::string_view) {
+        return true;
+    };
+    for (auto const& row: { Row { "host:2222", DaemonWordKind::HostPort, "host:2222" },
+                            Row { "name:22", DaemonWordKind::HostPort, "name:22" },
+                            Row { "host:box", DaemonWordKind::SavedHost, "box" },
+                            Row { "name:work", DaemonWordKind::LocalName, "work" } })
+    {
+        INFO(row.word);
+        auto const target = resolved(row.word, { .contains = everything }, { .contains = everything });
+        CHECK(target.kind == row.kind);
+        CHECK(target.text == row.text);
+    }
+}
