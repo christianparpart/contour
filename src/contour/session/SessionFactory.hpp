@@ -405,7 +405,8 @@ class SessionFactory
     /// @param session A daemon session id of the tab, as a directory lists its panes.
     /// @param name The new name; empty clears it, so the tab's title names it again.
     /// @return As requestRemoteRenameWorkspace().
-    [[nodiscard]] virtual RemoteRouting requestRemoteTabRename(uint64_t /*session*/, std::string /*name*/)
+    [[nodiscard]] virtual RemoteRouting requestRemoteTabRename(uint64_t /*session*/,
+                                                               std::string_view /*name*/)
     {
         return RemoteRouting::Local;
     }

@@ -1614,7 +1614,7 @@ void TerminalSessionManager::renameTab(window::WindowController& window, uint64_
             return;
         // The daemon's rename comes back as the window's new directory and, where it is mirrored, its tab.
         if (factoryFor(window.displayedWorkspace())
-                .requestRemoteTabRename(listed->tab->panes.front().key.value, std::move(name))
+                .requestRemoteTabRename(listed->tab->panes.front().key.value, name)
             == RemoteRouting::Refused)
             managerLog()("The daemon cannot rename tab {}.", tab);
         return;

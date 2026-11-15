@@ -6212,9 +6212,9 @@ class RoutingFactory final: public contour::session::SessionFactory
         return contour::session::RemoteRouting::Routed;
     }
     [[nodiscard]] contour::session::RemoteRouting requestRemoteTabRename(uint64_t session,
-                                                                         std::string name) override
+                                                                         std::string_view name) override
     {
-        renamedTabs.emplace_back(session, std::move(name));
+        renamedTabs.emplace_back(session, std::string { name });
         return contour::session::RemoteRouting::Routed;
     }
     [[nodiscard]] contour::session::RemoteRouting requestRemoteMove(
