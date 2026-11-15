@@ -40,9 +40,9 @@ struct ScopeError
     std::string message;        ///< What to tell the agent.
 };
 
-/// Resolves @p target to a full pane id, by label, full id or hex id suffix of at least four digits.
+/// Resolves @p target to a full pane id, by name, full id or hex id suffix of at least four digits.
 ///
-/// Under `OwnTab` the target is matched against the caller's tab only: a label or suffix that would
+/// Under `OwnTab` the target is matched against the caller's tab only: a name or suffix that would
 /// match a pane of another tab does not resolve, so it can neither be ambiguous with nor stand in
 /// for one of the caller's own panes.
 /// @param reply The `list` reply.

@@ -265,9 +265,34 @@ TEST_CASE("contradictory or malformed flags are bad usage", "[contour][cli][cont
     CHECK(status({ "split", "--ratio", "100" }) == 2);
     CHECK(status({ "new", "--workspace", "w", "--new-workspace" }) == 2);
     CHECK(status({ "close", "--pane", "p", "--tab", "t" }) == 2);
-    CHECK(status({ "label", "only-one" }) == 2);
+    CHECK(status({ "rename", "only-one" }) == 2);
     CHECK(channel.calls.empty());
     CHECK(run.err.str().contains("--ratio"));
+}
+
+TEST_CASE("rename gives an object its name", "[contour][cli][control]")
+{
+    auto run = Run {};
+    auto channel = ScriptedChannel { "{}"s };
+    auto const status = [&](std::vector<std::string_view> const& args) {
+        return contour::cli::runControlVerb(verbNamed("rename"), parseFlags(args), channel, run.io());
+    };
+
+    SECTION("an object and a name")
+    {
+        CHECK(status({ "rename", "pane:logs", "tail" }) == 0);
+        REQUIRE(channel.calls.size() == 1);
+        CHECK(channel.calls.front().method == "object.rename");
+        CHECK(channel.calls.front().params
+              == vtcontrol::encodeJson(
+                  vtcontrol::ObjectRenameRequest { .object = "pane:logs", .name = "tail" }));
+    }
+    SECTION("an object without a name is bad usage")
+    {
+        CHECK(status({ "rename", "x" }) == 2);
+        CHECK(channel.calls.empty());
+        CHECK(run.err.str() == "Error: rename takes an OBJECT and a NAME (an empty one clears it)\n");
+    }
 }
 
 TEST_CASE("numeric flags past what their request holds are bad usage", "[contour][cli][control]")
@@ -782,11 +807,14 @@ TEST_CASE("the workspace and tab verbs build their requests", "[contour][cli][co
         { "workspace.new",
           { "workspace", "new" },
           vtcontrol::encodeJson(vtcontrol::CreateWorkspaceRequest {}) },
-        { "workspace.rename",
-          { "workspace", "rename", "build", "release" },
+        { "rename",
+          { "rename", "workspace:build", "release" },
           vtcontrol::encodeJson(
               vtcontrol::ObjectRenameRequest { .object = "workspace:build", .name = "release" }) },
-        { "workspace.rename", { "workspace", "rename", "build" }, std::nullopt },
+        { "rename",
+          { "rename", "tab:2", "" },
+          vtcontrol::encodeJson(vtcontrol::ObjectRenameRequest { .object = "tab:2", .name = "" }) },
+        { "rename", { "rename", "workspace:build" }, std::nullopt },
         { "workspace.move",
           { "workspace", "move", "--to", "2", "build" },
           vtcontrol::encodeJson(vtcontrol::MoveWorkspaceRequest { .workspace = "build", .toPosition = 2 }) },

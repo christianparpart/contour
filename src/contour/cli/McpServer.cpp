@@ -11,6 +11,7 @@
 #include <utility>
 
 #include <vtcontrol/Json.hpp>
+#include <vtcontrol/LegacySpelling.hpp>
 #include <vtcontrol/ObjectRef.hpp>
 #include <vtcontrol/Target.hpp>
 
@@ -349,6 +350,7 @@ McpServer::ToolResult McpServer::runTool(ToolRow const& row, std::string_view ar
         { "pane_close", &McpServer::toolPaneClose },
         { "tab_close", &McpServer::toolTabClose },
         { "object_rename", &McpServer::toolRename },
+        { "object_setLabel", &McpServer::toolRename }, // compat(0.9.0): object_rename's old name
         { "block_list", &McpServer::toolOnPane<vtcontrol::BlockListRequest> },
         { "block_read", &McpServer::toolBlockRead },
         { "daemon_info", &McpServer::toolDaemonInfo },
@@ -372,6 +374,14 @@ McpServer::ToolResult McpServer::runTool(ToolRow const& row, std::string_view ar
     auto const entry = std::ranges::find(Handlers, row.name, &Entry::name);
     if (entry == Handlers.end())
         return refuse(std::format("{} is not available", row.name));
+    if (!row.legacyMethod.empty())
+    {
+        // compat(0.9.0): an old tool name takes the arguments in its method's old spelling, too.
+        auto const spelled = vtcontrol::requestFromLegacy(row.legacyMethod, arguments);
+        if (!spelled)
+            return refuse(spelled.error().message);
+        return (this->*(entry->handler))(row, spelled->second);
+    }
     return (this->*(entry->handler))(row, arguments);
 }
 
@@ -449,7 +459,7 @@ McpServer::ToolResult McpServer::toolPaneSplit(ToolRow const& /*row*/, std::stri
                                                    .ratioPercent = args->ratioPercent,
                                                    .cwd = args->cwd,
                                                    .command = args->command,
-                                                   .name = args->label,
+                                                   .name = args->name,
                                                    .focus = vtcontrol::FocusPolicy::Keep };
     return callDaemon("pane.split", vtcontrol::encodeJson(request));
 }
@@ -580,7 +590,7 @@ McpServer::ToolResult McpServer::toolTabCreate(ToolRow const& /*row*/, std::stri
     if (!args)
         return { .outcome = ToolOutcome::BadArguments, .text = args.error() };
     auto const request = vtcontrol::CreateTabRequest {
-        .cwd = args->cwd, .command = args->command, .name = args->label, .focus = vtcontrol::FocusPolicy::Keep
+        .cwd = args->cwd, .command = args->command, .name = args->name, .focus = vtcontrol::FocusPolicy::Keep
     };
     return callDaemon("tab.create", vtcontrol::encodeJson(request));
 }

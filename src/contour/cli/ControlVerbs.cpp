@@ -155,7 +155,7 @@ namespace
     {
         return CLI::Option { "pane",
                              CLI::Value { ""s },
-                             "The pane: an id, a label, or a position. Defaults to $CONTOUR_PANE.",
+                             "The pane: an id, a name, or a position. Defaults to $CONTOUR_PANE.",
                              "P" };
     }
 
@@ -475,11 +475,11 @@ namespace
         return !VerbFlags { flags, "close" }.text("tab").empty();
     }
 
-    [[nodiscard]] Params buildLabel(CLI::FlagStore const& flags)
+    [[nodiscard]] Params buildRename(CLI::FlagStore const& flags)
     {
-        auto const& words = VerbFlags { flags, "label" }.words();
+        auto const& words = VerbFlags { flags, "rename" }.words();
         if (words.size() != 2)
-            return std::unexpected("label takes an OBJECT and a LABEL (an empty one clears it)"s);
+            return std::unexpected("rename takes an OBJECT and a NAME (an empty one clears it)"s);
         return vtcontrol::encodeJson(vtcontrol::ObjectRenameRequest { .object = std::string { words[0] },
                                                                       .name = std::string { words[1] } });
     }
@@ -489,18 +489,6 @@ namespace
         auto const f = VerbFlags { flags, "workspace.new" };
         return vtcontrol::encodeJson(
             vtcontrol::CreateWorkspaceRequest { .cwd = f.text("cwd"), .name = f.text("name") });
-    }
-
-    [[nodiscard]] Params buildWorkspaceRename(CLI::FlagStore const& flags)
-    {
-        auto const& words = VerbFlags { flags, "workspace.rename" }.words();
-        if (words.size() != 2)
-            return std::unexpected(
-                "workspace rename takes a WORKSPACE and a LABEL (an empty one clears it)"s);
-        // object.rename of `workspace:<spec>`, which resolves the spec as a workspace spec, a full id
-        // included.
-        return vtcontrol::encodeJson(vtcontrol::ObjectRenameRequest {
-            .object = std::format("workspace:{}", words[0]), .name = std::string { words[1] } });
     }
 
     /// @param verb The verb whose `--to` is read, for the message.
@@ -787,7 +775,7 @@ namespace
                             CLI::Option {
                                 "new-workspace", CLI::Value { false }, "Opens the tab in a new workspace." },
                             CLI::Option { "cwd", CLI::Value { ""s }, "The working directory.", "DIR" },
-                            CLI::Option { "name", CLI::Value { ""s }, "Labels the new tab NAME.", "NAME" },
+                            CLI::Option { "name", CLI::Value { ""s }, "Names the new tab NAME.", "NAME" },
                             noFocusOption(),
                         });
                     },
@@ -812,7 +800,7 @@ namespace
                                           "The share of the old pane the new one gets, 1 to 99.",
                                           "PCT" },
                             CLI::Option { "cwd", CLI::Value { ""s }, "The working directory.", "DIR" },
-                            CLI::Option { "name", CLI::Value { ""s }, "Labels the new pane NAME.", "NAME" },
+                            CLI::Option { "name", CLI::Value { ""s }, "Names the new pane NAME.", "NAME" },
                             noFocusOption(),
                         });
                     },
@@ -884,14 +872,17 @@ namespace
                 .usesAlternateMethod = closesTab,
             },
             ControlVerb {
-                .path = "label",
+                .path = "rename",
                 .method = "object.rename",
-                .usage = "label OBJECT LABEL",
-                .summary = "Labels a workspace, tab or pane to address it by; an empty label clears it.",
+                .usage = "rename OBJECT NAME",
+                .summary = "Names a workspace, tab or pane, which addresses it too; an empty name clears it.",
                 .options = [] { return withConnectionOptions({}); },
                 .verbatim =
-                    CLI::Verbatim { "OBJECT LABEL", "The object, e.g. pane:logs, and its new label." },
-                .buildParams = buildLabel,
+                    CLI::Verbatim {
+                        "OBJECT NAME",
+                        "The object, e.g. pane:logs or workspace:2, and its new name.",
+                    },
+                .buildParams = buildRename,
                 .printHuman = humanNothing,
             },
             ControlVerb {
@@ -905,7 +896,7 @@ namespace
                             CLI::Option { "cwd", CLI::Value { ""s }, "Where the first pane starts.", "DIR" },
                             CLI::Option { "name",
                                           CLI::Value { ""s },
-                                          "Labels the workspace NAME; without it, it is named after its "
+                                          "Names the workspace NAME; without it, it is named after its "
                                           "folder.",
                                           "NAME" },
                         });
@@ -913,16 +904,6 @@ namespace
                 .verbatim = std::nullopt,
                 .buildParams = buildWorkspaceNew,
                 .printHuman = humanWorkspace<vtcontrol::CreateWorkspaceReply>,
-            },
-            ControlVerb {
-                .path = "workspace.rename",
-                .method = "object.rename",
-                .usage = "workspace rename WORKSPACE LABEL",
-                .summary = "Renames a workspace; an empty label clears it.",
-                .options = [] { return withConnectionOptions({}); },
-                .verbatim = CLI::Verbatim { "WORKSPACE LABEL", "The workspace, and its new label." },
-                .buildParams = buildWorkspaceRename,
-                .printHuman = humanNothing,
             },
             ControlVerb {
                 .path = "workspace.close",
@@ -1020,7 +1001,7 @@ namespace
                             CLI::Option { "to-workspace",
                                           CLI::Value { ""s },
                                           "Switches to this workspace of the destination daemon (an id, a "
-                                          "label, a position); without it the window decides or asks.",
+                                          "name, a position); without it the window decides or asks.",
                                           "W2" },
                         });
                     },
@@ -1519,7 +1500,7 @@ std::span<ControlVerbGroup const> controlVerbGroups()
 {
     static constexpr auto Groups = std::array {
         ControlVerbGroup { "pane", "Reads panes." },
-        ControlVerbGroup { "workspace", "Opens, renames and reorders workspaces." },
+        ControlVerbGroup { "workspace", "Opens, closes and reorders workspaces." },
         ControlVerbGroup { "tab", "Moves tabs." },
         ControlVerbGroup { "api", "Explores and calls the control API." },
     };

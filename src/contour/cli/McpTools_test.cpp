@@ -20,6 +20,7 @@
 using contour::cli::McpAccess;
 using contour::cli::TabScope;
 using contour::cli::ToolKind;
+using contour::cli::ToolRow;
 using contour::cli::toolsListJson;
 
 namespace
@@ -70,13 +71,8 @@ TEST_CASE("McpTools.no_grants_lists_all_but_tab_create_and_tab_close", "[mcp-too
 TEST_CASE("McpTools.read_only_drops_input_and_write_tools", "[mcp-tools]")
 {
     auto const json = toolsListJson(allGrants(), McpAccess::ReadOnly, TabScope::AllTabs);
-    for (auto const tool: { "pane_type",
-                            "pane_run",
-                            "pane_split",
-                            "tab_create",
-                            "pane_close",
-                            "tab_close",
-                            "object_rename" })
+    for (auto const tool:
+         { "pane_type", "pane_run", "pane_split", "tab_create", "pane_close", "tab_close", "object_rename" })
         CHECK_FALSE(lists(json, tool));
     for (auto const tool: { "workspace_list", "pane_capture", "block_list", "block_read", "daemon_info" })
         CHECK(lists(json, tool));
@@ -90,7 +86,8 @@ TEST_CASE("McpTools.catalog_rows_exist_in_the_api", "[mcp-tools]")
         if (row.kind != ToolKind::Catalog)
             continue;
         CHECK(std::ranges::any_of(api.methods, [&](auto const& m) { return m.name == row.catalogMethod; }));
-        auto name = std::string { row.catalogMethod };
+        // compat(0.9.0): an alias row keeps the name of the method its tool was once spelled after.
+        auto name = std::string { row.legacyMethod.empty() ? row.catalogMethod : row.legacyMethod };
         std::ranges::replace(name, '.', '_');
         CHECK(name == row.name);
     }
@@ -157,7 +154,7 @@ TEST_CASE("McpTools.composite_schemas_match_the_spec", "[mcp-tools]")
     auto const json = toolsListJson(std::nullopt, McpAccess::Full, TabScope::AllTabs);
 
     auto const split = composite(json, "pane_split");
-    CHECK(propertyNames(split) == Names { "command", "cwd", "direction", "label", "pane", "ratioPercent" });
+    CHECK(propertyNames(split) == Names { "command", "cwd", "direction", "name", "pane", "ratioPercent" });
     CHECK(requiredNames(split) == Names { "direction" });
     auto directions = Names {};
     for (auto const& d: split["properties"]["direction"]["enum"].get_array())
@@ -177,7 +174,7 @@ TEST_CASE("McpTools.composite_schemas_match_the_spec", "[mcp-tools]")
     CHECK(requiredNames(type) == Names { "pane", "text" });
 
     auto const tab = composite(json, "tab_create");
-    CHECK(propertyNames(tab) == Names { "command", "cwd", "label" });
+    CHECK(propertyNames(tab) == Names { "command", "cwd", "name" });
     CHECK(requiredNames(tab).empty());
 
     auto const paneDescription = split["properties"]["pane"]["description"].get_string();
@@ -240,4 +237,24 @@ TEST_CASE("McpTools.inlineSchemaRefs", "[mcp-tools]")
         CHECK_FALSE(
             inlineSchemaRefs(R"({"a":{"$ref":"#/$defs/X"},"$defs":{"X":{"p":{"$ref":"#/$defs/X"}}}})"));
     }
+}
+
+TEST_CASE("McpTools.object_rename_takes_an_object_and_a_name", "[mcp-tools]")
+{
+    using Names = std::vector<std::string>;
+    auto const json = toolsListJson(std::nullopt, McpAccess::Full, TabScope::OwnTab);
+    CHECK(propertyNames(composite(json, "object_rename")) == Names { "name", "object" });
+}
+
+TEST_CASE("McpTools.object_setLabel_stays_an_alias_of_object_rename", "[mcp-tools][compat-0.9.0]")
+{
+    auto const rows = contour::cli::mcpToolRows();
+    auto const alias = std::ranges::find(rows, std::string_view { "object_setLabel" }, &ToolRow::name);
+    REQUIRE(alias != rows.end());
+    CHECK(alias->catalogMethod == "object.rename");
+    CHECK(alias->legacyMethod == "object.setLabel");
+
+    auto const json = toolsListJson(std::nullopt, McpAccess::Full, TabScope::OwnTab);
+    CHECK(lists(json, "object_setLabel"));
+    CHECK_FALSE(lists(toolsListJson(std::nullopt, McpAccess::ReadOnly, TabScope::OwnTab), "object_setLabel"));
 }

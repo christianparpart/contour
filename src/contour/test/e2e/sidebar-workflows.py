@@ -563,7 +563,7 @@ def band(item, which):
 def name_tab(d, tab, name):
     """Labels a tab through the control API, and waits for the window to show it: a tab's label names it in
     the sidebar and the tab strip."""
-    d.cli("label", tab["id"], name)
+    d.cli("rename", tab["id"], name)
     deadline_loop(15, f"the tab labelled {name!r}",
                   lambda: d.find("sidebarRow", required=False, title=name, kind=TAB)
                   or d.find("tabItem", required=False, tabTitle=name), interval=0.2)
@@ -576,10 +576,10 @@ def title_shown_pane(d, title):
 
 def two_workspaces(d):
     """alpha (shown, one tab `a1`) and beta (one tab `b1`), both labelled through the control API."""
-    d.cli("workspace", "rename", "1", "alpha")
+    d.cli("rename", "workspace:1", "alpha")
     name_tab(d, d.workspaces()[0]["tabs"][0], "a1")
     beta = d.cli("workspace", "new")
-    d.cli("workspace", "rename", beta, "beta")
+    d.cli("rename", beta, "beta")
     name_tab(d, workspace_named(d, "beta")["tabs"][0], "b1")
     row(d, "alpha", WORKSPACE)
     row(d, "beta", WORKSPACE)

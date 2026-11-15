@@ -1736,6 +1736,7 @@ if(CONTOUR_TESTING)
         cli/Hosting_test.cpp
         command/LauncherEntries_test.cpp
         cli/HostTransport_test.cpp
+        cli/LegacyArguments_test.cpp
         askpass/AskpassProtocol_test.cpp
         askpass/AskpassClient_test.cpp
         cli/CatImageArgs_test.cpp

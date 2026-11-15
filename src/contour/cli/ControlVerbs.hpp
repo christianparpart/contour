@@ -2,8 +2,8 @@
 #pragma once
 
 /// @file
-/// The control CLI: `contour ls | new | split | send | pane capture | close | label | api ...`. Every verb is
-/// one row of `controlVerbs()`; the command list, the dispatch, the help and the agent skill all read that
+/// The control CLI: `contour ls | new | split | send | pane capture | close | rename | api ...`. Every verb
+/// is one row of `controlVerbs()`; the command list, the dispatch, the help and the agent skill all read that
 /// table, so a verb is a row, not an edit in four places. A verb turns its flags into the JSON of one
 /// catalog method, calls it through a `ControlChannel`, and prints the reply for people or, with `--json`,
 /// as received.

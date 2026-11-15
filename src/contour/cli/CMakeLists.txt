@@ -68,6 +68,7 @@ add_library(contour_cli STATIC
     Hosting.hpp
     HostTransport.cpp HostTransport.hpp
     KeeperVerb.cpp KeeperVerb.hpp
+    LegacyArguments.cpp LegacyArguments.hpp
     ShellIntegration.cpp ShellIntegration.hpp
     "${_shell_integration_data}"
 )

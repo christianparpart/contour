@@ -17,6 +17,7 @@
 #include <contour/askpass/AskpassClient.hpp>
 #include <contour/cli/ContourApp.hpp>
 #include <contour/cli/DaemonVerbs.hpp>
+#include <contour/cli/LegacyArguments.hpp>
 
 #include <vtpty/SpawnTrampoline.hpp>
 
@@ -34,6 +35,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 #ifdef _WIN32
     #include <contour/platform/ConsoleAttach.hpp>
@@ -286,6 +288,19 @@ int main(int argc, char const* argv[])
     if (auto const exitCode = contour::askpass::runAskpassIfRequested(
             environment, std::span<char const* const> { argv, static_cast<std::size_t>(argc) }))
         return *exitCode;
+
+    // compat(0.9.0): the old spellings of the command line, rewritten before anything parses it. The app
+    // keeps argv for as long as it lives, as it does the rewrite's.
+    auto const rewritten = contour::cli::rewriteLegacyArguments(
+        std::span<char const* const> { argv, static_cast<std::size_t>(argc) });
+    for (auto const& note: rewritten.notes)
+        std::println(stderr, "Note: {}", note);
+    auto rewrittenPointers = std::vector<char const*> {};
+    for (auto const& argument: rewritten.arguments)
+        rewrittenPointers.push_back(argument.c_str());
+    rewrittenPointers.push_back(nullptr); // argv[argc], as main() is given it
+    argc = static_cast<int>(rewritten.arguments.size());
+    argv = rewrittenPointers.data();
 
 #ifdef CONTOUR_FRONTEND_GUI
     #ifndef _WIN32

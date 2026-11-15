@@ -279,7 +279,7 @@ std::string renderAgentSkill(std::string_view version)
     line();
     line("Wherever a verb takes `--pane P` (or a tab or workspace), `P` is resolved in this order, the first "
          "kind "
-         "of match winning: a full id; a label (case-insensitive, see `contour label`); a 1-based position "
+         "of match winning: a full id; a name (case-insensitive, see `contour rename`); a 1-based position "
          "(tabs and workspaces); an id suffix of at least four hex digits. Several matches are an error that "
          "lists the candidates. Without `--pane`, the verb acts on `$CONTOUR_PANE`, and a pane that has "
          "closed is an error (exit 3), never another pane.");

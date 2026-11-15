@@ -270,6 +270,30 @@ TEST_CASE("object_rename is confined to the own tab", "[mcp-server]")
     CHECK(f.channel.count("object.rename") == 0);
 }
 
+TEST_CASE("object_setLabel still renames, by its old key and its new one", "[mcp-server][compat-0.9.0]")
+{
+    auto f = Fixture {};
+    CHECK(
+        f.call("object_setLabel", R"({"object":"pane:tests","label":"old"})").contains(R"("isError":false)"));
+    REQUIRE(f.channel.last("object.rename"));
+    CHECK(f.channel.last("object.rename")->params
+          == vtcontrol::encodeJson(
+              vtcontrol::ObjectRenameRequest { .object = std::string { A2 }, .name = "old" }));
+    CHECK(
+        f.call("object_setLabel", R"({"object":"pane:tests","name":"new"})").contains(R"("isError":false)"));
+    CHECK(f.channel.last("object.rename")->params
+          == vtcontrol::encodeJson(
+              vtcontrol::ObjectRenameRequest { .object = std::string { A2 }, .name = "new" }));
+    CHECK(f.channel.count("object.setLabel") == 0);
+
+    // The scope rules are object_rename's.
+    f.channel.calls.clear();
+    CHECK(f.call("object_setLabel", std::format(R"({{"object":"{}","label":"t"}})", B1))
+              .contains(R"("isError":true)"));
+    CHECK(f.call("object_setLabel", R"({"object":"pane:tests","label":7})").contains(R"("isError":true)"));
+    CHECK(f.channel.count("object.rename") == 0);
+}
+
 TEST_CASE("block_read scopes a block by its pane", "[mcp-server]")
 {
     auto f = Fixture {};
@@ -340,7 +364,7 @@ TEST_CASE("pane_split keeps the focus and sends the resolved full id", "[mcp-ser
     auto f = Fixture {};
     auto const out =
         f.call("pane_split",
-               R"({"pane":"tests","direction":"below","ratioPercent":30,"label":"x","command":["ls"]})");
+               R"({"pane":"tests","direction":"below","ratioPercent":30,"name":"x","command":["ls"]})");
     CHECK(out.contains(R"("isError":false)"));
     auto const* split = f.channel.last("pane.split");
     REQUIRE(split);
@@ -348,6 +372,7 @@ TEST_CASE("pane_split keeps the focus and sends the resolved full id", "[mcp-ser
     CHECK_FALSE(split->params.contains("tests"));
     CHECK(split->params.contains(R"("focus":"keep")"));
     CHECK(split->params.contains(R"("direction":"below")"));
+    CHECK(split->params.contains(R"("name":"x")"));
     CHECK(split->params.contains(R"("ratioPercent":30)"));
     CHECK(split->context == A1);
 }
@@ -461,16 +486,17 @@ TEST_CASE("pane_run and pane_capture keep the tail of long output", "[mcp-server
 TEST_CASE("tab_create keeps the focus and needs AllTabs", "[mcp-server]")
 {
     auto own = Fixture {};
-    CHECK(own.call("tab_create", R"({"label":"x"})").contains("--allow-all-tabs"));
+    CHECK(own.call("tab_create", R"({"name":"x"})").contains("--allow-all-tabs"));
     CHECK(own.channel.count("tab.create") == 0);
 
     auto all = Fixture { { .scope = TabScope::AllTabs, .callerPane = A1 } };
-    CHECK(all.call("tab_create", R"({"cwd":"/tmp","label":"x","command":["sh"]})")
+    CHECK(all.call("tab_create", R"({"cwd":"/tmp","name":"x","command":["sh"]})")
               .contains(R"("isError":false)"));
     auto const* create = all.channel.last("tab.create");
     REQUIRE(create);
     CHECK(create->params.contains(R"("focus":"keep")"));
     CHECK(create->params.contains("/tmp"));
+    CHECK(create->params.contains(R"("name":"x")"));
 }
 
 TEST_CASE("a missing required argument is -32602", "[mcp-server]")
