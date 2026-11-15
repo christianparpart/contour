@@ -152,7 +152,7 @@ core::async::Task<ClientSupervisor::Outcome> ClientSupervisor::attempt(proto::At
     auto outcome = Outcome {};
     if (_stop.stop_requested())
         outcome = Outcome {};
-    else if (auto const& refusal = _current->refusal())
+    else if (_current->refusal())
         outcome = Outcome { .ending = Ending::Refused,
                             .error = { .kind = TransportErrorKind::Refused,
                                        .message = _current->refusalMessage() } };

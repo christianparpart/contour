@@ -115,7 +115,8 @@ jobs:
                 -D CONTOUR_EXTENSIONS_BUNDLED=OFF \
                 -D CMAKE_DISABLE_FIND_PACKAGE_Qt6=ON
       - name: "build"
-        run: cmake --build build --target contour
+        # -k 0: report every compile error of a run, not just the first.
+        run: cmake --build build --target contour -- -k 0
       # Generates the configuration, profile, vt-sequence and key-mapping references, and extracts
       # the release notes from metainfo.xml.
       - name: "Generate the reference pages"
