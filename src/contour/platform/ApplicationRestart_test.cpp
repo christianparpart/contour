@@ -27,8 +27,8 @@ namespace
 TEST_CASE("restartCommandLine spells the arguments as Windows does", "[applicationrestart]")
 {
     auto const arguments =
-        std::vector<std::string> { "--config", "C:\\a b\\c.yml", "client", "--label", "work" };
-    CHECK(restartCommandLine(arguments) == R"(--config "C:\a b\c.yml" client --label work)");
+        std::vector<std::string> { "--config", "C:\\a b\\c.yml", "client", "--daemon", "name:work" };
+    CHECK(restartCommandLine(arguments) == R"(--config "C:\a b\c.yml" client --daemon name:work)");
 }
 
 TEST_CASE("restartArguments leaves the program name out", "[applicationrestart]")

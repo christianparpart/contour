@@ -37,7 +37,7 @@ Item {
     required property var window          // ApplicationWindow, for restoring terminal focus after rename
     required property int tabIndex
     required property string tabTitle    // resolved/expanded label shown on the tab
-    required property string tabRawTitle // un-expanded rename template, pre-fills the inline editor
+    required property string tabName     // the user-given name, pre-fills the inline editor
     required property color tabColor
     required property bool tabActive
     required property int tabPaneCount
@@ -590,9 +590,9 @@ Item {
         function start() { active = true }
         sourceComponent: TextField {
             objectName: "tabRenameField"   // findChild() handle for the GUI test
-            // Edit the RAW template (e.g. "a: {WindowTitle}"), not the expanded label the tab shows.
-            // Empty for a never-renamed tab, so the editor opens blank.
-            text: root.tabRawTitle
+            // Edit the tab's name, not the label the tab shows. Empty for a never-named tab, so the
+            // editor opens blank.
+            text: root.tabName
             selectByMouse: true
             Component.onCompleted: { forceActiveFocus(); selectAll() }
             // Guards the focus-out handler from re-finalizing an edit already finalized by Enter or
@@ -603,7 +603,7 @@ Item {
             // restore focus because focus has already moved to wherever the user clicked.
             onAccepted: {
                 finalized = true
-                root.controller.setTabTitle(root.tabIndex, text)
+                root.controller.setTabName(root.tabIndex, text)
                 renameLoader.active = false
                 root.window.restoreTerminalFocus()
             }
@@ -623,7 +623,7 @@ Item {
                     // Focus is also lost when the window tears down with the editor open; the
                     // controller is already null then, and there is no rename left to commit.
                     if (root.controller)
-                        root.controller.setTabTitle(root.tabIndex, text)
+                        root.controller.setTabName(root.tabIndex, text)
                     renameLoader.active = false
                 }
             }
@@ -782,7 +782,7 @@ Item {
         currentColor: root.tabColor
     }
 
-    // Keyboard entry points (the SetTabTitle / SetTabColor actions): the WindowController emits
+    // Keyboard entry points (the RenameTab / SetTabColor actions): the WindowController emits
     // tabTitleEditRequested(index) / tabColorPickRequested(index) for the active tab; the matching
     // delegate opens its editor or its flyout. The active tab's delegate is always realized, so an
     // in-delegate Connections reliably fires.

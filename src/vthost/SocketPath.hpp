@@ -3,7 +3,7 @@
 
 /// @file
 /// Derivation of the daemon's control-socket path, following tmux's shape:
-/// a per-user runtime directory holding one socket file per label.
+/// a per-user runtime directory holding one socket file per name.
 
 #include <vtpty/SandboxInfo.hpp>
 
@@ -27,39 +27,39 @@
 namespace vthost
 {
 
-/// The socket label a daemon serves, and a client dials, when given none: the one source of it.
-inline constexpr auto DefaultSocketLabel = std::string_view { "default" };
+/// The name a daemon serves, and a client dials, when given none: the one source of it.
+inline constexpr auto DefaultDaemonName = std::string_view { "default" };
 
-/// Whether a socket label was named by the user or is merely the default.
+/// Whether a daemon name was given by the user or is merely the default.
 ///
-/// Decides who wins between the label and `$CONTOUR_MUX`: a label the user spelled out is an explicit
-/// choice and beats the environment (as tmux's `-L` beats `$TMUX`), whereas the default label is
+/// Decides who wins between the name and `$CONTOUR_MUX`: a name the user spelled out is an explicit
+/// choice and beats the environment (as tmux's `-L` beats `$TMUX`), whereas the default name is
 /// what nobody chose and yields to the socket of the daemon that hosts the calling shell.
-enum class LabelOrigin : uint8_t
+enum class DaemonNameOrigin : uint8_t
 {
-    Default = 0, ///< Nobody named a label; DefaultSocketLabel applies, and `$CONTOUR_MUX` outranks it.
-    Explicit,    ///< The user passed a label, whatever its value (`default` included).
+    Default = 0, ///< Nobody gave a name; DefaultDaemonName applies, and `$CONTOUR_MUX` outranks it.
+    Explicit,    ///< The user passed a name, whatever its value (`default` included).
 };
 
-/// A socket label together with how it came about.
-struct SocketLabel
+/// A daemon name together with how it came about.
+struct DaemonName
 {
-    /// The label's name; DefaultSocketLabel for the unnamed one.
-    std::string name = std::string { DefaultSocketLabel };
+    /// The daemon's name; DefaultDaemonName for the unnamed one.
+    std::string name = std::string { DefaultDaemonName };
 
     /// Whether the user named it.
-    LabelOrigin origin = LabelOrigin::Default;
+    DaemonNameOrigin origin = DaemonNameOrigin::Default;
 };
 
-/// Reads a `--label` option whose declared default is empty, so that "not given" is distinguishable
+/// Reads a `--name` option whose declared default is empty, so that "not given" is distinguishable
 /// from "given as `default`" (the option parser reports defaults and given values alike).
 /// @param option The option's value; empty when the user did not pass it.
-/// @return The label it names, Explicit when @p option is non-empty, else the default label.
-[[nodiscard]] inline SocketLabel socketLabelOf(std::string_view option)
+/// @return The name it names, Explicit when @p option is non-empty, else the default name.
+[[nodiscard]] inline DaemonName daemonNameFromOption(std::string_view option)
 {
     if (option.empty())
-        return SocketLabel {};
-    return SocketLabel { .name = std::string { option }, .origin = LabelOrigin::Explicit };
+        return DaemonName {};
+    return DaemonName { .name = std::string { option }, .origin = DaemonNameOrigin::Explicit };
 }
 
 /// The inputs a control-socket path is derived from.
@@ -74,11 +74,11 @@ struct SocketLabel
 /// partial designated initializer a build error and cost the form its whole point.
 struct MuxSocketPathInputs
 {
-    /// The socket label (tmux's `-L`); DefaultSocketLabel for the unnamed one.
-    std::string_view label = DefaultSocketLabel;
+    /// The daemon's name (tmux's `-L`); DefaultDaemonName for the unnamed one.
+    std::string_view name = DefaultDaemonName;
 
-    /// Whether @c label was named by the user; an Explicit label outranks `$CONTOUR_MUX`.
-    LabelOrigin labelOrigin = LabelOrigin::Default;
+    /// Whether @c name was given by the user; an Explicit name outranks `$CONTOUR_MUX`.
+    DaemonNameOrigin nameOrigin = DaemonNameOrigin::Default;
 
     /// A user-supplied path override (the `--socket PATH` flag), or empty.
     std::string_view explicitPath = {};
@@ -103,15 +103,15 @@ struct MuxSocketPathInputs
 ///
 /// Precedence mirrors tmux's socket discovery, adapted to XDG conventions:
 ///  1. @c explicitPath (the `--socket PATH` flag) verbatim, if non-empty;
-///  2. a label the user named (@c labelOrigin Explicit), derived by rungs 4 to 6: an explicit `-L` beats
-///     `$TMUX` in tmux, and `--label` beats `$CONTOUR_MUX` here. Without that, a shell inside a
+///  2. a name the user gave (@c nameOrigin Explicit), derived by rungs 4 to 6: an explicit `-L` beats
+///     `$TMUX` in tmux, and `--name` beats `$CONTOUR_MUX` here. Without that, a shell inside a
 ///     daemon-hosted pane could never address a second daemon;
 ///  3. @c contourMuxEnv verbatim, if set and non-empty (the `$CONTOUR_MUX` override, analogous to tmux's
-///     `$TMUX` naming the active server's socket), when no label was named;
-///  4. `<xdgRuntimeDir>/app/<sandboxAppId>/contour/<label>` when sandboxed;
-///  5. `<xdgRuntimeDir>/contour/<label>`;
-///  6. `<temp>/contour-<user>/<label>` as the fallback when no runtime dir exists, or the one set is
-///     relative (tmux's `/tmp/tmux-<uid>/<label>` shape).
+///     `$TMUX` naming the active server's socket), when no name was given;
+///  4. `<xdgRuntimeDir>/app/<sandboxAppId>/contour/<name>` when sandboxed;
+///  5. `<xdgRuntimeDir>/contour/<name>`;
+///  6. `<temp>/contour-<user>/<name>` as the fallback when no runtime dir exists, or the one set is
+///     relative (tmux's `/tmp/tmux-<uid>/<name>` shape).
 ///
 /// Rungs 4 and 5 are vtpty::sharedRuntimeDirectory(), which the pager's private files share.
 ///
@@ -128,7 +128,7 @@ struct MuxSocketPathInputs
 /// Note that it only makes the two SANDBOXED derivations agree. A `contour` installed on the host
 /// is not sandboxed and still derives rung 5, which is why the sandboxed daemon also exports
 /// `$CONTOUR_MUX` — rung 3 — into the shells it hosts. A sandboxed shell running `contour client` with
-/// no `--label` therefore still finds its own daemon; only a label it spells out redirects it.
+/// no `--name` therefore still finds its own daemon; only a name it spells out redirects it.
 ///
 /// The parent directory is NOT created here; the listener's bind path hardens
 /// and creates it (see core::net::ensureOwnedPrivateDirectory).
@@ -145,21 +145,22 @@ struct MuxSocketPathInputs
     if (!inputs.explicitPath.empty())
         return fromUtf8(inputs.explicitPath);
 
-    if (inputs.labelOrigin == LabelOrigin::Default && inputs.contourMuxEnv && !inputs.contourMuxEnv->empty())
+    if (inputs.nameOrigin == DaemonNameOrigin::Default && inputs.contourMuxEnv
+        && !inputs.contourMuxEnv->empty())
         return fromUtf8(*inputs.contourMuxEnv);
 
     if (auto const runtime = vtpty::sharedRuntimeDirectory(inputs.xdgRuntimeDir, inputs.sandboxAppId))
-        return *runtime / "contour" / fromUtf8(inputs.label);
+        return *runtime / "contour" / fromUtf8(inputs.name);
 
     return fs::temp_directory_path() / fromUtf8("contour-" + std::string { inputs.user })
-           / fromUtf8(inputs.label);
+           / fromUtf8(inputs.name);
 }
 
 namespace detail
 {
     /// muxSocketPath() from an environment, with `$CONTOUR_MUX` read by the caller.
     /// @param contourMux The value of `$CONTOUR_MUX` to honour; none to ignore it.
-    [[nodiscard]] inline std::filesystem::path muxSocketPathOf(SocketLabel const& label,
+    [[nodiscard]] inline std::filesystem::path muxSocketPathOf(DaemonName const& daemon,
                                                                std::string_view explicitPath,
                                                                std::optional<std::string> const& contourMux,
                                                                core::Environment const& env,
@@ -168,7 +169,7 @@ namespace detail
 
 /// Production entry point: derives the path from a process environment and the sandbox this process
 /// runs in.
-/// @param label The socket label and whether the user named it (@see socketLabelOf).
+/// @param daemon The daemon's name and whether the user named it (@see daemonNameFromOption).
 /// @param explicitPath A user-supplied path override, or empty.
 /// @param env The environment to read `$CONTOUR_MUX`, `$XDG_RUNTIME_DIR` and (on
 ///            Windows) `$USERNAME` from.
@@ -177,42 +178,42 @@ namespace detail
 ///                environment variable can be trusted to reflect.
 /// @return The resolved socket file path.
 [[nodiscard]] inline std::filesystem::path muxSocketPath(
-    SocketLabel const& label = {},
+    DaemonName const& daemon = {},
     std::string_view explicitPath = {},
     core::Environment const& env = core::defaultEnvironment(),
     vtpty::SandboxInfo const& sandbox = vtpty::currentSandbox())
 {
-    return detail::muxSocketPathOf(label, explicitPath, env.get("CONTOUR_MUX"), env, sandbox);
+    return detail::muxSocketPathOf(daemon, explicitPath, env.get("CONTOUR_MUX"), env, sandbox);
 }
 
-/// Where a daemon serving @p label listens when nothing names its socket: neither `--socket` nor
-/// `$CONTOUR_MUX`. What tells a daemon at a socket of its own apart from the one its label would run.
-/// @param label The socket label.
+/// Where a daemon serving @p name listens when nothing names its socket: neither `--socket` nor
+/// `$CONTOUR_MUX`. What tells a daemon at a socket of its own apart from the one its name would run.
+/// @param name The daemon's name.
 /// @param env The environment to read `$XDG_RUNTIME_DIR` and (on Windows) `$USERNAME` from.
 /// @param sandbox Where this process runs.
-/// @return The label's own socket path.
-[[nodiscard]] inline std::filesystem::path labelSocketPath(
-    std::string_view label,
+/// @return The name's own socket path.
+[[nodiscard]] inline std::filesystem::path namedSocketPath(
+    std::string_view name,
     core::Environment const& env = core::defaultEnvironment(),
     vtpty::SandboxInfo const& sandbox = vtpty::currentSandbox())
 {
     return detail::muxSocketPathOf(
-        SocketLabel { .name = std::string { label } }, {}, std::nullopt, env, sandbox);
+        DaemonName { .name = std::string { name } }, {}, std::nullopt, env, sandbox);
 }
 
-/// The directory the sockets of the labelled daemons live in, which is where discovery looks for them.
+/// The directory the sockets of the named daemons live in, which is where discovery looks for them.
 /// @param env The environment to read `$XDG_RUNTIME_DIR` and (on Windows) `$USERNAME` from.
 /// @param sandbox Where this process runs.
-/// @return The directory holding the default label's socket, and so every label's.
-[[nodiscard]] inline std::filesystem::path labelSocketDirectory(
+/// @return The directory holding the default name's socket, and so every name's.
+[[nodiscard]] inline std::filesystem::path namedSocketDirectory(
     core::Environment const& env = core::defaultEnvironment(),
     vtpty::SandboxInfo const& sandbox = vtpty::currentSandbox())
 {
-    return labelSocketPath(DefaultSocketLabel, env, sandbox).parent_path();
+    return namedSocketPath(DefaultDaemonName, env, sandbox).parent_path();
 }
 
 [[nodiscard]] inline std::filesystem::path detail::muxSocketPathOf(
-    SocketLabel const& label,
+    DaemonName const& daemon,
     std::string_view explicitPath,
     std::optional<std::string> const& contourMux,
     core::Environment const& env,
@@ -230,8 +231,8 @@ namespace detail
     auto const user = env.get("USERNAME").value_or("user");
 #endif
 
-    return muxSocketPath(MuxSocketPathInputs { .label = label.name,
-                                               .labelOrigin = label.origin,
+    return muxSocketPath(MuxSocketPathInputs { .name = daemon.name,
+                                               .nameOrigin = daemon.origin,
                                                .explicitPath = explicitPath,
                                                .contourMuxEnv = contourMux.transform(asView),
                                                .xdgRuntimeDir = xdgRuntimeDir.transform(asView),
@@ -257,60 +258,63 @@ inline constexpr auto DaemonLogSuffix = std::string_view { ".log" };
 inline constexpr auto SiblingSuffixes =
     std::to_array({ NativeSocketSuffix, TmuxSocketSuffix, DaemonLogSuffix });
 
-/// The longest socket label a user may name: the label is the socket's file name, and a Unix socket's whole
+/// The longest daemon name a user may give: the name is the socket's file name, and a Unix socket's whole
 /// path must fit `sun_path` (108 bytes on Linux, 104 on macOS) with the runtime directory and a sibling
 /// suffix beside it.
-inline constexpr auto MaxSocketLabelLength = std::size_t { 64 };
+inline constexpr auto MaxDaemonNameLength = std::size_t { 64 };
 
-/// Why a name cannot be a socket label a daemon is started under.
-enum class SocketLabelError : uint8_t
+/// Why a text cannot be the name a daemon is started under.
+enum class DaemonNameError : uint8_t
 {
     Empty = 0,        ///< Nothing was named.
-    TooLong,          ///< Longer than MaxSocketLabelLength.
+    TooLong,          ///< Longer than MaxDaemonNameLength.
     LeadingDot,       ///< Starts with a dot: `.`, `..` or a hidden file, none of which discovery lists.
     InvalidCharacter, ///< Holds something other than ASCII letters, digits, `-`, `_` and `.`.
     SiblingSuffix,    ///< Ends in a sibling's suffix (`-native`, `-tmux`, `.log`), which discovery skips.
 };
 
-/// @param error Why a label was refused.
-/// @return The reason, for a person: the inline error under the label field.
-[[nodiscard]] inline std::string describe(SocketLabelError error)
+/// @param error Why a name was refused.
+/// @return The reason, for a person: the inline error under the name field.
+[[nodiscard]] inline std::string describe(DaemonNameError error)
 {
     switch (error)
     {
-        case SocketLabelError::Empty: return "Type a label for the daemon.";
-        case SocketLabelError::TooLong:
-            return std::format("A label has at most {} characters.", MaxSocketLabelLength);
-        case SocketLabelError::LeadingDot: return "A label cannot start with a dot.";
-        case SocketLabelError::InvalidCharacter:
-            return R"(A label may hold only letters, digits, "-", "_" and ".".)";
-        case SocketLabelError::SiblingSuffix: return R"(A label cannot end in "-native", "-tmux" or ".log".)";
+        case DaemonNameError::Empty: return "Type a name for the daemon.";
+        case DaemonNameError::TooLong:
+            return std::format("A name has at most {} characters.", MaxDaemonNameLength);
+        case DaemonNameError::LeadingDot: return "A name cannot start with a dot.";
+        case DaemonNameError::InvalidCharacter:
+            return R"(A name may hold only letters, digits, "-", "_" and ".".)";
+        case DaemonNameError::SiblingSuffix: return R"(A name cannot end in "-native", "-tmux" or ".log".)";
     }
-    return "This label cannot be used.";
+    return "This name cannot be used.";
 }
 
-/// Checks that @p label can name a daemon of its own: its control socket is a file of that name in the
-/// runtime directory, which local discovery lists (sibling files and hidden ones skipped). socketLabelOf()
-/// reads any `--label` the user passes; a label the GUI asks the user for is held to these rules first.
-/// @param label The label asked for.
+/// Checks that @p name can name a daemon of its own: its control socket is a file of that name in the
+/// runtime directory, which local discovery lists (sibling files and hidden ones skipped).
+/// daemonNameFromOption() reads any `--name` the user passes; a name the GUI asks the user for is held to
+/// these rules first.
+/// @param name The name asked for.
 /// @return Nothing when it can; why not otherwise.
-[[nodiscard]] constexpr std::expected<void, SocketLabelError> validateSocketLabel(std::string_view label)
+/// @see isFileSafeDaemonName(), the narrower check that a name read from elsewhere (a snapshot file, an
+///      identity) cannot leave the directory it names a file in.
+[[nodiscard]] constexpr std::expected<void, DaemonNameError> validateDaemonName(std::string_view name)
 {
-    if (label.empty())
-        return std::unexpected(SocketLabelError::Empty);
-    if (label.size() > MaxSocketLabelLength)
-        return std::unexpected(SocketLabelError::TooLong);
-    if (label.front() == '.')
-        return std::unexpected(SocketLabelError::LeadingDot);
-    auto const isLabelCharacter = [](char c) {
+    if (name.empty())
+        return std::unexpected(DaemonNameError::Empty);
+    if (name.size() > MaxDaemonNameLength)
+        return std::unexpected(DaemonNameError::TooLong);
+    if (name.front() == '.')
+        return std::unexpected(DaemonNameError::LeadingDot);
+    auto const isNameCharacter = [](char c) {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-'
                || c == '_' || c == '.';
     };
-    if (!std::ranges::all_of(label, isLabelCharacter))
-        return std::unexpected(SocketLabelError::InvalidCharacter);
+    if (!std::ranges::all_of(name, isNameCharacter))
+        return std::unexpected(DaemonNameError::InvalidCharacter);
     if (std::ranges::any_of(SiblingSuffixes,
-                            [label](std::string_view suffix) { return label.ends_with(suffix); }))
-        return std::unexpected(SocketLabelError::SiblingSuffix);
+                            [name](std::string_view suffix) { return name.ends_with(suffix); }))
+        return std::unexpected(DaemonNameError::SiblingSuffix);
     return {};
 }
 
@@ -333,7 +337,7 @@ enum class SocketLabelError : uint8_t
 /// A backgrounded or service-hosted daemon is detached from any terminal, so its standard
 /// error goes nowhere and an unconfigured one becomes the instance nobody can diagnose. It
 /// lands beside the socket for the same reason the socket is where it is: one place per
-/// label, derived rather than remembered.
+/// name, derived rather than remembered.
 /// @param controlSocket The daemon's control-socket path.
 /// @return The log file path beside @p controlSocket.
 [[nodiscard]] inline std::filesystem::path daemonLogPath(std::filesystem::path controlSocket)

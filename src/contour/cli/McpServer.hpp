@@ -37,7 +37,7 @@ struct McpOptions
 /// lines and writes the replies.
 ///
 /// Every pane the agent names is resolved against a fresh `workspace.list` and the daemon is sent the
-/// resolved full id, never the agent's text, so a label cannot be re-resolved by the daemon across tabs.
+/// resolved full id, never the agent's text, so a name cannot be re-resolved by the daemon across tabs.
 /// A pane may move to another tab between that snapshot and the action; the window is accepted.
 class McpServer
 {
@@ -103,7 +103,7 @@ class McpServer
     [[nodiscard]] ToolResult toolOnPane(ToolRow const& row, std::string_view arguments);
     [[nodiscard]] ToolResult toolPaneClose(ToolRow const& row, std::string_view arguments);
     [[nodiscard]] ToolResult toolTabClose(ToolRow const& row, std::string_view arguments);
-    [[nodiscard]] ToolResult toolSetLabel(ToolRow const& row, std::string_view arguments);
+    [[nodiscard]] ToolResult toolRename(ToolRow const& row, std::string_view arguments);
     [[nodiscard]] ToolResult toolBlockRead(ToolRow const& row, std::string_view arguments);
 
     /// @return The `workspace.list` snapshot, or why there is none (including a vanished caller pane).

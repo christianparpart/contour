@@ -22,9 +22,9 @@ std::expected<std::vector<vtcontrol::WorkspaceInfo>, std::string> decodeWorkspac
         .transform_error([](vtcontrol::ControlError const& error) { return error.message; });
 }
 
-std::string encodeCreateWorkspace(std::string const& label)
+std::string encodeCreateWorkspace(std::string const& name)
 {
-    return vtcontrol::encodeJson(vtcontrol::CreateWorkspaceRequest { .cwd = {}, .label = label });
+    return vtcontrol::encodeJson(vtcontrol::CreateWorkspaceRequest { .cwd = {}, .name = name });
 }
 
 std::expected<vtcontrol::ObjectRef, std::string> decodeCreatedWorkspace(std::string_view replyJson)
@@ -48,7 +48,7 @@ std::expected<uint64_t, std::string> resolveWorkspaceSpec(
     auto const candidates = std::ranges::to<std::vector>(
         workspaces | std::views::transform([&](vtcontrol::WorkspaceInfo const& info) {
             return vtcontrol::TargetCandidate { .ref = refOf(info),
-                                                .label = info.label,
+                                                .name = info.name,
                                                 .position = info.position };
         }));
     auto const resolved = vtcontrol::resolveTarget(vtcontrol::ObjectKind::Workspace, spec, candidates);

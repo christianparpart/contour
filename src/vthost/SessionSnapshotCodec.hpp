@@ -15,7 +15,7 @@
 /// Node     := blob{ Split:u8 ( Ratio:varint(millionths) Node Node | Leaf ) }
 /// Leaf     := Identity? Cwd:string(UTF-8)? Profile:string? Foreground:string? CommandLine:string?
 ///             History:blob(encodePdu(Delta))?
-/// Identity := 16 raw bytes, Label:string?
+/// Identity := 16 raw bytes, Name:string?
 /// X?       := u8 0 (absent) | u8 1 then X
 /// ```
 ///

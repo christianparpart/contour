@@ -388,7 +388,7 @@ namespace
             windowCommand(MoveTabToLeft {}, "Move Tab Left"),
             windowCommand(MoveTabToRight {}, "Move Tab Right"),
             windowCommand(MoveTabToNewWindow {}, "Move Tab to New Window").enabledWhen(hasMultipleTabs),
-            windowCommand(SetTabTitle {}, "Rename Tab…"),
+            windowCommand(RenameTab {}, "Rename Tab…"),
             windowCommand(SetTabColor {}, "Tab Color…"),
             windowCommand(ResetTabColor {}, "Reset Tab Color"),
             windowCommand(CloseOtherTabs {}, "Close Other Tabs").enabledWhen(hasMultipleTabs),

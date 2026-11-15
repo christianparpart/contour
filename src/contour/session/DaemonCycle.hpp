@@ -44,7 +44,7 @@ namespace contour::session
     std::ranges::transform(local, std::back_inserter(labels), &cli::DiscoveredDaemon::label);
     std::ranges::sort(labels);
     for (auto const& label: labels)
-        ring.push_back({ .kind = vthost::proto::SwitchDaemonKind::Label, .daemon = label, .workspace = {} });
+        ring.push_back({ .kind = vthost::proto::SwitchDaemonKind::Name, .daemon = label, .workspace = {} });
 
     auto hosts = std::vector<std::string>(hostsShownHere.begin(), hostsShownHere.end());
     std::ranges::sort(hosts);

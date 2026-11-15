@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <iostream>
 #include <ranges>
 #include <span>
 #include <string_view>
@@ -13,6 +14,7 @@
 
 #include <vthost/SessionSnapshotCodec.hpp>
 #include <vthost/proto/Wire.hpp>
+#include <vthost/testing/RecordedNameEncodings.hpp>
 #include <vthost/testing/RecordedSnapshots.hpp>
 
 using namespace vthost;
@@ -27,9 +29,9 @@ namespace
     return { view.begin(), view.end() };
 }
 
-[[nodiscard]] ObjectIdentityRecord identityOf(std::string label)
+[[nodiscard]] ObjectIdentityRecord identityOf(std::string name)
 {
-    auto record = ObjectIdentityRecord { .label = std::move(label) };
+    auto record = ObjectIdentityRecord { .name = std::move(name) };
     std::ranges::generate(record.uuid, [next = std::uint8_t { 1 }]() mutable { return next++; });
     return record;
 }
@@ -222,7 +224,7 @@ TEST_CASE("a workspace round-trips through the codec", "[vthost][snapshot]")
     CHECK(tab.zoom == TabZoom::Zoomed);
     CHECK(tab.root.split == vtworkspace::SplitState::Vertical);
     CHECK(tab.root.ratio == 0.3);
-    CHECK(tab.identity->label == "build-tab");
+    CHECK(tab.identity.value().name == "build-tab");
     CHECK(tab.identity->uuid.front() == 1);
     CHECK(tab.identity->uuid.back() == 16);
 
@@ -459,4 +461,54 @@ TEST_CASE("a pane whose history does not decode loses only its history", "[vthos
     auto const& pane = decoded->snapshot.workspaces.at(0).tabs.at(0).root.pane;
     CHECK_FALSE(pane.history.has_value());
     CHECK(pane.workingDirectory == fs::path { "/srv" });
+}
+
+namespace
+{
+
+/// A snapshot whose every name-bearing field is set: the workspace's, the tab's and the pane's name, and the
+/// tab's runtime title. Recorded as testing::RecordedSnapshotNames.
+[[nodiscard]] WorkspaceSnapshot namedSnapshot()
+{
+    auto tab = TabSnapshot {};
+    tab.identity = identityOf("build");
+    tab.title = "edited {Cwd}";
+    tab.root = leaf(PaneSnapshot { .identity = identityOf("logs") });
+
+    auto workspace = WorkspaceLayoutSnapshot {};
+    workspace.identity = identityOf("ops");
+    workspace.tabs.push_back(std::move(tab));
+
+    auto snapshot = WorkspaceSnapshot {};
+    snapshot.takenAt = std::chrono::sys_seconds { std::chrono::seconds { 1'763'000'000 } };
+    snapshot.workspaces.push_back(std::move(workspace));
+    return snapshot;
+}
+
+} // namespace
+
+TEST_CASE("the snapshot file of a named workspace, tab and pane is pinned",
+          "[vthost][snapshot][encoding-pin]")
+{
+    auto const snapshot = namedSnapshot();
+    auto const encoded = encodeSnapshot(snapshot);
+    if (testing::isFixtureUpdateRequested(core::LiveEnvironment {}))
+    {
+        std::cout << testing::spelledFixture("RecordedSnapshotNames", encoded);
+        FAIL("printed RecordedSnapshotNames instead of comparing; paste it into RecordedNameEncodings.hpp");
+    }
+    auto const recorded = std::as_bytes(std::span { testing::RecordedSnapshotNames });
+    CHECK(std::ranges::equal(encoded, recorded));
+
+    auto const decoded = decodeSnapshot(recorded);
+    REQUIRE(decoded);
+    CHECK(decoded->droppedHistories == 0);
+    CHECK(decoded->snapshot == snapshot);
+    REQUIRE(decoded->snapshot.workspaces.size() == 1);
+    auto const& workspace = decoded->snapshot.workspaces.at(0);
+    CHECK(workspace.identity.value().name == "ops");
+    REQUIRE(workspace.tabs.size() == 1);
+    CHECK(workspace.tabs.at(0).identity.value().name == "build");
+    CHECK(workspace.tabs.at(0).title == "edited {Cwd}");
+    CHECK(workspace.tabs.at(0).root.pane.identity.value().name == "logs");
 }

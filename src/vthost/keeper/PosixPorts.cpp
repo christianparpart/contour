@@ -1208,10 +1208,10 @@ namespace
 
     // }}}
 
-    class PosixLabelLock final: public LabelLock
+    class PosixNameLock final: public NameLock
     {
       public:
-        explicit PosixLabelLock(UniqueFd file): _file { std::move(file) } {}
+        explicit PosixNameLock(UniqueFd file): _file { std::move(file) } {}
 
       private:
         UniqueFd _file;
@@ -1258,16 +1258,16 @@ std::unique_ptr<Channel> makePosixChannel(UniqueFd socket)
     return std::make_unique<PosixChannel>(std::move(socket));
 }
 
-std::filesystem::path labelLockPath(std::filesystem::path const& socketPath)
+std::filesystem::path nameLockPath(std::filesystem::path const& socketPath)
 {
     auto path = socketPath;
     path += ".keeper.lock";
     return path;
 }
 
-std::expected<std::unique_ptr<LabelLock>, LockError> lockLabel(std::filesystem::path const& socketPath)
+std::expected<std::unique_ptr<NameLock>, LockError> lockName(std::filesystem::path const& socketPath)
 {
-    auto file = UniqueFd { ::open(labelLockPath(socketPath).c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600) };
+    auto file = UniqueFd { ::open(nameLockPath(socketPath).c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600) };
     if (!file.isOpen())
         return std::unexpected { LockError::Unopenable };
     auto locked = 0;
@@ -1276,7 +1276,7 @@ std::expected<std::unique_ptr<LabelLock>, LockError> lockLabel(std::filesystem::
     while (locked != 0 && errno == EINTR);
     if (locked != 0)
         return std::unexpected { errno == EWOULDBLOCK ? LockError::Held : LockError::Unopenable };
-    return std::make_unique<PosixLabelLock>(std::move(file));
+    return std::make_unique<PosixNameLock>(std::move(file));
 }
 
 } // namespace vthost::keeper

@@ -385,8 +385,7 @@ std::expected<HandoverImage, std::string> receiveHandover(SuccessorHandles const
     // Every session, or none: one this process cannot adopt is one the predecessor keeps serving.
     for (auto const& session: image->sessions)
         if (auto const why = unadoptable(session))
-            return refuse(
-                std::format("cannot adopt the session \"{}\" handed over: {}", session.label, *why));
+            return refuse(std::format("cannot adopt the session \"{}\" handed over: {}", session.name, *why));
 
     switch (takeOverFromPredecessor(handles, config))
     {

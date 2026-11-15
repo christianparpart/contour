@@ -43,7 +43,7 @@ namespace
 
 SwitchTarget labelTarget(std::string name)
 {
-    return { .kind = SwitchDaemonKind::Label, .daemon = std::move(name), .workspace = {} };
+    return { .kind = SwitchDaemonKind::Name, .daemon = std::move(name), .workspace = {} };
 }
 
 SwitchTarget hostTarget(std::string name)
@@ -98,7 +98,7 @@ TEST_CASE("switching actions reach the window switcher with their target and mod
     auto rig = SwitchRig { labelTarget("default") };
     using namespace contour::actions;
 
-    rig.run(SwitchToDaemon { DaemonRef { DaemonRefKind::Label, "admin" } });
+    rig.run(SwitchToDaemon { DaemonRef { DaemonRefKind::Name, "admin" } });
     rig.run(OpenDaemon { DaemonRef { DaemonRefKind::Host, "studio" } });
     rig.run(SwitchToWorkspace { 2 });
     rig.run(OpenWorkspace { 3 });
@@ -124,7 +124,7 @@ TEST_CASE("a failed switch is logged and leaves nothing pending", "[switch][sess
 {
     auto rig = SwitchRig { labelTarget("default") };
     rig.app.switching().failWith = "switching is not available yet";
-    rig.run(contour::actions::SwitchToDaemon { DaemonRef { DaemonRefKind::Label, "admin" } });
+    rig.run(contour::actions::SwitchToDaemon { DaemonRef { DaemonRefKind::Name, "admin" } });
     CHECK(rig.requests().size() == 1);
 }
 
@@ -277,8 +277,8 @@ TEST_CASE("only the switches among its own workspaces reach the switcher for a w
     rig.app.switchDirectory().daemons = { { .label = "admin", .socket = {}, .workspaces = std::nullopt } };
     using namespace contour::actions;
 
-    rig.run(SwitchToDaemon { DaemonRef { DaemonRefKind::Label, "admin" } });
-    rig.run(OpenDaemon { DaemonRef { DaemonRefKind::Label, "admin" } });
+    rig.run(SwitchToDaemon { DaemonRef { DaemonRefKind::Name, "admin" } });
+    rig.run(OpenDaemon { DaemonRef { DaemonRefKind::Name, "admin" } });
     rig.run(SwitchToWorkspace { 2 });
     rig.run(OpenWorkspace { 2 });
     rig.run(CycleWorkspace {});
@@ -343,7 +343,7 @@ TEST_CASE("every switching action is a no-op for a window bound to a tmux sessio
     CHECK(rig.window->switchingAvailability() == contour::command::DaemonSwitching::Unavailable);
     CHECK(rig.window->daemonRows().switching == contour::command::DaemonSwitching::Unavailable);
 
-    rig.run(SwitchToDaemon { DaemonRef { DaemonRefKind::Label, "admin" } });
+    rig.run(SwitchToDaemon { DaemonRef { DaemonRefKind::Name, "admin" } });
     rig.run(SwitchToWorkspace { 2 });
     rig.run(CycleWorkspace {});
     rig.run(CycleDaemon {});

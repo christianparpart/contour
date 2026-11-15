@@ -70,17 +70,17 @@ namespace
 /// Daemon A, which the window starts on, by label.
 [[nodiscard]] DaemonAddress daemonA()
 {
-    return DaemonAddress { .kind = SwitchDaemonKind::Label, .name = "a" };
+    return DaemonAddress { .kind = SwitchDaemonKind::Name, .name = "a" };
 }
 /// Daemon B, which a cross-daemon switch goes to, by label.
 [[nodiscard]] DaemonAddress daemonB()
 {
-    return DaemonAddress { .kind = SwitchDaemonKind::Label, .name = "b" };
+    return DaemonAddress { .kind = SwitchDaemonKind::Name, .name = "b" };
 }
 /// A daemon whose socket nobody serves.
 [[nodiscard]] DaemonAddress unreachable()
 {
-    return DaemonAddress { .kind = SwitchDaemonKind::Label, .name = "down" };
+    return DaemonAddress { .kind = SwitchDaemonKind::Name, .name = "down" };
 }
 
 /// @return A target on daemon @p daemon, naming @p workspace (empty to decide).
@@ -158,7 +158,7 @@ class FixtureLister final: public contour::remote::IWorkspaceLister
                     .kind = vtcontrol::ObjectKind::Workspace,
                     .uuid = daemon.host->objects().uuidOf(workspace->id()).value_or(vtcontrol::Uuid {})
                 };
-                daemon.host->objects().setLabel(ref, label);
+                daemon.host->objects().setName(ref, label);
                 return ref;
             });
         QMetaObject::invokeMethod(
@@ -1517,7 +1517,7 @@ TEST_CASE("WindowSwitcher: a window that runs in-process makes the workspace it 
     auto const rows = rig.switcher.windowWorkspaceRows(made);
     auto const named = std::ranges::find(rows, made.value, &contour::remote::WorkspaceRow::id);
     REQUIRE(named != rows.end());
-    CHECK(named->label == "billing");
+    CHECK(named->name == "billing");
 }
 
 TEST_CASE("WindowSwitcher: a window that runs in-process refuses another daemon and a new window",
@@ -1712,7 +1712,7 @@ TEST_CASE("WindowSwitcher: a workspace that cannot be created is said in the win
     auto const before = rig.windowSessions();
     auto told = Told {};
     // A daemon the fixture's lister knows nothing of: `workspace.create` cannot reach it.
-    auto const nowhere = DaemonAddress { .kind = SwitchDaemonKind::Label, .name = "nowhere" };
+    auto const nowhere = DaemonAddress { .kind = SwitchDaemonKind::Name, .name = "nowhere" };
     rig.switcher->createWorkspace(rig.shown(), to(nowhere), "q", SwitchMode::Switch, told.completion());
     REQUIRE(waitUntil([&] { return told.outcome.has_value(); }, 2000));
     CHECK_FALSE(told.outcome->has_value());
@@ -1791,7 +1791,7 @@ TEST_CASE("WindowSwitcher: a switch a pane asks for is asked about, and switches
     auto api = ControlApi { rig.a };
     auto const* const oldLink = &rig.launchLink();
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
 
     auto& asking = awaitSwitchQuestion(rig);
     CHECK(questionLine(asking).contains(QStringLiteral("the workspace “2” of the daemon “b”")));
@@ -1833,7 +1833,7 @@ TEST_CASE("WindowSwitcher: a switch question unanswered until shortly before the
     auto api = ControlApi { rig.a };
     auto const* const oldLink = &rig.launchLink();
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
     auto& asking = awaitSwitchQuestion(rig);
     REQUIRE(expiries.armed.size() == 1);
     CHECK(expiries.armed.front().delay
@@ -1868,7 +1868,7 @@ TEST_CASE("WindowSwitcher: an allowed switch lands before the daemon gives up, w
     auto const landingWindow =
         std::chrono::milliseconds { vthost::SwitchAnswerTimeout } - contour::remote::SwitchReplyMargin;
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
     auto& asking = awaitSwitchQuestion(rig);
     contour::test::answerShown(asking, PermissionDecision::Allow, PermissionMemory::Once);
 
@@ -1904,14 +1904,14 @@ TEST_CASE("WindowSwitcher: a switch the user refused to have asked again is refu
     auto api = ControlApi { rig.a };
     auto const before = rig.windowSessions();
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
     contour::test::answerShown(awaitSwitchQuestion(rig), PermissionDecision::Deny, PermissionMemory::Session);
     auto const first = awaitAnswer(api);
     CHECK(first.outcome == "refused");
     CHECK(first.detail == contour::remote::SwitchRefusedDetail);
 
     // Another workspace of the same daemon is the same pair: refused at once, nothing asked.
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "1" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "1" });
     auto const second = awaitAnswer(api);
     CHECK(second.outcome == "refused");
     auto const* const session = rig.app.manager().actingSessionOfWindow(rig.shown());
@@ -1937,7 +1937,7 @@ TEST_CASE("WindowSwitcher: a switch for a workspace no window here shows fails, 
             clients.front(),
             vtworkspace::WorkspaceId { rig.aWorkspaces[1] },
             vthost::proto::SwitchTargetWire {
-                .kind = SwitchDaemonKind::Label, .daemon = "b", .workspace = "2" },
+                .kind = SwitchDaemonKind::Name, .daemon = "b", .workspace = "2" },
             [replies](vthost::proto::SwitchReply const& reply) { replies->push_back(reply); });
         return 0;
     });
@@ -1955,7 +1955,7 @@ TEST_CASE("WindowSwitcher: a client that does not answer switch requests is stil
     auto rig = SwitchRig { contour::remote::NativeController::SwitchRequests::Declined };
     auto api = ControlApi { rig.a };
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
 
     auto const reply = awaitAnswer(api);
     CHECK(reply.outcome == "failed");

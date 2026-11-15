@@ -919,7 +919,7 @@ class Terminal: public IStatusLinePublishTarget
         /// The application set the icon (or tab) title, via `OSC 0` or `OSC 1`.
         virtual void setIconTitle(std::string_view /*title*/) {}
 
-        virtual void setTabName(std::string_view /*title*/) {}
+        virtual void setProgramTabTitle(std::string_view /*title*/) {}
         /// The application assigned a window-frame color (DECAC item 2), which the GUI maps to the
         /// tab background color. A color the user picked themselves outranks it and stays visible.
         /// @param color The color to paint the frame/tab with.
@@ -1015,7 +1015,7 @@ class Terminal: public IStatusLinePublishTarget
         void requestWindowResize(Width, Height) override {}
         void requestShowHostWritableStatusLine() override {}
         void setWindowTitle(std::string_view /*title*/) override {}
-        void setTabName(std::string_view /*title*/) override {}
+        void setProgramTabTitle(std::string_view /*title*/) override {}
         void setWindowFrameColor(RGBColor /*color*/) override {}
         void resetWindowFrameColor() override {}
         void defaultBackgroundColorChanged(DefaultBackground const& /*background*/) override {}
@@ -3750,7 +3750,7 @@ class Terminal: public IStatusLinePublishTarget
     void setModifyOtherKeys(int mode);
     [[nodiscard]] int modifyOtherKeys() const noexcept;
     void setWindowTitle(std::string_view title);
-    void setTabName(std::string_view title);
+    void setProgramTabTitle(std::string_view title);
     [[nodiscard]] std::string const& windowTitle() const noexcept;
 
     /// Returns a copy of the raw OS-window title (OSC 0/2), read under _stateMutex.
@@ -3759,7 +3759,7 @@ class Terminal: public IStatusLinePublishTarget
     /// GUI thread: _windowTitle is written on the parser thread under _stateMutex (writeToScreen()
     /// holds the lock across the whole parse, within which setWindowTitle()/restoreWindowTitle() run).
     /// A by-value copy is required; a reference handed back after the lock releases would race the
-    /// writer (torn read / use-after-free on string reallocation). Unlike resolvedTabName(), this
+    /// writer (torn read / use-after-free on string reallocation). Unlike resolvedProgramTabTitle(), this
     /// ignores TabsNamingMode and always yields the raw title — for the GUI tab-label {WindowTitle}
     /// placeholder, which must not depend on the status-line-derived naming mode.
     /// @return The raw window title.
@@ -3836,21 +3836,22 @@ class Terminal: public IStatusLinePublishTarget
     /// @return The progress indicator state.
     [[nodiscard]] Progress resolvedProgress() const;
 
-    /// The application-set tab name (OSC 30), WITHOUT taking the lock -- for callers that hold it or run on
+    /// The application-set tab title (OSC 30), WITHOUT taking the lock -- for callers that hold it or run on
     /// the thread that writes it, as windowTitle() is. Never read it from another thread: the reference is
-    /// into state the parser thread rewrites. The GUI thread uses resolvedTabName().
-    /// @return The tab name, or nullopt when the application has set none.
-    [[nodiscard]] std::optional<std::string> const& tabName() const noexcept;
+    /// into state the parser thread rewrites. The GUI thread uses resolvedProgramTabTitle().
+    /// @return The tab title, or nullopt when the application has set none.
+    [[nodiscard]] std::optional<std::string> const& programTabTitle() const noexcept;
 
     /// Resolves the indicator status-line tab label for this terminal under a single _stateMutex hold.
     ///
-    /// Returns the explicit tab name if one is set, otherwise the window title when TabsNamingMode::Title
-    /// is active, otherwise nullopt. Unlike calling tabName()/getTabsNamingMode()/windowTitle()
-    /// separately, this reads _tabName/_windowTitle while holding _stateMutex — they are written on the
-    /// parser thread under that same mutex (setTabName()/setWindowTitle()), and this is invoked from the
-    /// GUI thread (TerminalSessionManager::updateStatusLine()), so an unlocked read would be a data race
-    /// on the underlying std::string (torn read / use-after-free on reallocation).
-    [[nodiscard]] std::optional<std::string> resolvedTabName() const;
+    /// Returns the application-set tab title if one is set, otherwise the window title when
+    /// TabsNamingMode::Title is active, otherwise nullopt. Unlike calling
+    /// programTabTitle()/getTabsNamingMode()/windowTitle() separately, this reads
+    /// _programTabTitle/_windowTitle while holding _stateMutex — they are written on the parser thread under
+    /// that same mutex (setProgramTabTitle()/setWindowTitle()), and this is invoked from the GUI thread
+    /// (TerminalSessionManager::updateStatusLine()), so an unlocked read would be a data race on the
+    /// underlying std::string (torn read / use-after-free on reallocation).
+    [[nodiscard]] std::optional<std::string> resolvedProgramTabTitle() const;
     [[nodiscard]] bool focused() const noexcept { return _focused; }
     /// Read-only by design: @c Search::query is derived from the other fields, and the setters
     /// are what keep it in step. A mutable handle here is how the matcher and the highlighter came to
@@ -4385,10 +4386,10 @@ class Terminal: public IStatusLinePublishTarget
         //
         // Lock ordering: the reader nests _guiTabInfoMutex INSIDE _stateMutex (it is already held here).
         // The writer (TerminalSessionManager::updateStatusLine) DOES take _stateMutex — it resolves each
-        // session name via resolvedTabName() — but it takes and RELEASES _stateMutex there, then acquires
-        // _guiTabInfoMutex separately in setGuiTabInfoForStatusLine(); it never holds _stateMutex while
-        // acquiring _guiTabInfoMutex. Because the writer never nests the two the other way round, there is
-        // no ABBA inversion. Do NOT move the name resolution inside setGuiTabInfoForStatusLine() (i.e.
+        // session name via resolvedProgramTabTitle() — but it takes and RELEASES _stateMutex there, then
+        // acquires _guiTabInfoMutex separately in setGuiTabInfoForStatusLine(); it never holds _stateMutex
+        // while acquiring _guiTabInfoMutex. Because the writer never nests the two the other way round, there
+        // is no ABBA inversion. Do NOT move the name resolution inside setGuiTabInfoForStatusLine() (i.e.
         // under _guiTabInfoMutex): that WOULD nest _stateMutex inside _guiTabInfoMutex and deadlock against
         // this reader.
         auto const l = std::lock_guard { _guiTabInfoMutex };
@@ -5885,7 +5886,7 @@ class Terminal: public IStatusLinePublishTarget
     /// The title stack, deepest entry first. @see SavedTitles, saveTitles(), restoreTitles().
     std::vector<SavedTitles> _savedTitles {};
 
-    std::optional<std::string> _tabName {};
+    std::optional<std::string> _programTabTitle {};
 
     struct ModeDependantSequenceHandler
     {

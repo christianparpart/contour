@@ -16,19 +16,19 @@ automatically at startup instead of the usual single default tab.
 layouts:
   work:
     tabs:
-      - title: "editor"
+      - name: "editor"
         color: "#d75f00"
         directory: "~/proj/foo"
         command: "nvim"
         arguments: ["."]
         profile: "dark-big"
 
-      - title: "claude"
+      - name: "claude"
         color: "#00af5f"
         directory: "~/proj/foo"
         command: "claude"
 
-      - title: "servers"
+      - name: "servers"
         split:
           orientation: vertical
           panes:
@@ -41,7 +41,7 @@ layouts:
 
   dev:
     tabs:
-      - title: "shell"
+      - name: "shell"
         directory: "~/proj/bar"
 
 default_layout: work
@@ -54,7 +54,7 @@ tab (a `split` node). A tab uses leaf fields *or* `split`, not both.
 
 Option        | Description
 --------------|--------------------------------------------------------------------
-`title`       | Optional. Seeds the tab's name.
+`name`        | Optional. The tab's name, as **Rename…** sets it. Until 0.9.0 the older key `title` is read as `name`, with a warning.
 `color`       | Optional. Hex in `'#RRGGBB'` form (e.g. `'#d75f00'`); sets the tab's user color.
 `directory`   | Optional working directory for the tab. Falls back to the profile's configured directory when omitted.
 `command`     | Optional. Replaces the shell — the program to run in the pane. May be a full command line (see [Command lines](#command-lines) below). When omitted, the effective profile's `shell` is used.
@@ -160,7 +160,7 @@ appends that layout's tabs to the current window, exactly like the `LaunchLayout
 ## Saving the current window as a layout
 
 The `SaveLayout` action captures the active window's current tabs and panes — their
-directories, the command each pane was started with, titles, colors, and split
+directories, the command each pane was started with, names, colors, and split
 structure — and writes them out as a named layout.
 
 ``` yaml

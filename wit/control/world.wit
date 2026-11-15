@@ -77,7 +77,7 @@ interface types {
 
     record pane-info {
         id: string,
-        label: string,
+        name: string,
         title: string,
         cwd: string,
         is-active: bool,
@@ -88,7 +88,7 @@ interface types {
 
     record tab-info {
         id: string,
-        label: string,
+        name: string,
         title: string,
         position: u32,
         is-active: bool,
@@ -110,7 +110,7 @@ interface types {
 
     record workspace-info {
         id: string,
-        label: string,
+        name: string,
         position: u32,
         native: string,
         visibility: string,
@@ -138,7 +138,7 @@ interface types {
         placement: workspace-placement,
         cwd: string,
         command: list<string>,
-        label: string,
+        name: string,
         focus: focus-policy,
     }
 
@@ -159,7 +159,7 @@ interface types {
         ratio-percent: option<u8>,
         cwd: string,
         command: list<string>,
-        label: string,
+        name: string,
         focus: focus-policy,
     }
 
@@ -216,18 +216,13 @@ interface types {
 
     record create-workspace-request {
         cwd: string,
-        label: string,
+        name: string,
     }
 
     record create-workspace-reply {
         workspace: string,
         tab: string,
         pane: string,
-    }
-
-    record rename-workspace-request {
-        workspace: string,
-        label: string,
     }
 
     record close-workspace-request {
@@ -264,9 +259,9 @@ interface types {
         tab: string,
     }
 
-    record set-label-request {
+    record object-rename-request {
         object: string,
-        label: string,
+        name: string,
     }
 
     record report-status-request {
@@ -372,13 +367,12 @@ interface control {
         close-tab-request,
         create-workspace-request,
         create-workspace-reply,
-        rename-workspace-request,
         close-workspace-request,
         move-workspace-request,
         move-tab-request,
         move-pane-request,
         move-pane-reply,
-        set-label-request,
+        object-rename-request,
         report-status-request,
         clear-status-request,
         block-list-request,
@@ -423,13 +417,9 @@ interface control {
     /// Needs `write`.
     tab-close: func(request: close-tab-request) -> result<_, control-error>;
 
-    /// Open a workspace with one tab, named after its folder unless a label is given.
+    /// Open a workspace with one tab, named after its folder unless a name is given.
     /// Needs `write`.
     workspace-create: func(request: create-workspace-request) -> result<create-workspace-reply, control-error>;
-
-    /// Rename a workspace; an empty label clears it.
-    /// Needs `write`.
-    workspace-rename: func(request: rename-workspace-request) -> result<_, control-error>;
 
     /// Close a workspace with all its tabs and panes, and end their shells.
     /// Needs `write`.
@@ -447,9 +437,9 @@ interface control {
     /// Needs `write`.
     pane-move: func(request: move-pane-request) -> result<move-pane-reply, control-error>;
 
-    /// Give a workspace, tab or pane a label to address it by; an empty label clears it.
+    /// Give a workspace, tab or pane a name to address it by; an empty name clears it.
     /// Needs `write`.
-    object-set-label: func(request: set-label-request) -> result<_, control-error>;
+    object-rename: func(request: object-rename-request) -> result<_, control-error>;
 
     /// Report what a pane's program is doing, as an integration; an agent's hook uses it to show its state.
     /// Needs `input`.

@@ -37,6 +37,7 @@
 
 #include <vtcontrol/Dispatch.hpp>
 #include <vtcontrol/Json.hpp>
+#include <vtcontrol/LegacySpelling.hpp>
 #include <vthost/CellPixelBounds.hpp>
 #include <vthost/CommandBlockWire.hpp>
 #include <vthost/ContextWire.hpp>
@@ -109,9 +110,11 @@ namespace
 
     /// Serializes the host workspace's whole tab/pane layout for the LayoutState PDU.
     /// @param workspace The workspace.
-    /// @param objects Where its tabs' control-API labels are.
+    /// @param objects Where its tabs' names are.
+    /// @param spelling How the client spells a name: Spelling::Legacy for one without Capability::Names.
     [[nodiscard]] proto::LayoutState serializeLayout(vtworkspace::Workspace& workspace,
-                                                     ObjectRegistry const& objects)
+                                                     ObjectRegistry const& objects,
+                                                     vtcontrol::Spelling spelling)
     {
         auto layout = proto::LayoutState {};
         layout.workspace = workspace.id().value;
@@ -127,11 +130,13 @@ namespace
                 wireTab.activePane = active->id().value;
             if (auto const zoomed = tab->zoomedLeafId())
                 wireTab.zoomedPane = zoomed->value;
-            if (auto const& title = tab->runtimeTitle())
-                wireTab.title = *title;
             if (auto const uuid = objects.uuidOf(tab->id()))
-                wireTab.label = objects.labelOf(
+                wireTab.name = objects.nameOf(
                     vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab, .uuid = *uuid });
+            // compat(0.9.0): an old window names a tab by its runtime title, and clears a name only by
+            // clearing a title it holds (ClearTitle, read as ClearName).
+            if (spelling == vtcontrol::Spelling::Legacy)
+                wireTab.title = wireTab.name;
             if (auto const color = tab->color())
             {
                 wireTab.hasColor = 1;
@@ -666,7 +671,7 @@ void NativeSession::announceWorkspaceMeta(vtworkspace::Workspace const& workspac
     send(0,
          proto::DecodedPdu { proto::WorkspaceMeta { .workspace = workspace.id().value,
                                                     .controlId = uuid.bytes,
-                                                    .label = std::string { _host.objects().labelOf(ref) },
+                                                    .name = std::string { _host.objects().nameOf(ref) },
                                                     .git = std::move(git),
                                                     .position = position } });
 }
@@ -712,24 +717,23 @@ void NativeSession::forgetRemovedWorkspaceMeta()
     });
 }
 
-void NativeSession::labelChanged(vtcontrol::ObjectRef const& ref, std::string_view label)
+void NativeSession::nameChanged(vtcontrol::ObjectRef const& ref, std::string_view name)
 {
     switch (ref.kind)
     {
         case vtcontrol::ObjectKind::Workspace:
             if (sharesWorkspaceMeta())
-                workspaceLabelChanged(ref, label);
+                workspaceNameChanged(ref, name);
             return;
+        // A tab's name travels in its workspace's layout, pushed as the host mirrors the name into the model
+        // (SessionHost::mirrorTabName), whose retitle reaches every client: pushing here too would push
+        // twice.
         case vtcontrol::ObjectKind::Tab:
-            // A tab's label travels in its workspace's layout, which names the tab by it.
-            if (auto const handle = _host.objects().find(ref))
-                layoutChanged(_host.model().workspaceOfTab(std::get<vtworkspace::TabId>(*handle)));
-            return;
         case vtcontrol::ObjectKind::Pane: return;
     }
 }
 
-void NativeSession::workspaceLabelChanged(vtcontrol::ObjectRef const& ref, std::string_view label)
+void NativeSession::workspaceNameChanged(vtcontrol::ObjectRef const& ref, std::string_view name)
 {
     if (ref.kind != vtcontrol::ObjectKind::Workspace || _phase != ConnectionPhase::Viewing || _closed)
         return;
@@ -737,13 +741,13 @@ void NativeSession::workspaceLabelChanged(vtcontrol::ObjectRef const& ref, std::
     if (!handle)
         return;
     auto const workspace = std::get<vtworkspace::WorkspaceId>(*handle).value;
-    // A workspace not announced yet is told its label in full with its layout.
+    // A workspace not announced yet is told its name in full with its layout.
     if (!_announcedMeta.contains(workspace))
         return;
     send(0,
          proto::DecodedPdu { proto::WorkspaceMeta { .workspace = workspace,
                                                     .controlId = ref.uuid.bytes,
-                                                    .label = std::string { label },
+                                                    .name = std::string { name },
                                                     .git = std::nullopt } });
 }
 
@@ -761,7 +765,7 @@ void NativeSession::sendWorkspaceGit(uint64_t workspace, std::optional<proto::Wi
          proto::DecodedPdu { proto::WorkspaceMeta {
              .workspace = workspace,
              .controlId = controlIdOf(vtworkspace::WorkspaceId { workspace }),
-             .label = std::nullopt,
+             .name = std::nullopt,
              // None, not absent: absent says nothing changed, None that the repository is gone.
              .git = git.value_or(proto::WireGitInfo {}) } });
 }
@@ -994,7 +998,7 @@ void NativeSession::sendWorkspaceLayout(vtworkspace::Workspace& workspace)
     // Asked before the layout goes out, and streamed after it: the client has the pane by then.
     if (workspace.id().value == _selectedWorkspace)
         requestArrivedSnapshots(workspace);
-    sendLayout(serializeLayout(workspace, _host.objects()));
+    sendLayout(serializeLayout(workspace, _host.objects(), controlSpelling()));
     announceWorkspaceMeta(workspace);
 }
 
@@ -1423,18 +1427,19 @@ void NativeSession::collectLiveState(vtbackend::Terminal& terminal,
         follow.lastTitle = title;
     }
 
-    // Live tab name (OSC 30): pulled and diffed like the title -- as a string_view, so an unchanged name
-    // allocates nothing -- and stated in SessionState on a snapshot. Empty stands for "none set" on the wire;
-    // Terminal::setTabName() folds an empty name into none, so the two are one state on both ends.
-    auto const& tabName = terminal.tabName();
-    if (auto const current = tabName ? std::string_view { *tabName } : std::string_view {};
-        current != follow.lastTabName)
+    // Live program tab title (OSC 30): pulled and diffed like the title -- as a string_view, so an unchanged
+    // title allocates nothing -- and stated in SessionState on a snapshot. Empty stands for "none set" on the
+    // wire; Terminal::setProgramTabTitle() folds an empty title into none, so the two are one state on both
+    // ends.
+    auto const& programTabTitle = terminal.programTabTitle();
+    if (auto const current = programTabTitle ? std::string_view { *programTabTitle } : std::string_view {};
+        current != follow.lastProgramTabTitle)
     {
-        follow.lastTabName = current;
+        follow.lastProgramTabTitle = current;
         if (!snapshot)
         {
-            delta.tabNameChanged = 1;
-            delta.tabName = follow.lastTabName;
+            delta.programTabTitleChanged = 1;
+            delta.programTabTitle = follow.lastProgramTabTitle;
         }
     }
 
@@ -1618,7 +1623,7 @@ void NativeSession::collectLiveState(vtbackend::Terminal& terminal,
         snap.cursorLine = delta.cursorLine;
         snap.cursorColumn = delta.cursorColumn;
         snap.title = terminal.windowTitle();
-        snap.tabName = terminal.tabName().value_or(std::string {});
+        snap.programTabTitle = terminal.programTabTitle().value_or(std::string {});
         snap.cursorShape = cursorPs;
         snap.cwd = terminal.currentWorkingDirectory();
         // Stated outright, including when EMPTY: a snapshot routes this through SessionState rather
@@ -2363,7 +2368,9 @@ NativeSession::TabVerb NativeSession::serveTabVerb(proto::DecodedFrame const& fr
         // Served before it is applied: the push the change fans out, to this client included, has seen it.
         _servedEdit = frame.serial;
         // A change fans out as a model event, and so as a layout push to every client, this one included.
-        if (auto const applied = applyTabEdit(_host.model(), *edit); !applied)
+        // A name is the registry's, which addresses the tab by it and tells every client.
+        auto names = RegistryTabNames { _host.objects() };
+        if (auto const applied = applyTabEdit(_host.model(), names, *edit); !applied)
             errorLog()("{}: ignoring {}: {}", _id, proto::describe(frame.pdu), describe(applied.error()));
         return TabVerb::Served;
     }
@@ -2507,20 +2514,20 @@ NativeSession::TabVerb NativeSession::serveWorkspaceVerb(proto::DecodedFrame con
             errorLog()("{}: not closing workspace {}: {}", _id, close->workspace, describe(closed.error()));
         return TabVerb::Served;
     }
-    if (auto const* set = std::get_if<proto::SetWorkspaceLabel>(&frame.pdu))
+    if (auto const* set = std::get_if<proto::SetWorkspaceName>(&frame.pdu))
     {
         if (!_negotiated->shared.contains(proto::Capability::WorkspaceMeta))
         {
             refuse(frame);
             return TabVerb::Served;
         }
-        // Set on the object registry, whose label observers tell every client and every control subscriber.
+        // Set on the object registry, whose name observers tell every client and every control subscriber.
         auto const uuid = _host.objects().uuidOf(vtworkspace::WorkspaceId { set->workspace });
         if (!uuid)
             errorLog()("{}: ignoring {}: there is no such workspace", _id, proto::describe(frame.pdu));
         else
-            _host.objects().setLabel(
-                vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace, .uuid = *uuid }, set->label);
+            _host.objects().setName(
+                vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace, .uuid = *uuid }, set->name);
         return TabVerb::Served;
     }
     if (std::holds_alternative<proto::ReportFocus>(frame.pdu))
@@ -2742,29 +2749,59 @@ void NativeSession::serveControlRequest(uint64_t serial, proto::ControlRequest c
                                     _grants,
                                     isLocal(_id) ? vtcontrol::CallerLocality::Local
                                                  : vtcontrol::CallerLocality::Remote };
-    vtcontrol::dispatch(_services.control.get(),
-                        context,
-                        vtcontrol::Caller::Socket,
-                        request.method,
-                        request.params,
-                        // Possibly completed later -- a wait, or an upgrade -- and an upgrade's flow outlives
-                        // the connection (it closes this very one), so the completion holds the link, never
-                        // `this`: a wait is dropped by run() before it lets `this` go, an upgrade is not.
-                        [link = _upgradeLink, serial, requestId = request.requestId](
-                            std::expected<std::string, vtcontrol::ControlError> result) {
-                            auto* const session = link->session;
-                            if (session == nullptr || session->_closed)
-                                return;
-                            auto reply = proto::ControlReply { .requestId = requestId };
-                            if (result)
-                                reply.body = std::move(*result);
-                            else
-                            {
-                                reply.outcome = proto::ControlOutcome::Error;
-                                reply.body = vtcontrol::encodeJson(result.error());
-                            }
-                            session->send(serial, proto::DecodedPdu { std::move(reply) });
-                        });
+    // compat(0.9.0): a client without the names capability is read, and answered, in the old spelling.
+    auto const spelling = controlSpelling();
+    auto rewritten = spelling == vtcontrol::Spelling::Legacy
+                         ? std::optional { vtcontrol::requestFromLegacy(request.method, request.params) }
+                         : std::nullopt;
+    auto const method = rewritten && *rewritten ? std::string_view { (*rewritten)->first }
+                                                : std::string_view { request.method };
+    auto const params = rewritten && *rewritten ? std::string_view { (*rewritten)->second }
+                                                : std::string_view { request.params };
+    // Possibly completed later -- a wait, or an upgrade -- and an upgrade's flow outlives the connection (it
+    // closes this very one), so the completion holds the link, never `this`: a wait is dropped by run()
+    // before it lets `this` go, an upgrade is not.
+    auto answer = [link = _upgradeLink,
+                   serial,
+                   requestId = request.requestId,
+                   spelling,
+                   answered =
+                       std::string { method }](std::expected<std::string, vtcontrol::ControlError> result) {
+        auto* const session = link->session;
+        if (session == nullptr || session->_closed)
+            return;
+        auto reply = proto::ControlReply { .requestId = requestId };
+        if (result)
+        {
+            reply.body = std::move(*result);
+            // compat(0.9.0): the reply in the spelling the request came in; our own JSON always rewrites.
+            if (spelling == vtcontrol::Spelling::Legacy)
+                if (auto legacy = vtcontrol::replyToLegacy(answered, reply.body))
+                    reply.body = std::move(*legacy);
+        }
+        else
+        {
+            reply.outcome = proto::ControlOutcome::Error;
+            reply.body = vtcontrol::encodeJson(result.error());
+        }
+        session->send(serial, proto::DecodedPdu { std::move(reply) });
+    };
+    if (rewritten && !*rewritten)
+    {
+        answer(std::unexpected(vtcontrol::ControlError { .code = vtcontrol::ControlErrorCode::BadRequest,
+                                                         .message = (*rewritten).error().message,
+                                                         .candidates = {} }));
+        return;
+    }
+    vtcontrol::dispatch(
+        _services.control.get(), context, vtcontrol::Caller::Socket, method, params, std::move(answer));
+}
+
+vtcontrol::Spelling NativeSession::controlSpelling() const noexcept
+{
+    return _negotiated && _negotiated->shared.contains(proto::Capability::Names)
+               ? vtcontrol::Spelling::Names
+               : vtcontrol::Spelling::Legacy;
 }
 
 void NativeSession::deliverControlEvent(uint32_t subscription, vtcontrol::Event const& event)
@@ -2788,9 +2825,18 @@ void NativeSession::deliverControlEvent(uint32_t subscription, vtcontrol::Event 
                  .event = vtcontrol::encodeEvent(vtcontrol::Event {
                      .origin = {}, .payload = vtcontrol::EventsDroppedEvent { .count = count } }) } });
     }
-    send(0,
-         proto::DecodedPdu {
-             proto::ControlEvent { .subscription = subscription, .event = vtcontrol::encodeEvent(event) } });
+    auto text = vtcontrol::encodeEvent(event);
+    // compat(0.9.0): a subscriber of the old spelling hears the events it has a name for, in it.
+    if (controlSpelling() == vtcontrol::Spelling::Legacy)
+    {
+        auto legacy = vtcontrol::encodedEventToLegacy(text);
+        if (!legacy)
+            return;
+        text = std::move(*legacy);
+    }
+    send(
+        0,
+        proto::DecodedPdu { proto::ControlEvent { .subscription = subscription, .event = std::move(text) } });
 }
 
 void NativeSession::refuse(proto::DecodedFrame const& frame)
@@ -3015,8 +3061,8 @@ void NativeSession::attachClient(uint64_t serial,
     _clientTicket = _services.daemon.get().admitClient();
     _streamSubscription.emplace(_host, *this, &SessionHost::subscribeStream, &SessionHost::unsubscribeStream);
     _layoutSubscription.emplace(_host, _layoutObserver, &SessionHost::subscribe, &SessionHost::unsubscribe);
-    _labelSubscription.emplace(_host.objects().onLabelChanged(
-        [this](vtcontrol::ObjectRef const& ref, std::string_view label) { labelChanged(ref, label); }));
+    _nameSubscription.emplace(_host.objects().onNameChanged(
+        [this](vtcontrol::ObjectRef const& ref, std::string_view name) { nameChanged(ref, name); }));
 
     // Adopted BEFORE the spawn below: that session exists because THIS client attached, so it
     // inherits this client's profile like any tab the client goes on to open. A profile the host

@@ -39,7 +39,7 @@ namespace
     /// The longest WIT func name an import may have, NUL included.
     constexpr auto MaxImportNameBytes = std::size_t { 48 };
 
-    /// @return @p name as its WIT func is spelled, kebab-case (`object.setLabel` is `object-set-label`),
+    /// @return @p name as its WIT func is spelled, kebab-case (`object.rename` is `object-rename`),
     ///         NUL-terminated: the same spelling as vtcontrol::kebabCase(), which the WIT is rendered with.
     [[nodiscard]] consteval auto witFuncName(std::string_view name)
     {

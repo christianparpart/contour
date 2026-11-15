@@ -258,11 +258,11 @@ cmake --build build/ --target install
     contour [terminal] [config FILE] [profile NAME] [layout NAME] [daemon-mode MODE]
                        [working-directory DIRECTORY] [class WM_CLASS] [PROGRAM ARGS...]
     contour connect [TARGET]            Where a window's sessions live: daemon, local, a saved host, ssh:// or tls://
-    contour client [socket PATH] [label NAME] [host NAME|URL] [tmux]
-    contour daemon [socket PATH] [label NAME] [listen-tcp HOST:PORT] [tls-cert FILE] [tls-key FILE]
+    contour client [socket PATH] [daemon PATH|HOST:PORT|URL|NAME] [host NAME|URL] [tmux]
+    contour daemon [socket PATH] [name NAME] [listen-tcp HOST:PORT] [tls-cert FILE] [tls-key FILE]
                    status | logs | stop
-    contour daemon-service install|uninstall|start|stop|restart|status [label NAME]
-    contour ls | new | split | send | pane capture | close | label    Script the daemon's workspaces, tabs and panes
+    contour daemon-service install|uninstall|start|stop|restart|status [name NAME]
+    contour ls | new | split | send | pane capture | close | rename   Script the daemon's workspaces, tabs and panes
     contour block list | read   and   contour wait | events          Read command blocks and follow what happens
     contour api list | describe | call                               The typed control API
     contour agent setup                                              Teach coding agents to operate Contour panes

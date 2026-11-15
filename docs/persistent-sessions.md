@@ -101,27 +101,28 @@ input_mapping:
 
 ## Running several daemons side by side
 
-Daemons are told apart by a **label**, exactly as tmux's `-L` does:
+Daemons are told apart by a **name**, exactly as tmux's `-L` does:
 
 ```sh
-contour daemon --label work
-contour client --label work
+contour daemon --name work
+contour client --daemon work
 ```
 
-The label names a socket under your per-user runtime directory. Resolution order:
+The name names a socket under your per-user runtime directory. Resolution order:
 
 1. `--socket PATH` — used verbatim.
-2. An explicitly given `--label NAME` (the value `default` included) — the label's own socket,
+2. An explicitly given name, `contour daemon --name NAME` or `contour client --daemon NAME` (the value
+   `default` included) — the name's own socket,
    exactly as tmux's `-L` beats `$TMUX`.
 3. `$CONTOUR_MUX` — used verbatim (analogous to tmux's `$TMUX`).
-4. `$XDG_RUNTIME_DIR/contour/<label>` (the default label when none was given).
-5. `<temp>/contour-<uid>/<label>` when there is no runtime directory (tmux's
+4. `$XDG_RUNTIME_DIR/contour/<name>` (the name `default` when none was given).
+5. `<temp>/contour-<uid>/<name>` when there is no runtime directory (tmux's
    `/tmp/tmux-<uid>/<label>` shape).
 
 A daemon exports `$CONTOUR_MUX` into every shell it hosts, so a command typed in one of its panes
-reaches that same daemon without a flag. That is why it ranks above the default label: a sandboxed
+reaches that same daemon without a flag. That is why it ranks above the default name: a sandboxed
 (Flatpak) shell cannot derive where its daemon lives, and a plain `contour client` there still finds
-it. It ranks below an explicit `--label`, so `contour daemon --label work status` from inside a pane
+it. It ranks below an explicit name, so `contour daemon --name work status` from inside a pane
 asks the `work` daemon rather than the one hosting the pane.
 
 The daemon binds three endpoints, all derived from that one path: the control socket itself,
@@ -138,15 +139,15 @@ owned by you, and must not be world-accessible. Group access is permitted, match
 
 | Option | What it does |
 | --- | --- |
-| `--socket PATH` | Path of the control socket file. Defaults to the configuration's `daemon.socket`, else `$CONTOUR_MUX` when no `--label` is given, else `$XDG_RUNTIME_DIR/contour/LABEL`. |
-| `--label NAME` | Socket label distinguishing daemon instances. Default `default`. Given, it beats `$CONTOUR_MUX`. |
+| `--socket PATH` | Path of the control socket file. Defaults to the configuration's `daemon.socket`, else `$CONTOUR_MUX` when no `--name` is given, else `$XDG_RUNTIME_DIR/contour/NAME`. |
+| `--name NAME` | The daemon's name, which tells daemon instances apart. Default `default`. Given, it beats `$CONTOUR_MUX`. Until 0.9.0, `--label NAME` still works, with a note on standard error. |
 | `--config FILE` | Configuration file whose profile supplies the hosted sessions' terminal settings — including `history.limit`, which is how much scrollback a session keeps for clients that attach later. |
 | `--profile NAME` | Which profile of that configuration to take them from. Defaults to the configuration's default profile. |
 | `--lifecycle POLICY` | When the daemon ends on its own: `persistent` (the default), `exit-with-last-session` or `exit-when-idle`. See [Quick start](#quick-start). |
 | `--exit-with-last-session` | Alias for `--lifecycle=exit-with-last-session`. |
 | `--size-policy POLICY` | Which attached client's size the shared grid takes when clients of different sizes are attached: `latest`, `smallest` or `largest`. Mirrors tmux's `window-size`. Defaults to the configuration's `daemon.size_policy` (`latest` unless set). |
 | `--background` | Relaunches the command detached and returns once the daemon accepts connections. Without `--log-file` the daemon logs beside its socket (`SOCKET.log`), since a detached process has no console. |
-| `--stdio` | Relays the native protocol between standard input/output and this user's daemon, starting it if needed: what `contour client --host` runs over ssh. Honours `--label`, `--socket`, `--config`, `--profile`, `--log`, `--log-file` and `--size-policy` (forwarded to a daemon it starts); cannot be combined with `--listen-tcp`, `--background` or `--tmux-compat-socket`. |
+| `--stdio` | Relays the native protocol between standard input/output and this user's daemon, starting it if needed: what `contour client --host` runs over ssh. Honours `--name`, `--socket`, `--config`, `--profile`, `--log`, `--log-file` and `--size-policy` (forwarded to a daemon it starts); cannot be combined with `--listen-tcp`, `--background` or `--tmux-compat-socket`. |
 | `--in-place` | Runs from the installed binary instead of a per-version copy. See [After upgrading Contour](#after-upgrading-contour). |
 | `--tmux-compat-socket LABEL` | Additionally binds tmux's own discovery path `/tmp/tmux-<uid>/<LABEL>`, so a plain `tmux -L LABEL -C attach-session` finds this daemon. |
 | `--listen-tcp HOST:PORT` | Also serve the native protocol over TCP. Opt-in; always TLS-encrypted, and clients sign in with an authorized key or a token. The daemon's TLS fingerprint is logged and shown by `daemon status`. Port `0` lets the system pick a free port, which the log names. See [Remote access](#remote-access-over-tcp). |
@@ -220,7 +221,7 @@ window somewhere else without closing it, and its panes are swapped in place:
 
 - **To another workspace of the same daemon**, with `SwitchToWorkspace` or `CycleWorkspace`
   (`Ctrl+Shift+Alt+PageDown` / `PageUp`, `⌃⌘↓` / `⌃⌘↑` on macOS, for the next / previous one).
-- **To another daemon**: a local one by its label (`contour daemon --label`), or a saved
+- **To another daemon**: a local one by its name (`contour daemon --name`), or a saved
   [host](remote-hosts.md), with `SwitchToDaemon` or `CycleDaemon`. The window lands on that
   daemon's only workspace, on a new one when it has none, and asks which when it has several. A workspace
   that holds no tab -- a daemon no window has attached to yet keeps one -- counts as none: there is nothing
@@ -257,7 +258,7 @@ reachable, it has no such workspace, or it did not show the workspace within 10 
 
 A switch asked for through the control API (`contour switch`, or any program calling `workspace.switch`) is
 a program pointing your window somewhere, so the window asks before it switches: a prompt in the window
-names the destination in full, the daemon by label or host and the workspace, and offers Deny or Switch.
+names the destination in full, the daemon by name or host and the workspace, and offers Deny or Switch.
 Ticking **Don't ask again** keeps the answer, Deny or Switch, for every later switch between the same two
 daemons (from the daemon the window is on to the destination's), whatever the workspace, until Contour
 exits; it is never written down. A remembered Deny answers `refused` without asking. A destination named by
@@ -287,9 +288,9 @@ count and the most urgent status among its workspaces; a saved host also shows h
   Backspace in an empty field, or Escape, goes back. A saved host shows *Connecting…* while it connects;
   you can type, or back out, meanwhile.
 - **A daemon that cannot be listed** says why on its row, and everything else keeps working.
-- **New Daemon…** asks for a label. As you type it says whether the label is available, already running
-  (Return then switches to that daemon), or not a valid label, and shows the equivalent `contour daemon
-  --label` command. Return starts the daemon and switches this window to it; Shift+Return opens it in a
+- **New Daemon…** asks for a name. As you type it says whether the name is available, already running
+  (Return then switches to that daemon), or not a valid name, and shows the equivalent `contour daemon
+  --name` command. Return starts the daemon and switches this window to it; Shift+Return opens it in a
   new window.
 - **Right-click** a workspace of this window's daemon, or press the Menu key or Shift+F10, for the menu its
   sidebar row has. Another daemon's workspace offers switching and opening in a new window.
@@ -318,8 +319,9 @@ so reopening Contour finds your sessions where you left them. The same holds acr
 
 | Option | What it does |
 | --- | --- |
-| `--socket PATH`, `--label NAME` | Which daemon to attach to; same resolution as above, `daemon.socket` of the client's configuration included. |
-| `--workspace WORKSPACE` | Show only that daemon workspace instead of what a launch brings back, named as every control verb names one: its id or an id suffix (as `contour ls` prints it), its label, or its 1-based position. Fails, saying why, when it names no workspace or several. It also works with `--host`. |
+| `--daemon PATH\|HOST:PORT\|URL\|NAME` | Which daemon to attach to, as every control verb reads it: a socket path, a TCP daemon, an `ssh://` URL, or a name, which is a local daemon's, else a saved host's (`name:NAME` picks a local daemon and `host:NAME` a saved host; a number after them that names no such daemon or host is a port, so `host:2222` reaches a machine called `host`; a bare name both have is refused). A local daemon resolves as above, `daemon.socket` of the client's configuration included. Not together with `--socket`, `--host` or `--connect-tcp`. Until 0.9.0, `--label NAME` still works, as `--daemon name:NAME`. |
+| `--socket PATH` | The control socket of the daemon to attach to. |
+| `--workspace WORKSPACE` | Show only that daemon workspace instead of what a launch brings back, named as every control verb names one: its id or an id suffix (as `contour ls` prints it), its name, or its 1-based position. Fails, saying why, when it names no workspace or several. It also works with `--host`. |
 | `--size-policy POLICY` | The policy a daemon this client auto-starts runs with; defaults to `daemon.size_policy`. |
 | `--tmux` | Attach to a **real tmux server** instead of a Contour daemon. See [tmux interoperability](#tmux-interoperability). |
 | `--tmux-socket PATH` | The tmux server socket (tmux's `-S`) for `--tmux`. |
@@ -345,7 +347,7 @@ attach to a Contour daemon:
 tmux -S "$XDG_RUNTIME_DIR/contour/default-tmux" -C attach-session
 ```
 
-To let tmux find the daemon by label alone, have the daemon bind tmux's own discovery path too:
+To let tmux find the daemon by a socket name alone, have the daemon bind tmux's own discovery path too:
 
 ```sh
 contour daemon --tmux-compat-socket mine
@@ -409,7 +411,7 @@ Properties worth knowing before you open a port:
 - **Prefer `--token-file`.** A token passed as `--token` is readable by every other user on the
   machine through the process list; a file carries permissions.
 - **Without `--tls-cert`/`--tls-key` the daemon keeps a self-signed identity of its own**, made on
-  first start in `<state-dir>/tls/<label>.pem` and presented ever after. The daemon refuses that file
+  first start in `<state-dir>/tls/<name>.pem` and presented ever after. The daemon refuses that file
   unless it is yours and readable by you alone (mode 0600), so a copy with looser permissions needs a
   `chmod 600`. The client pins it on first use, as ssh pins a host key:
   it asks you to compare the fingerprint, remembers it in `known_daemons`, and refuses the daemon
@@ -473,14 +475,14 @@ contour daemon-service restart
 contour daemon-service uninstall    # stop it and remove the registration
 ```
 
-Each verb takes `--label NAME` (default `default`). `install` additionally takes `--socket`,
+Each verb takes `--name NAME` (default `default`; `--label NAME` still works until 0.9.0). `install` additionally takes `--socket`,
 `--config`, `--profile`, `--size-policy`, `--log` and `--log-file`, which are recorded in the
 registration. A socket path is made absolute at install time, because the registration outlives the
 shell that wrote it. Unless you give `--log-file` the daemon logs to `SOCKET.log`.
 
 | OS | What is registered | Runs as |
 | --- | --- | --- |
-| Linux | the systemd user unit `contour-daemon.service` (`contour-daemon-LABEL.service` for other labels), written to `~/.config/systemd/user` and enabled | you, no elevation |
+| Linux | the systemd user unit `contour-daemon.service` (`contour-daemon-NAME.service` for other names), written to `~/.config/systemd/user` and enabled | you, no elevation |
 | macOS | the LaunchAgent `org.contourterminal.contour-daemon` in `~/Library/LaunchAgents` | you, no elevation |
 | Windows | a Scheduled Task triggered by your logon | you, no elevation |
 
@@ -551,7 +553,7 @@ contour daemon logs           # the last 100 lines of its log
 contour daemon logs --follow --lines 20
 ```
 
-All of them accept `--label` and `--socket`, written before or after the verb. Giving the same option
+All of them accept `--name` and `--socket`, written before or after the verb. Giving the same option
 before and after the verb with different values is a usage error, so that `stop` never silently
 targets another daemon than the one you named. When no daemon answers, `status` and `stop` exit with
 status 4. `stop` asks for confirmation only when sessions exist; without a terminal it refuses unless
@@ -633,7 +635,7 @@ daemon brings it back. The shells themselves cannot survive a reboot, nor a stop
 one is another matter: see [Surviving a daemon crash](#surviving-a-daemon-crash)); what returns is:
 
 - every workspace, tab and split, with its ratios, the active tab and pane, and a zoomed pane;
-- tab titles and the tab colours you set;
+- the names you gave workspaces, tabs and panes, the tab titles, and the tab colours you set;
 - each pane's working directory and profile;
 - the newest lines of each pane's scrollback, under a dim marker row such as
   `── restored · snapshot of 2026-10-24 09:15 ──`, followed by a fresh shell.
@@ -674,11 +676,11 @@ daemon:
 `scrollback_lines` bounds the snapshot only; how much scrollback a session holds while it runs stays
 `daemon.history_limit`.
 
-The snapshot is `<state-dir>/sessions/<label>.snapshot` (the state directory is listed under
-[Platform notes](#platform-notes)); a daemon started with `--label work` keeps `work.snapshot`. A
-daemon given a socket of its own, by `--socket` or `$CONTOUR_MUX`, keeps `<label>@<hash>.snapshot`
+The snapshot is `<state-dir>/sessions/<name>.snapshot` (the state directory is listed under
+[Platform notes](#platform-notes)); a daemon started with `--name work` keeps `work.snapshot`. A
+daemon given a socket of its own, by `--socket` or `$CONTOUR_MUX`, keeps `<name>@<hash>.snapshot`
 instead, the hash naming its socket, so it never restores or overwrites the workspaces of the daemon
-its label runs; `contour daemon stop --socket` finds the same file. The
+its name runs; `contour daemon stop --socket` finds the same file. The
 file is your user's alone: mode `0600` in a `0700` directory on Linux, macOS and BSD, and a protected
 ACL granting only your account on Windows. It is replaced atomically and durably: each write is
 flushed to the disk before it replaces the previous snapshot, and the replacement is flushed in turn,
@@ -690,9 +692,9 @@ snapshot or the new one, whole.
     tool. It is written to disk in the clear. Set `scrollback: false` to keep only the layout and the
     directories, or `scrollback_lines: 0` for the same.
 
-A snapshot that cannot be read is renamed `<label>.snapshot.corrupt` and the daemon starts with its
+A snapshot that cannot be read is renamed `<name>.snapshot.corrupt` and the daemon starts with its
 startup layout, logging why; one written by a newer release is left in place. A restore that brought
-nothing back is tried once more at the next start, then set aside as `<label>.snapshot.failed`.
+nothing back is tried once more at the next start, then set aside as `<name>.snapshot.failed`.
 
 ## Diagnostics
 
@@ -842,7 +844,7 @@ themselves.
 Start it from the chip, or from a shell or script:
 
 ```sh
-contour daemon upgrade [--label NAME | --socket PATH]
+contour daemon upgrade [--name NAME | --socket PATH]
 ```
 
 It exits 0 once the new release serves, 4 when no daemon runs, and 5 with the reason on standard error

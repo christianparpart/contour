@@ -95,7 +95,7 @@ void collectActionNames(std::vector<ContextMenuEntry> const& entries, std::set<s
     return Command { .id = "SwitchToDaemon:" + name,
                      .title = "Switch to daemon " + name,
                      .description = {},
-                     .action = actions::SwitchToDaemon { { actions::DaemonRefKind::Label, name } },
+                     .action = actions::SwitchToDaemon { { actions::DaemonRefKind::Name, name } },
                      .category = CommandCategory::Daemons,
                      .argument = name };
 }

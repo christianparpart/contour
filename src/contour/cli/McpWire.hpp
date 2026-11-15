@@ -36,7 +36,7 @@ struct SplitArguments
     std::optional<uint8_t> ratioPercent {};
     std::string cwd {};
     std::vector<std::string> command {};
-    std::string label {};
+    std::string name {};
 };
 
 struct TypeArguments
@@ -57,7 +57,7 @@ struct TabCreateArguments
 {
     std::string cwd {};
     std::vector<std::string> command {};
-    std::string label {};
+    std::string name {};
 };
 
 /// What `pane_run` returns.

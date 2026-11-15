@@ -21,7 +21,7 @@
 using namespace contour;
 using contour::session::InProcessDirectory;
 using contour::session::InProcessWindow;
-using contour::session::WorkspaceLabels;
+using contour::session::WorkspaceNames;
 using vtworkspace::SessionId;
 using vtworkspace::WorkspaceId;
 
@@ -67,9 +67,9 @@ struct Harness
     vtworkspace::test::Fixture model;
     FakeWindow window;
     TableStatus status;
-    WorkspaceLabels labels;
+    WorkspaceNames names;
     int changes = 0;
-    InProcessDirectory source { model.model, window, status, labels, nullptr, [this] { ++changes; } };
+    InProcessDirectory source { model.model, window, status, names, nullptr, [this] { ++changes; } };
 
     /// Adds a workspace the window owns, with one tab; the first one is shown.
     vtworkspace::Workspace& addWorkspace()
@@ -90,15 +90,15 @@ TEST_CASE("two in-process workspaces list in model order with labels", "[directo
     auto h = Harness {};
     auto const& first = h.addWorkspace();
     auto const& second = h.addWorkspace();
-    h.labels.set(first.id(), "build");
-    h.labels.set(second.id(), "docs");
+    h.names.set(first.id(), "build");
+    h.names.set(second.id(), "docs");
 
     auto const directory = h.source.directory();
     REQUIRE(directory.workspaces.size() == 2);
     CHECK(directory.workspaces[0].id == first.id().value);
-    CHECK(directory.workspaces[0].label == "build");
+    CHECK(directory.workspaces[0].name == "build");
     CHECK(directory.workspaces[1].id == second.id().value);
-    CHECK(directory.workspaces[1].label == "docs");
+    CHECK(directory.workspaces[1].name == "docs");
     CHECK(directory.workspaces[0].tabs.size() == 1);
     CHECK(directory.selected == first.id().value);
     // An in-process workspace is in no object registry.
@@ -157,14 +157,14 @@ TEST_CASE("a split tab lists its panes depth-first", "[directory][inprocess]")
     // The first pane splits after the second one exists: its new neighbour is made last and sits second.
     h.model.model.setActivePane(tab, firstPane);
     REQUIRE(h.model.model.splitActivePane(tab, vtworkspace::SplitState::Horizontal) != nullptr);
-    h.model.model.setTabTitle(tab, "dev");
+    h.model.model.setTabName(tab, "dev");
 
     auto const directory = h.source.directory();
     REQUIRE(directory.workspaces.size() == 1);
     REQUIRE(directory.workspaces[0].tabs.size() == 1);
     auto const& tabRow = directory.workspaces[0].tabs[0];
-    CHECK(tabRow.title == "dev");
-    CHECK(tabRow.label == "dev");
+    CHECK(tabRow.title.empty());
+    CHECK(tabRow.name == "dev");
     // Sessions are minted in creation order (1000, 1001, 1002); the tree reads 1000, 1002, 1001.
     REQUIRE(tabRow.panes.size() == 3);
     auto keys = std::vector<uint64_t> {};
@@ -194,20 +194,20 @@ TEST_CASE("program status of an in-process pane appears", "[directory][inprocess
     CHECK(pane.cwd == "/src");
     REQUIRE(pane.status.size() == 1);
     CHECK(pane.status[0].title == "needs you");
-    CHECK(directory.workspaces[0].tabs[0].label == "vim");
+    CHECK(directory.workspaces[0].tabs[0].name == "vim");
 }
 
 TEST_CASE("a label set through the in-process store appears", "[directory][inprocess]")
 {
     auto h = Harness {};
     auto const& workspace = h.addWorkspace();
-    CHECK(h.source.directory().workspaces.at(0).label.empty());
+    CHECK(h.source.directory().workspaces.at(0).name.empty());
 
-    h.labels.set(workspace.id(), "renamed");
-    CHECK(h.source.directory().workspaces.at(0).label == "renamed");
+    h.names.set(workspace.id(), "renamed");
+    CHECK(h.source.directory().workspaces.at(0).name == "renamed");
 
-    h.labels.forget(workspace.id());
-    CHECK(h.source.directory().workspaces.at(0).label.empty());
+    h.names.forget(workspace.id());
+    CHECK(h.source.directory().workspaces.at(0).name.empty());
 }
 
 TEST_CASE("the git state the tracker holds appears on its workspace", "[directory][inprocess][git]")
@@ -224,7 +224,7 @@ TEST_CASE("the git state the tracker holds appears on its workspace", "[director
         [&](std::function<void()> job) { posted.push_back(std::move(job)); },
         [](WorkspaceId, std::optional<vthost::GitInfo> const&) {},
     };
-    auto const source = InProcessDirectory { h.model.model, h.window, h.status, h.labels, &tracker, {} };
+    auto const source = InProcessDirectory { h.model.model, h.window, h.status, h.names, &tracker, {} };
     CHECK_FALSE(source.directory().workspaces.at(0).git.has_value());
 
     tracker.refresh(workspace.id(), "/src/contour");

@@ -18,7 +18,6 @@ Tab::Tab(TabId id, std::unique_ptr<Pane> root, TabViewState const& view):
     _root { std::move(root) },
     _activeLeaf { _root->findPane(view.activePane) },
     _zoomed { view.zoom == ZoomState::Zoomed },
-    _runtimeTitle { view.title },
     _colors { view.colors }
 {
     assert(_activeLeaf != nullptr && _activeLeaf->isLeaf());
@@ -40,7 +39,7 @@ TabViewState Tab::viewState() const
     return TabViewState { .activePane = _activeLeaf->id(),
                           .zoom = _zoomed ? ZoomState::Zoomed : ZoomState::Unzoomed,
                           .recentPanes = _mru,
-                          .title = _runtimeTitle,
+                          .title = {}, // never written: the name is not part of the view state
                           .colors = _colors };
 }
 
@@ -352,12 +351,13 @@ bool Tab::moveActivePane(FocusDirection direction, PaneId newSplitId)
 
 std::string Tab::title(SessionTitleResolver const& resolver) const
 {
-    switch (tabNameSourceOf(nameCandidates()))
-    {
-        case TabNameSource::Label: return _label;
-        case TabNameSource::Title: return *_runtimeTitle;
-        case TabNameSource::Panes: break;
-    }
+    if (!_name.empty())
+        return _name;
+    return programTitle(resolver);
+}
+
+std::string Tab::programTitle(SessionTitleResolver const& resolver) const
+{
     if (usesMultiplePanesLabel())
         return std::string { MultiplePanesLabel };
     return resolver(_activeLeaf->session());

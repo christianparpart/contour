@@ -6,6 +6,9 @@
 /// directory and the probe are injected, so the decisions (which entries are daemons, in what order) are
 /// tested without a daemon. Qt-free; the call blocks, so callers run it off the GUI thread.
 
+#include <core/Environment.hpp>
+#include <core/platform/FileSystem.hpp>
+
 #include <cstddef>
 #include <filesystem>
 #include <functional>
@@ -16,6 +19,7 @@
 #include <vector>
 
 #include <vthost/DaemonSpawn.hpp>
+#include <vthost/client/DaemonWord.hpp>
 
 namespace contour::cli
 {
@@ -65,7 +69,7 @@ class IDaemonDiscovery
     DaemonCounter const& counter);
 
 /// @param socketDirectory The directory the daemons' control sockets live in (the parent of
-///        vthost::labelSocketPath("default")).
+///        vthost::namedSocketPath("default")).
 /// @param prober Asks whether a daemon serves at a socket; borrowed, outlives the discovery.
 /// @param counter Asks a running daemon for its workspaces.
 /// @param lister Lists the directory.
@@ -75,5 +79,18 @@ class IDaemonDiscovery
     vthost::DaemonSpawner& prober,
     DaemonCounter counter,
     DirectoryLister lister = nativeDirectoryLister());
+
+/// The local daemons a bare `--daemon` word names: those of a valid name whose control socket exists.
+/// @param env Where the sockets' directory is derived from; borrowed, outlives the lookup.
+/// @param fileSystem Where the sockets are looked for; borrowed, outlives the lookup.
+/// @return The lookup.
+[[nodiscard]] vthost::client::LocalDaemons localDaemonsOf(core::Environment const& env,
+                                                          core::platform::FileSystem const& fileSystem);
+
+/// The saved hosts a bare `--daemon` word names: those under the configuration's `hosts:`.
+/// @param configPath The configuration file; empty for the default one.
+/// @return The lookup, which reads the configuration each time it is asked; a missing one holds no inline
+///         host and is not created, while the hosts/ side files beside it still count.
+[[nodiscard]] vthost::client::SavedHosts savedHostsOf(std::string configPath);
 
 } // namespace contour::cli

@@ -19,6 +19,7 @@
 #include <vthost/tmux/CommandLine.hpp>
 #include <vthost/tmux/ControlModeSpawn.hpp>
 #include <vtworkspace/LayoutConvert.hpp>
+#include <vtworkspace/ObjectName.hpp>
 
 namespace contour::remote
 {
@@ -132,6 +133,15 @@ std::string tmuxSplitWindowCommand(uint64_t pane, bool vertical)
 std::string tmuxKillPaneCommand(uint64_t pane)
 {
     return std::format("kill-pane -t %{}", pane);
+}
+
+std::string tmuxRenameWindowCommand(uint64_t pane, std::string_view name)
+{
+    // A newline would end the command and start another: the name is normalised as every setter does it.
+    auto const normalized = vtworkspace::normalizedName(name);
+    if (normalized.empty())
+        return std::format("set-option -w -t %{} automatic-rename on", pane);
+    return std::format("rename-window -t %{} {}", pane, vthost::tmux::quoteArgument(normalized));
 }
 
 std::string tmuxPaneDirectoryQuery(uint64_t pane)
@@ -427,7 +437,7 @@ void TmuxController::windowRenamed(uint64_t window, std::string const& name)
 void TmuxController::applyPendingRenames(contour::session::TerminalSessionManager& manager)
 {
     // Resolve each pending rename to its tab's session under the lock (the acting-session
-    // map is shared with the reactor thread), then apply outside it — setTabTitleForSession
+    // map is shared with the reactor thread), then apply outside it — setTabNameForSession
     // touches the GUI model and could re-enter the controller.
     auto renames = std::vector<std::pair<vtworkspace::SessionId, std::string>> {};
     {
@@ -445,7 +455,7 @@ void TmuxController::applyPendingRenames(contour::session::TerminalSessionManage
         }
     }
     for (auto& [session, name]: renames)
-        manager.setTabTitleForSession(session, std::move(name));
+        manager.setTabNameForSession(session, std::move(name));
 }
 
 void TmuxController::panePaused(uint64_t pane, bool paused)
@@ -498,6 +508,22 @@ void TmuxController::requestRemoteClose(vtpty::Pty const* pty)
         if (_gateway != nullptr)
             _gateway->sendCommand(tmuxKillPaneCommand(pane));
     });
+}
+
+contour::session::RemoteRouting TmuxController::requestRemoteWindowRename(vtpty::Pty const* pty,
+                                                                          std::string const& name)
+{
+    auto const pane = [&] {
+        auto const lock = std::lock_guard { _mutex };
+        return paneForPtyLocked(pty);
+    }();
+    if (!pane)
+        return contour::session::RemoteRouting::Local; // not one of ours
+    _reactor.post([this, command = tmuxRenameWindowCommand(*pane, name)]() mutable {
+        if (_gateway != nullptr)
+            _gateway->sendCommand(std::move(command));
+    });
+    return contour::session::RemoteRouting::Routed;
 }
 
 contour::session::HostedOperationRoute TmuxController::requestHostedOperation(

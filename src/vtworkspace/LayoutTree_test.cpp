@@ -89,13 +89,13 @@ TEST_CASE("realizeLayoutTab: a single-pane tab creates one leaf with its command
     auto* win = h.model.createWorkspace();
 
     LayoutTab tab;
-    tab.title = "editor";
+    tab.name = "editor";
     tab.root.command = "nvim";
 
     auto* modelTab = realizeLayoutTab(h.model, win->id(), tab, h.seeder());
     REQUIRE(modelTab != nullptr);
     CHECK(modelTab->paneCount() == 1);
-    CHECK(modelTab->runtimeTitle() == "editor");
+    CHECK(modelTab->name() == "editor");
     auto const session = modelTab->rootPane()->session();
     CHECK(h.commandBySession.at(session.value) == "nvim");
 }
@@ -280,7 +280,7 @@ TEST_CASE("serializeTab: reproduces the pane tree with resolved commands", "[lay
         return p;
     };
     LayoutTab spec;
-    spec.title = "server";
+    spec.name = "server";
     spec.root.orientation = SplitState::Vertical;
     spec.root.children = { mk("dev"), mk("logs") };
     auto* tab = realizeLayoutTab(h.model, win->id(), spec, h.seeder());
@@ -298,7 +298,7 @@ TEST_CASE("serializeTab: reproduces the pane tree with resolved commands", "[lay
                                                           : std::nullopt };
     };
     auto const out = serializeTab(*tab, resolve);
-    CHECK(out.title == "server");
+    CHECK(out.name == "server");
     REQUIRE_FALSE(out.root.isLeaf());
     CHECK(out.root.orientation == SplitState::Vertical);
     REQUIRE(out.root.children.size() == 2);

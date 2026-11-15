@@ -71,7 +71,7 @@ namespace
 
         static auto const rows = std::array {
             Table::submenu("Tab Color", tabColorRows),
-            Table::command(SetTabTitle {}, "Rename…"),
+            Table::command(RenameTab {}, "Rename…"),
             Table::command(MoveTabToNewWindow {}, "Move Tab to New Window").enabledWhen(hasMultipleTabs),
 
             Table::separator(),

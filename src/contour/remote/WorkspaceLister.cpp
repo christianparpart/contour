@@ -53,12 +53,12 @@ namespace
                 [done = std::move(done)](auto listed) mutable { done(std::move(listed)); });
         }
 
-        void create(ListTarget target, std::string label, WorkspaceCreated done) override
+        void create(ListTarget target, std::string name, WorkspaceCreated done) override
         {
             _jobs.run(
-                [timeout = _timeout, transport = std::move(target.transport), label = std::move(label)] {
+                [timeout = _timeout, transport = std::move(target.transport), name = std::move(name)] {
                     auto const answer = vthost::client::runControlCall(
-                        *transport, "workspace.create", cli::encodeCreateWorkspace(label), "", timeout);
+                        *transport, "workspace.create", cli::encodeCreateWorkspace(name), "", timeout);
                     if (!answer)
                         return std::expected<vtcontrol::ObjectRef, std::string> { std::unexpected(
                             answer.error().message) };

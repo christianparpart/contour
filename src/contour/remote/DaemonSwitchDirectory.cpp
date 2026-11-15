@@ -24,7 +24,7 @@ std::string DaemonSwitchDirectory::cacheKeyOf(LinkedDaemon const& daemon)
 {
     switch (daemon.address.kind)
     {
-        case vthost::proto::SwitchDaemonKind::Label: return std::format("label:{}", daemon.address.name);
+        case vthost::proto::SwitchDaemonKind::Name: return std::format("name:{}", daemon.address.name);
         case vthost::proto::SwitchDaemonKind::Host: return std::format("host:{}", daemon.address.name);
         case vthost::proto::SwitchDaemonKind::Same: break;
     }
@@ -64,7 +64,7 @@ std::vector<session::KnownWorkspace> DaemonSwitchDirectory::workspacesOf(
         auto known = std::ranges::to<std::vector>(rows | std::views::transform([&](WorkspaceRow const& row) {
                                                       return session::KnownWorkspace {
                                                           .position = row.position,
-                                                          .name = row.name,
+                                                          .name = row.displayName,
                                                           .role = row.id == shown->workspace
                                                                       ? session::WorkspaceRole::Current
                                                                       : session::WorkspaceRole::Other,

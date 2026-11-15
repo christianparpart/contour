@@ -110,9 +110,9 @@ class KeeperLink
                                                                       std::vector<int> fds);
 
     /// Tells the keeper that the daemon shuts down, and waits until it took note (ShutdownNoted): by then the
-    /// keeper has let go of the label and of its copies of the listeners, so that once the daemon closes its
+    /// keeper has let go of the name and of its copies of the listeners, so that once the daemon closes its
     /// own, a new instance starts at once -- `contour daemon stop` followed by `contour daemon` finds the
-    /// label free. Loop thread. Every frame queued before goes first; the frames that arrive meanwhile are
+    /// name free. Loop thread. Every frame queued before goes first; the frames that arrive meanwhile are
     /// queued and dispatched after this returns, and it beats while it waits, as spawn() does.
     /// @param cause The ShutdownCause, as the channel carries it.
     /// @param bound How long to wait for the note; a keeper that sends none is waited for that long.

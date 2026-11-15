@@ -155,7 +155,7 @@ HandoverSession sessionStructureOf(SessionHost const& host, vtworkspace::Session
     auto session = HandoverSession {
         .id = id,
         .uuid = uuid,
-        .label = std::string { host.objects().labelOf(
+        .name = std::string { host.objects().nameOf(
             vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Pane, .uuid = uuid }) },
         .profileName = hosted.profileName(),
         .origin = hosted.settingsOrigin(),

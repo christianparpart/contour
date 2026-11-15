@@ -40,13 +40,6 @@ namespace
             ControlClientError { .failure = failure, .message = std::move(message), .remote = std::nullopt });
     }
 
-    /// @param spec What names an endpoint.
-    /// @return Whether it names a saved host rather than a path: a URL-like `scheme://`, or a bare word.
-    [[nodiscard]] bool namesSavedHost(std::string_view spec) noexcept
-    {
-        return spec.contains("://") || spec.find_first_of("/\\:") == std::string_view::npos;
-    }
-
     /// @param kind Why a transport could not connect.
     /// @return How a control client reports it: a daemon that is not (yet) trusted is Untrusted, so no
     ///         request goes to it, a question the user declined is Declined, a transport that is set up
@@ -287,7 +280,9 @@ core::async::Task<std::expected<proto::DecodedFrame, ControlClientError>> Contro
 core::async::Task<std::expected<void, ControlClientError>> ControlClient::handshake()
 {
     auto const ours = proto::SupportedVersions;
-    auto const offered = proto::CapabilitySet::of({ proto::Capability::ControlApi });
+    // compat(0.9.0): Names may stay; the legacy branches taken without it go.
+    auto const offered =
+        proto::CapabilitySet::of({ proto::Capability::ControlApi, proto::Capability::Names });
     auto const sendHello = [&](std::optional<proto::KeyProof> proof) {
         return send(
             proto::DecodedPdu { proto::ClientHello { .versions = ours,
@@ -371,6 +366,9 @@ core::async::Task<std::expected<void, ControlClientError>> ControlClient::handsh
                                        "daemon on this version",
                                        daemon));
         }
+        // compat(0.9.0): a daemon that predates the `names` capability speaks the old spelling.
+        _spelling = judged->shared.contains(proto::Capability::Names) ? vtcontrol::Spelling::Names
+                                                                      : vtcontrol::Spelling::Legacy;
         co_return std::expected<void, ControlClientError> {};
     }
 }
@@ -386,9 +384,28 @@ core::async::Task<std::expected<std::string, ControlClientError>> ControlClient:
                                                                                       std::string params,
                                                                                       std::string context)
 {
+    // compat(0.9.0): a daemon without the names capability is asked, and answers, in the old spelling.
+    auto wireMethod = method;
+    if (_spelling == vtcontrol::Spelling::Legacy)
+    {
+        auto legacy = vtcontrol::requestToLegacy(method, params);
+        // Params that do not parse: what the daemon would have answered them.
+        if (!legacy)
+        {
+            auto remote = vtcontrol::ControlError { .code = vtcontrol::ControlErrorCode::BadRequest,
+                                                    .message = std::move(legacy.error().message),
+                                                    .candidates = {} };
+            auto message = remote.message;
+            co_return std::unexpected(ControlClientError { .failure = ControlFailure::Remote,
+                                                           .message = std::move(message),
+                                                           .remote = std::move(remote) });
+        }
+        wireMethod = std::move(legacy->first);
+        params = std::move(legacy->second);
+    }
     auto const requestId = _nextRequestId++;
     auto const serial = send(proto::DecodedPdu { proto::ControlRequest { .requestId = requestId,
-                                                                         .method = method,
+                                                                         .method = std::move(wireMethod),
                                                                          .params = std::move(params),
                                                                          .context = std::move(context) } });
     if (!serial)
@@ -401,7 +418,7 @@ core::async::Task<std::expected<std::string, ControlClientError>> ControlClient:
             co_return std::unexpected(std::move(frame.error()));
         if (auto* event = std::get_if<proto::ControlEvent>(&frame->pdu))
         {
-            _events.push_back(std::move(event->event));
+            keepEvent(std::move(event->event));
             continue;
         }
         if (auto const* refusal = std::get_if<proto::Unsupported>(&frame->pdu);
@@ -413,7 +430,19 @@ core::async::Task<std::expected<std::string, ControlClientError>> ControlClient:
         if (reply == nullptr || reply->requestId != requestId)
             continue;
         if (reply->outcome == proto::ControlOutcome::Ok)
-            co_return std::move(reply->body);
+        {
+            if (_spelling == vtcontrol::Spelling::Names)
+                co_return std::move(reply->body);
+            // compat(0.9.0): an older daemon's reply, in the spelling the caller reads.
+            auto named = vtcontrol::replyFromLegacy(method, reply->body);
+            if (!named)
+                co_return fail(
+                    ControlFailure::Remote,
+                    std::format("the daemon answered '{}' with a reply this client cannot read: {}",
+                                method,
+                                named.error().message));
+            co_return std::move(*named);
+        }
         auto remote = vtcontrol::decodeJson<vtcontrol::ControlError>(reply->body);
         if (!remote)
             co_return fail(
@@ -433,56 +462,73 @@ core::async::Task<std::expected<std::string, ControlClientError>> ControlClient:
         if (!frame)
             co_return std::unexpected(std::move(frame.error()));
         if (auto* event = std::get_if<proto::ControlEvent>(&frame->pdu))
-            _events.push_back(std::move(event->event));
+            keepEvent(std::move(event->event));
     }
     auto event = std::move(_events.front());
     _events.pop_front();
     co_return event;
 }
 
+void ControlClient::keepEvent(std::string event)
+{
+    if (_spelling == vtcontrol::Spelling::Names)
+    {
+        _events.push_back(std::move(event));
+        return;
+    }
+    // compat(0.9.0): an older daemon's event, in the spelling the caller reads; one that does not read is
+    // passed on as it came, for the caller's decoder to refuse.
+    auto named = vtcontrol::encodedEventFromLegacy(event);
+    _events.push_back(named ? std::move(*named) : std::move(event));
+}
+
 std::expected<std::shared_ptr<ITransportFactory>, ControlClientError> resolveControlEndpoint(
     ControlEndpointOptions const& options, core::Environment const& env)
 {
-    // A label names a local daemon outright, exactly as `contour client --label` resolves it.
-    if (!options.label.empty())
-        return std::make_shared<UnixTransportFactory>(muxSocketPath(socketLabelOf(options.label), {}, env),
-                                                      UnixTransportFactory::EnsureDaemon {});
     auto const spec =
         !options.daemon.empty() ? options.daemon : env.get("CONTOUR_DAEMON").value_or(std::string {});
     // Never a daemon started for a control call: an empty ensureDaemon.
     if (spec.empty())
         return std::make_shared<UnixTransportFactory>(muxSocketPath({}, {}, env),
                                                       UnixTransportFactory::EnsureDaemon {});
-    // A spec that reads as a path is one, a colon in it notwithstanding (`/run/user/1000/x:1`).
-    auto const socketAt = [](std::string const& path) {
-        return std::make_shared<UnixTransportFactory>(
-            core::pathFromUtf8(path).value_or(std::filesystem::path {}),
-            UnixTransportFactory::EnsureDaemon {});
+    auto const target = resolveDaemonWord(spec, options.localDaemons, options.savedHosts);
+    if (!target)
+        return fail(ControlFailure::Misconfigured,
+                    std::format("--daemon {}", describe(target.error(), spec)));
+    auto const socketAt = [](std::filesystem::path path) {
+        return std::make_shared<UnixTransportFactory>(std::move(path), UnixTransportFactory::EnsureDaemon {});
     };
-    if (spec.starts_with('/') || spec.starts_with('.'))
-        return socketAt(spec);
-    if (auto const hostPort = parseHostPort(spec))
+    auto const& text = target->text;
+    switch (target->kind)
     {
-        if (options.knownDaemons == nullptr)
-            return fail(ControlFailure::Misconfigured, "no file to keep pinned daemons in is available");
-        return std::make_shared<TlsTransportFactory>(
-            TcpEndpoint { .host = hostPort->first,
-                          .port = hostPort->second,
-                          .token = options.token,
-                          .caPem = options.tlsCaPem,
-                          .expectedFingerprint = options.daemonFingerprint },
-            *options.knownDaemons,
-            options.pinPrompt,
-            options.keySourceProvider);
+        case DaemonWordKind::SocketPath: break;
+        case DaemonWordKind::LocalName: return socketAt(muxSocketPath(daemonNameFromOption(text), {}, env));
+        case DaemonWordKind::HostPort: {
+            if (options.knownDaemons == nullptr)
+                return fail(ControlFailure::Misconfigured, "no file to keep pinned daemons in is available");
+            auto const hostPort = parseHostPort(text).value_or(std::pair<std::string, std::uint16_t> {});
+            return std::make_shared<TlsTransportFactory>(
+                TcpEndpoint { .host = hostPort.first,
+                              .port = hostPort.second,
+                              .token = options.token,
+                              .caPem = options.tlsCaPem,
+                              .expectedFingerprint = options.daemonFingerprint },
+                *options.knownDaemons,
+                options.pinPrompt,
+                options.keySourceProvider);
+        }
+        case DaemonWordKind::SshUrl:
+        case DaemonWordKind::SavedHost:
+            if (!options.resolveSavedHost)
+                break;
+            return options.resolveSavedHost(text, options.daemonFingerprint)
+                .transform_error([](std::string message) {
+                    return ControlClientError { .failure = ControlFailure::Unreachable,
+                                                .message = std::move(message),
+                                                .remote = std::nullopt };
+                });
     }
-    if (options.resolveSavedHost && namesSavedHost(spec))
-        return options.resolveSavedHost(spec, options.daemonFingerprint)
-            .transform_error([](std::string message) {
-                return ControlClientError { .failure = ControlFailure::Unreachable,
-                                            .message = std::move(message),
-                                            .remote = std::nullopt };
-            });
-    return socketAt(spec);
+    return socketAt(core::pathFromUtf8(text).value_or(std::filesystem::path {}));
 }
 
 std::expected<std::string, ControlClientError> runControlCall(

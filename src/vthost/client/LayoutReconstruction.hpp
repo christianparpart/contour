@@ -124,11 +124,11 @@ template <std::ranges::input_range Roots>
 /// @param tab The daemon's tab.
 /// @param activity Whether it is its workspace's active tab (proto::LayoutState::activeTab names it).
 /// @return The sessions of its active and zoomed panes -- the leaves those pane ids name, 0 where none
-///         does -- its title (none when empty) and its colour (none when `hasColor` is 0).
+///         does -- its name and its colour (none when `hasColor` is 0).
 [[nodiscard]] TabPresentation presentationOf(proto::WireTab const& tab, TabActivity activity);
 
 /// What a client tells the daemon so that its model presents a tab as @p local does: one edit per field
-/// that differs, in the order activate-tab, activate-pane, zoom or unzoom, title, colour.
+/// that differs, in the order activate-tab, activate-pane, zoom or unzoom, name, colour.
 ///
 /// A tab that is active only on the daemon is left alone: a tab stops being active only because another
 /// becomes so, and that other tab's own report says which. Tab-wide edits name the tab by @p local's active

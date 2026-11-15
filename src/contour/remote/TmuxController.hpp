@@ -75,6 +75,15 @@ namespace contour::remote
 /// @return The control-mode command line.
 [[nodiscard]] std::string tmuxKillPaneCommand(uint64_t pane);
 
+/// The tmux control-mode command that names the window holding pane @p pane, as the user renamed its tab:
+/// `rename-window -t %N NAME`, the name quoted for tmux's command parser. An empty name clears it, giving the
+/// window back to tmux's automatic naming (`set-option -w -t %N automatic-rename on`). A pane id names the
+/// window that holds it, so the tab's active pane is target enough.
+/// @param pane A tmux pane id of the window.
+/// @param name The window's new name; empty clears it.
+/// @return The control-mode command line.
+[[nodiscard]] std::string tmuxRenameWindowCommand(uint64_t pane, std::string_view name);
+
 /// The tmux control-mode command that asks the SERVER for pane @p pane's current directory
 /// (`display-message -p -t %N '#{pane_current_path}'`); the reply body is the directory. tmux has no
 /// pane-targeted `new-window`, so a new window's directory is fetched first and passed back as a literal.
@@ -202,6 +211,12 @@ class TmuxController final:
     /// through the mirror. A split issued BY the reconciler itself (while realizing an existing tmux
     /// pane) is not re-authored — it builds the mirror pane locally. Returns false (a local split) if
     /// the pty is not bound to a tmux pane. tmux has no profiles to run, so @p spawn is not sent.
+    /// SessionFactory: a tab is a tmux window, so its rename is the window's: `rename-window` on the server
+    /// (tmuxRenameWindowCommand()), which tmux echoes back as %window-renamed.
+    /// @return Routed for a pty bound to a tmux pane, Local for any other.
+    [[nodiscard]] contour::session::RemoteRouting requestRemoteWindowRename(vtpty::Pty const* pty,
+                                                                            std::string const& name) override;
+
     [[nodiscard]] bool requestRemoteSplit(vtpty::Pty const* actingPty,
                                           bool vertical,
                                           contour::session::RemoteSpawn const& spawn) override;
@@ -364,7 +379,7 @@ class TmuxController final:
     /// TerminalSession at use time — a raw pointer would dangle the moment the
     /// anchored pane dies (tab close, or tmux removing the pane).
     std::unordered_map<uint64_t, vtworkspace::SessionId> _actingByWindow;
-    std::unordered_map<uint64_t, std::string> _pendingRenames; ///< %window-renamed titles awaiting apply.
+    std::unordered_map<uint64_t, std::string> _pendingRenames; ///< %window-renamed names awaiting apply.
     /// Panes tmux re-parented, by pane id, holding the record their DESTINATION realization needs.
     /// Parked here rather than in `_pending` until the source pty's unbind arrives: realizing while
     /// that pty is still bound would have realizeOnePane read the dying binding as "already

@@ -103,14 +103,14 @@ Settings › Hosts.
 
 ``` sh
 contour connect                     # the picker
-contour connect daemon              # this computer's daemon; daemon:LABEL for another one
+contour connect daemon              # this computer's daemon; daemon:NAME for another one
 contour connect local               # this window only, no daemon
 contour connect starfive            # a saved host, by name
 contour connect ssh://me@pi4.lan    # an ssh:// or tls:// address
 contour connect --list [--json]     # the targets the picker would show
 ```
 
-A target opens the window as `contour client` does (`--label`, `--host`), or `contour terminal --daemon-mode
+A target opens the window as `contour client` does (`--daemon`, `--host`), or `contour terminal --daemon-mode
 in_process` for `local`; no target shows the picker. `--config FILE` names the configuration that holds the
 hosts. `--list` prints each target, as `contour connect` reads it, with its detail, or a JSON array with
 `--json`. An ad-hoc `tls://` address is refused, as for `contour client --host`: a TLS host needs its token

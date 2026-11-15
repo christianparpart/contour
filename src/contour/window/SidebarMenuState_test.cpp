@@ -9,9 +9,9 @@ using namespace contour::window;
 
 namespace
 {
-[[nodiscard]] DirectoryWorkspace workspace(uint64_t id, std::string label = {})
+[[nodiscard]] DirectoryWorkspace workspace(uint64_t id, std::string name = {})
 {
-    return DirectoryWorkspace { .id = id, .label = std::move(label), .tabs = {} };
+    return DirectoryWorkspace { .id = id, .name = std::move(name), .tabs = {} };
 }
 } // namespace
 
@@ -47,10 +47,10 @@ TEST_CASE("a window that follows no workspace can move a tab to any", "[sidebarm
 TEST_CASE("merge into tab lists every other tab, grouped by workspace", "[sidebarmenu]")
 {
     auto api = workspace(10, "api");
-    api.tabs = { DirectoryTab { .id = 1, .title = {}, .label = "server", .panes = {} },
-                 DirectoryTab { .id = 2, .title = {}, .label = {}, .panes = {} } };
+    api.tabs = { DirectoryTab { .id = 1, .title = {}, .name = "server", .panes = {} },
+                 DirectoryTab { .id = 2, .title = {}, .name = {}, .panes = {} } };
     auto web = workspace(11);
-    web.tabs = { DirectoryTab { .id = 3, .title = {}, .label = "dev", .panes = {} } };
+    web.tabs = { DirectoryTab { .id = 3, .title = {}, .name = "dev", .panes = {} } };
     auto const directory = WorkspaceDirectory { .workspaces = { api, web }, .selected = 10 };
 
     auto const groups = joinTargetsOf(directory, TabRef { .workspace = 11, .tab = 3 });
@@ -75,10 +75,10 @@ TEST_CASE("merge into tab lists every other tab, grouped by workspace", "[sideba
 TEST_CASE("a menu's tab is the one it offered, whatever moves while it is open", "[sidebarmenu]")
 {
     auto api = workspace(10, "api");
-    api.tabs = { DirectoryTab { .id = 1, .title = {}, .label = "server", .panes = {} },
-                 DirectoryTab { .id = 2, .title = {}, .label = {}, .panes = {} } };
+    api.tabs = { DirectoryTab { .id = 1, .title = {}, .name = "server", .panes = {} },
+                 DirectoryTab { .id = 2, .title = {}, .name = {}, .panes = {} } };
     auto web = workspace(11);
-    web.tabs = { DirectoryTab { .id = 3, .title = {}, .label = "dev", .panes = {} } };
+    web.tabs = { DirectoryTab { .id = 3, .title = {}, .name = "dev", .panes = {} } };
     auto directory = WorkspaceDirectory { .workspaces = { api, web }, .selected = 10 };
     auto const offered = offeredTabsOf(directory);
     REQUIRE(offered.size() == 3);
@@ -103,10 +103,10 @@ TEST_CASE("the sidebar's menus offer what the window's host moves", "[sidebarmen
 TEST_CASE("a workspace's menu state is its place, the count, and what its only tab can join", "[sidebarmenu]")
 {
     auto one = workspace(10, "api");
-    one.tabs = { DirectoryTab { .id = 1, .title = {}, .label = "shell", .panes = {} } };
+    one.tabs = { DirectoryTab { .id = 1, .title = {}, .name = "shell", .panes = {} } };
     auto two = workspace(11, "web");
-    two.tabs = { DirectoryTab { .id = 2, .title = {}, .label = "a", .panes = {} },
-                 DirectoryTab { .id = 3, .title = {}, .label = "b", .panes = {} } };
+    two.tabs = { DirectoryTab { .id = 2, .title = {}, .name = "a", .panes = {} },
+                 DirectoryTab { .id = 3, .title = {}, .name = "b", .panes = {} } };
     auto const directory = WorkspaceDirectory { .workspaces = { one, two }, .selected = 10 };
 
     auto const single = workspaceMenuStateOf(directory, 10, contour::command::MenuMoves::Nodes);

@@ -27,8 +27,10 @@
 #include <vector>
 
 #include <vtcontrol/ControlError.hpp>
+#include <vtcontrol/LegacySpelling.hpp>
 #include <vthost/KnownDaemons.hpp>
 #include <vthost/Transport.hpp>
+#include <vthost/client/DaemonWord.hpp>
 #include <vthost/client/KeySource.hpp>
 #include <vthost/proto/Pdu.hpp>
 
@@ -97,6 +99,12 @@ class ControlClient
     /// Ends the connection: a pending call() or nextEvent() completes ControlFailure::Disconnected.
     void close() noexcept;
 
+    /// compat(0.9.0): how the daemon spells the control API, as the handshake found it. call() and
+    /// nextEvent() speak the new spelling either way: they rewrite to and from the old one for a daemon
+    /// without Capability::Names.
+    /// @return Spelling::Names before the handshake.
+    [[nodiscard]] vtcontrol::Spelling spelling() const noexcept { return _spelling; }
+
     /// @return How long handshake() has spent signing the daemon's challenges, the one being signed
     ///         included, on the loop's clock: the time a passphrase or an agent's confirmation takes, which
     ///         is the user's and not the daemon's, so a deadline on the call leaves it out.
@@ -105,6 +113,10 @@ class ControlClient
   private:
     /// @return The next frame off the connection, or why there is none.
     [[nodiscard]] core::async::Task<std::expected<proto::DecodedFrame, ControlClientError>> readFrame();
+
+    /// Keeps @p event for nextEvent(), in the new spelling whichever the daemon speaks.
+    /// @param event A ControlEvent's JSON as the daemon sent it.
+    void keepEvent(std::string event);
 
     /// Queues @p pdu under the next serial.
     /// @return The serial, or why the queue refused it.
@@ -125,6 +137,8 @@ class ControlClient
     /// beside a busy subscription holds every event it read until nextEvent() takes them. A caller that
     /// subscribes and also makes long calls on one connection takes events between the calls.
     std::deque<std::string> _events {};
+    /// compat(0.9.0): the daemon's spelling of the control API. @see spelling()
+    vtcontrol::Spelling _spelling = vtcontrol::Spelling::Names;
 };
 
 /// Resolves a saved host's name to its transport; phase 5's saved hosts, which `vthost` cannot read.
@@ -135,10 +149,9 @@ using SavedHostResolver = std::function<std::expected<std::shared_ptr<ITransport
 /// What a control client is told about where its daemon is.
 struct ControlEndpointOptions
 {
-    std::string daemon {}; ///< `--daemon`: a socket path, `HOST:PORT`, or a saved host; empty for none.
-    /// `--label`: a local daemon by its socket label, as `contour client --label` reads it; empty for none.
-    /// It names the endpoint, so it wins over `$CONTOUR_DAEMON`, and is not combined with @ref daemon.
-    std::string label {};
+    /// `--daemon`: a socket path, `HOST:PORT`, a URL, or a local daemon's or a saved host's name, as
+    /// resolveDaemonWord() reads it; empty for none.
+    std::string daemon {};
     std::string token {};    ///< The token a TCP endpoint is sent.
     std::string tlsCaPem {}; ///< The CA certificate (PEM) a TCP endpoint is verified against; empty for none.
     /// `--daemon-fingerprint`: the fingerprint a TCP endpoint without a CA must present on first contact;
@@ -152,21 +165,23 @@ struct ControlEndpointOptions
     std::shared_ptr<IPinPrompt> pinPrompt {};
     /// Makes what signs a TCP endpoint's key proof on the call's own loop; empty for no key.
     ClientKeySourceProvider keySourceProvider {};
-    /// Resolves a spec that names a saved host (one holding `://`, or a bare word); empty for no saved hosts,
-    /// every such spec then being a path.
+    /// Resolves a spec that names a saved host (a URL, `host:NAME`, or a bare word that names no local
+    /// daemon); empty for no saved hosts, every such spec then being a path.
     SavedHostResolver resolveSavedHost {};
+    LocalDaemons localDaemons {}; ///< The local daemons a bare word may name.
+    SavedHosts savedHosts {};     ///< The saved hosts a bare word may name.
 };
 
 /// Picks the daemon a control client talks to.
 ///
-/// An `options.label` names the local daemon of that label (vthost::muxSocketPath) and nothing else is read.
-/// Otherwise the spec is the first non-empty of `options.daemon`, `$CONTOUR_DAEMON`, and the default socket.
-/// A spec starting with `/` or `.` is a socket path even with a colon in it; a `HOST:PORT` spec is TCP+TLS
-/// with the options' token and CA; one holding `://`, or a bare word, goes to the saved-host resolver when
-/// there is one; anything else is a socket path. A socket path never starts a daemon.
+/// The spec is the first non-empty of `options.daemon`, `$CONTOUR_DAEMON`, and the default socket, read by
+/// resolveDaemonWord(): a socket path; a `HOST:PORT`, TCP+TLS with the options' token and CA; a local
+/// daemon's name, its socket (vthost::muxSocketPath); a URL or a saved host's name, which goes to the
+/// saved-host resolver when there is one and is a socket path otherwise. No daemon is started.
 /// @param options What the user said.
 /// @param env Where `$CONTOUR_DAEMON` (and the default socket's inputs) are read from.
-/// @return The transport, or ControlFailure::Unreachable with the resolver's message.
+/// @return The transport; ControlFailure::Misconfigured for a word that names no daemon (an ambiguous one),
+///         or ControlFailure::Unreachable with the resolver's message.
 [[nodiscard]] std::expected<std::shared_ptr<ITransportFactory>, ControlClientError> resolveControlEndpoint(
     ControlEndpointOptions const& options, core::Environment const& env);
 

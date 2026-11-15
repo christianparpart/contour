@@ -1055,11 +1055,11 @@ TEST_CASE("TerminalSession: display-coupled event overrides are safe no-ops with
     TestApp testApp;
     auto session = makeDisplaylessSession(testApp.app());
 
-    // setTabName posts a tab-strip/status-line refresh to the session (a GUI-thread QObject) even
+    // setProgramTabTitle posts a tab-strip/status-line refresh to the session (a GUI-thread QObject) even
     // with no display attached — a background tab must still refresh its title (see the dedicated
     // real-time-title test in MultiWindow_test). setTerminalProfile early-returns when no display is
     // attached. Neither must crash.
-    CHECK_NOTHROW(session->setTabName("my-tab"));
+    CHECK_NOTHROW(session->setProgramTabTitle("my-tab"));
     CHECK_NOTHROW(session->setTerminalProfile("main"));
 }
 
@@ -2942,7 +2942,7 @@ TEST_CASE("TerminalSession: a switch a program asks for is asked about, and its 
     };
     auto told = std::vector<std::pair<int, Told>> {};
     auto const ask = [&told](int which, std::string_view workspace) {
-        return SwitchAsk { .target = { .kind = SwitchDaemonKind::Label,
+        return SwitchAsk { .target = { .kind = SwitchDaemonKind::Name,
                                        .daemon = "admin",
                                        .workspace = contour::session::workspaceTargetOf(workspace) },
                            .sourceDaemon = "default",

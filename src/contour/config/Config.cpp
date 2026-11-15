@@ -978,6 +978,8 @@ std::expected<vtbackend::Settings, std::string> emulationSettingsFor(Config cons
     });
 }
 
+static Config sideFileHostsOf(fs::path const& configFile);
+
 std::expected<HostEntry, std::string> resolveHost(std::string const& configPath, std::string_view nameOrUrl)
 {
     if (nameOrUrl.contains("://"))
@@ -993,18 +995,24 @@ std::expected<HostEntry, std::string> resolveHost(std::string const& configPath,
                                    .profile = {} };
             });
 
-    return tryLoadConfigFromFile(configFileNamed(configPath))
-        .and_then([&](Config const& loaded) -> std::expected<HostEntry, std::string> {
-            auto const& hosts = loaded.hosts.value();
-            if (auto const found = hosts.find(std::string { nameOrUrl }); found != hosts.end())
-                return found->second;
-            auto const names = std::ranges::to<std::vector<std::string>>(std::views::keys(hosts));
-            return std::unexpected { std::format("no host named '{}' in {} (saved hosts: {})",
-                                                 nameOrUrl,
-                                                 core::pathToUtf8(loaded.configFile),
-                                                 names.empty() ? std::string { "(none)" }
-                                                               : core::joinHumanReadable(names, ", ")) };
-        });
+    // A lookup, never a first run: a missing contour.yml holds no inline hosts, and is not created (nor
+    // loaded, which would warn about it) for asking; the hosts/ side files beside it are still read.
+    auto const configFile = configFileNamed(configPath);
+    auto error = std::error_code {};
+    auto const loaded = fs::is_regular_file(configFile, error)
+                            ? tryLoadConfigFromFile(configFile)
+                            : std::expected<Config, std::string> { sideFileHostsOf(configFile) };
+    return loaded.and_then([&](Config const& loaded) -> std::expected<HostEntry, std::string> {
+        auto const& hosts = loaded.hosts.value();
+        if (auto const found = hosts.find(std::string { nameOrUrl }); found != hosts.end())
+            return found->second;
+        auto const names = std::ranges::to<std::vector<std::string>>(std::views::keys(hosts));
+        return std::unexpected { std::format("no host named '{}' in {} (saved hosts: {})",
+                                             nameOrUrl,
+                                             core::pathToUtf8(loaded.configFile),
+                                             names.empty() ? std::string { "(none)" }
+                                                           : core::joinHumanReadable(names, ", ")) };
+    });
 }
 
 vtbackend::ColorPalette const* preferredColorPalette(ColorConfig const& colorConfig,
@@ -1436,6 +1444,37 @@ static void mergeSideFilesIn(Config& config,
     }
 }
 
+/// Merges the hosts/<name>.yml side files: a saved host Settings wrote, read as an entry of `hosts:` is. One
+/// that cannot be used is reported and skipped, as there.
+/// @param config The configuration to augment in place (its @c configFile locates the side files).
+/// @param reader The reader that parses a host's body.
+static void mergeHostSideFiles(Config& config, YAMLConfigReader& reader)
+{
+    mergeSideFilesIn(
+        config, "hosts", "host", [&](fs::path const& path, std::string const& name, YAML::Node const& root) {
+            auto host = std::optional<HostEntry> {};
+            reader.readSideFile(path, root, [&]() { host = reader.parseHostNode(root, name); });
+            if (!host)
+                return;
+            config.hosts.value().insert_or_assign(name, std::move(*host));
+            config.hostOrigins[name] = SettingsOrigin::SideFile;
+        });
+}
+
+/// The saved hosts beside a contour.yml that does not exist: those of its hosts/ side files alone. Reads
+/// nothing else and creates nothing, so asking for a host is no first run.
+/// @param configFile Where contour.yml would be.
+/// @return A configuration holding only those hosts, its @c configFile @p configFile.
+static Config sideFileHostsOf(fs::path const& configFile)
+{
+    auto config = Config {};
+    config.configFile = configFile;
+    auto reader = YAMLConfigReader(
+        configFile, YAML::Node {}, configLog, configEnvironment(), BuildKeyboardPlatformKind);
+    mergeHostSideFiles(config, reader);
+    return config;
+}
+
 /// Merges the GUI-managed side files over the just-parsed configuration, mirroring the layouts.yml
 /// merge: the freshest (GUI) content wins, and a broken file is logged and skipped rather than taking
 /// the whole configuration down. Color scheme side files (colorschemes/<name>.yml) are already
@@ -1467,17 +1506,7 @@ static void mergeGuiManagedSideFiles(Config& config, YAMLConfigReader& reader)
             config.profileOrigins[name] = SettingsOrigin::SideFile;
         });
 
-    // hosts/<name>.yml: a saved host Settings wrote, read as an entry of `hosts:` is. One that cannot be used
-    // is reported and skipped, as there.
-    mergeSideFilesIn(
-        config, "hosts", "host", [&](fs::path const& path, std::string const& name, YAML::Node const& root) {
-            auto host = std::optional<HostEntry> {};
-            reader.readSideFile(path, root, [&]() { host = reader.parseHostNode(root, name); });
-            if (!host)
-                return;
-            config.hosts.value().insert_or_assign(name, std::move(*host));
-            config.hostOrigins[name] = SettingsOrigin::SideFile;
-        });
+    mergeHostSideFiles(config, reader);
 
     // settings.yml — GUI-owned globals. Applied last so a default_profile can name a profile the scan
     // above just introduced. Read and parsed once: the overrides applied are the ones listed, even when
@@ -2281,8 +2310,15 @@ void YAMLConfigReader::parseLayoutNode(YAML::Node const& layoutNode, config::Lay
     for (auto const& tabNode: tabs)
     {
         config::LayoutTab tab;
-        if (auto const title = tabNode["title"]; title && title.IsScalar())
-            tab.title = title.as<std::string>();
+        if (auto const name = tabNode["name"]; name && name.IsScalar())
+            tab.name = name.as<std::string>();
+        // compat(0.9.0): a layout tab's name was its `title:` before 0.9.0.
+        else if (auto const title = tabNode["title"]; title && title.IsScalar())
+        {
+            errorLog()("Config entry layouts.*.tabs.*.title is deprecated; it is read as the tab's name: "
+                       "write name: instead.");
+            tab.name = title.as<std::string>();
+        }
         if (auto const color = tabNode["color"]; color && color.IsScalar())
         {
             // Validate the format RGBColor actually accepts ('#RRGGBB' or 0x-prefixed); its
@@ -5079,6 +5115,11 @@ std::optional<actions::Action> YAMLConfigReader::parseAction(YAML::Node const& n
             errorLog()("Unknown action '{}'.", actionName);
             return std::nullopt;
         }
+        // compat(0.9.0): an action's old name loads as the action it was renamed to.
+        if (auto const* const alias = actions::actionAliasOf(actionName))
+            errorLog()("Action '{}' is deprecated and goes away in 0.9.0; write {} instead.",
+                       actionName,
+                       alias->name);
         auto action = actionOpt.value();
         if (holds_alternative<actions::ChangeProfile>(action))
         {
@@ -5345,17 +5386,26 @@ std::optional<actions::Action> YAMLConfigReader::parseAction(YAML::Node const& n
         if (holds_alternative<actions::SwitchToDaemon>(action)
             || holds_alternative<actions::OpenDaemon>(action))
         {
-            // Exactly one of `label:` (a local daemon) and `host:` (a saved host); neither or both has no
+            // Exactly one of `name:` (a local daemon) and `host:` (a saved host); neither or both has no
             // meaning, so the binding is dropped. The two keys become a DaemonRef here and nowhere else.
-            auto const label = node["label"];
-            auto const host = node["host"];
-            auto const hasLabel = label && label.IsScalar() && !label.as<std::string>().empty();
-            auto const hasHost = host && host.IsScalar() && !host.as<std::string>().empty();
-            if (hasLabel == hasHost)
+            auto const textOf = [](YAML::Node const& key) {
+                return key && key.IsScalar() ? key.as<std::string>() : std::string {};
+            };
+            auto name = textOf(node["name"]);
+            // compat(0.9.0): a local daemon was named by `label:` before 0.9.0.
+            if (auto label = textOf(node["label"]); name.empty() && !label.empty())
+            {
+                errorLog()(
+                    "Config entry input_mapping.*.label is deprecated; it is read as the daemon's name: "
+                    "write name: instead.");
+                name = std::move(label);
+            }
+            auto host = textOf(node["host"]);
+            if (name.empty() == host.empty())
                 return std::nullopt;
-            auto daemon = hasLabel
-                              ? actions::DaemonRef { actions::DaemonRefKind::Label, label.as<std::string>() }
-                              : actions::DaemonRef { actions::DaemonRefKind::Host, host.as<std::string>() };
+            auto daemon = !name.empty()
+                              ? actions::DaemonRef { actions::DaemonRefKind::Name, std::move(name) }
+                              : actions::DaemonRef { actions::DaemonRefKind::Host, std::move(host) };
             if (holds_alternative<actions::SwitchToDaemon>(action))
                 return actions::SwitchToDaemon { std::move(daemon) };
             return actions::OpenDaemon { std::move(daemon) };

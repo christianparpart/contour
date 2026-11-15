@@ -66,14 +66,14 @@ TEST_CASE("ObjectRegistry forgets an object with its label", "[vthost][ids]")
     auto const pane = registry.mint();
     auto const ref = ObjectRef { ObjectKind::Pane, pane };
     registry.bind(SessionId { 7 }, pane);
-    registry.setLabel(ref, "logs");
-    REQUIRE(registry.labelOf(ref) == "logs");
+    registry.setName(ref, "logs");
+    REQUIRE(registry.nameOf(ref) == "logs");
 
     registry.forget(SessionId { 7 });
 
     CHECK_FALSE(registry.uuidOf(SessionId { 7 }));
     CHECK_FALSE(registry.find(ref));
-    CHECK(registry.labelOf(ref).empty());
+    CHECK(registry.nameOf(ref).empty());
     registry.forget(SessionId { 7 }); // a second time is a no-op
 }
 
@@ -84,17 +84,31 @@ TEST_CASE("ObjectRegistry labels: set, replace, clear, and ignore the unknown", 
     auto const ref = ObjectRef { ObjectKind::Tab, tab };
     registry.bind(TabId { 3 }, tab);
 
-    CHECK(registry.labelOf(ref).empty());
-    registry.setLabel(ref, "build");
-    CHECK(registry.labelOf(ref) == "build");
-    registry.setLabel(ref, "test");
-    CHECK(registry.labelOf(ref) == "test");
-    registry.setLabel(ref, "");
-    CHECK(registry.labelOf(ref).empty());
+    CHECK(registry.nameOf(ref).empty());
+    registry.setName(ref, "build");
+    CHECK(registry.nameOf(ref) == "build");
+    registry.setName(ref, "test");
+    CHECK(registry.nameOf(ref) == "test");
+    registry.setName(ref, "");
+    CHECK(registry.nameOf(ref).empty());
 
     auto const stranger = ObjectRef { ObjectKind::Tab, registry.mint() };
-    registry.setLabel(stranger, "ghost");
-    CHECK(registry.labelOf(stranger).empty());
+    registry.setName(stranger, "ghost");
+    CHECK(registry.nameOf(stranger).empty());
+}
+
+TEST_CASE("ObjectRegistry holds a name normalised: no control character, and a blank one cleared",
+          "[vthost][ids][name]")
+{
+    auto registry = makeRegistry();
+    auto const tab = registry.mint();
+    auto const ref = ObjectRef { ObjectKind::Tab, tab };
+    registry.bind(TabId { 3 }, tab);
+
+    registry.setName(ref, "x\nkill-server #");
+    CHECK(registry.nameOf(ref) == "xkill-server #");
+    registry.setName(ref, "  ");
+    CHECK(registry.nameOf(ref).empty());
 }
 
 TEST_CASE("ObjectRegistry rebinding replaces", "[vthost][ids]")
@@ -116,21 +130,21 @@ TEST_CASE("ObjectRegistry tells its label observers of each change, until they u
     auto const ref = ObjectRef { ObjectKind::Workspace, workspace };
     registry.bind(WorkspaceId { 2 }, workspace);
     auto told = std::vector<std::pair<ObjectRef, std::string>> {};
-    auto subscription = std::optional { registry.onLabelChanged(
-        [&told](ObjectRef const& object, std::string_view label) { told.emplace_back(object, label); }) };
+    auto subscription = std::optional { registry.onNameChanged(
+        [&told](ObjectRef const& object, std::string_view name) { told.emplace_back(object, name); }) };
 
-    registry.setLabel(ref, "ops");
-    registry.setLabel(ref, "ops"); // unchanged: nothing to tell
-    registry.setLabel(ObjectRef { ObjectKind::Workspace, registry.mint() }, "unbound"); // ignored
-    registry.setLabel(ref, "");
-    registry.setLabel(ref, ""); // cleared already
+    registry.setName(ref, "ops");
+    registry.setName(ref, "ops"); // unchanged: nothing to tell
+    registry.setName(ObjectRef { ObjectKind::Workspace, registry.mint() }, "unbound"); // ignored
+    registry.setName(ref, "");
+    registry.setName(ref, ""); // cleared already
 
     REQUIRE(told.size() == 2);
     CHECK(told[0] == std::pair { ref, std::string { "ops" } });
     CHECK(told[1] == std::pair { ref, std::string {} });
 
     subscription.reset();
-    registry.setLabel(ref, "after");
+    registry.setName(ref, "after");
     CHECK(told.size() == 2);
 }
 
@@ -139,12 +153,12 @@ TEST_CASE("ObjectRegistry: a label subscription outlives a moved registry, and t
 {
     auto told = 0;
     auto original = makeRegistry();
-    auto subscription = original.onLabelChanged([&told](ObjectRef const&, std::string_view) { ++told; });
+    auto subscription = original.onNameChanged([&told](ObjectRef const&, std::string_view) { ++told; });
     auto moved = std::move(original);
     auto const tab = moved.mint();
     moved.bind(TabId { 1 }, tab);
 
-    moved.setLabel(ObjectRef { ObjectKind::Tab, tab }, "logs");
+    moved.setName(ObjectRef { ObjectKind::Tab, tab }, "logs");
     CHECK(told == 1);
 
     {

@@ -436,10 +436,10 @@ profiles:
     main:
         shell: /bin/sh
 input_mapping:
-    - { mods: [Control, Shift], key: F1, action: SwitchToDaemon, label: admin }
+    - { mods: [Control, Shift], key: F1, action: SwitchToDaemon, name: admin }
     - { mods: [Control, Shift], key: F2, action: OpenDaemon, host: studio }
     - { mods: [Control, Shift], key: F3, action: SwitchToDaemon }
-    - { mods: [Control, Shift], key: F4, action: SwitchToDaemon, label: admin, host: studio }
+    - { mods: [Control, Shift], key: F4, action: SwitchToDaemon, name: admin, host: studio }
     - { mods: [Control, Shift], key: F5, action: CycleDaemon, direction: previous }
     - { mods: [Control, Shift], key: F7, action: CycleWorkspace }
     - { mods: [Control, Shift], key: F8, action: CycleWorkspace, direction: sideways }
@@ -465,7 +465,7 @@ input_mapping:
     };
     auto const* const switchTo = find(std::type_identity<SwitchToDaemon> {});
     REQUIRE(switchTo != nullptr);
-    CHECK(switchTo->daemon == DaemonRef { DaemonRefKind::Label, "admin" });
+    CHECK(switchTo->daemon == DaemonRef { DaemonRefKind::Name, "admin" });
     auto const* const open = find(std::type_identity<OpenDaemon> {});
     REQUIRE(open != nullptr);
     CHECK(open->daemon == DaemonRef { DaemonRefKind::Host, "studio" });
@@ -482,8 +482,49 @@ input_mapping:
     auto const* const openWorkspace = find(std::type_identity<OpenWorkspace> {});
     REQUIRE(openWorkspace != nullptr);
     CHECK(openWorkspace->index == 3);
-    // Neither or both of label/host, an unknown direction, and a missing or zero index drop the binding.
+    // Neither or both of name/host, an unknown direction, and a missing or zero index drop the binding.
     CHECK(mappings.size() == 7);
+}
+
+TEST_CASE("Config: a daemon binding's name: loads without a warning", "[config][switch]")
+{
+    using namespace contour::actions;
+
+    QTemporaryDir dir;
+    auto capture = core::log::ScopedCapture { "error" };
+    auto const config = loadFromYaml(dir, R"(
+input_mapping:
+    - { mods: [Control, Shift], key: F1, action: SwitchToDaemon, name: admin }
+)"sv);
+    auto const& mappings = config.inputMappings.value().keyMappings;
+    REQUIRE(mappings.size() == 1);
+    auto const* const switchTo = std::get_if<SwitchToDaemon>(&mappings.front().binding.at(0));
+    REQUIRE(switchTo != nullptr);
+    CHECK(switchTo->daemon == DaemonRef { DaemonRefKind::Name, "admin" });
+    INFO("captured error log:\n" << capture.text());
+    CHECK_FALSE(capture.contains("name:"));
+}
+
+TEST_CASE("Config: a daemon binding's old label: loads as its name, with a warning",
+          "[config][switch][compat-0.9.0]")
+{
+    using namespace contour::actions;
+
+    QTemporaryDir dir;
+    auto capture = core::log::ScopedCapture { "error" };
+    auto const config = loadFromYaml(dir, R"(
+input_mapping:
+    - { mods: [Control, Shift], key: F1, action: SwitchToDaemon, label: admin }
+    - { mods: [Control, Shift], key: F2, action: OpenDaemon, label: admin, host: studio }
+)"sv);
+    auto const& mappings = config.inputMappings.value().keyMappings;
+    // `label:` is `name:`, so naming a host beside it is still both, and drops the binding.
+    REQUIRE(mappings.size() == 1);
+    auto const* const switchTo = std::get_if<SwitchToDaemon>(&mappings.front().binding.at(0));
+    REQUIRE(switchTo != nullptr);
+    CHECK(switchTo->daemon == DaemonRef { DaemonRefKind::Name, "admin" });
+    INFO("captured error log:\n" << capture.text());
+    CHECK(capture.count("name:") == 2);
 }
 
 TEST_CASE("Config: MoveToTab parses both places, and drops a binding missing one or naming 0",

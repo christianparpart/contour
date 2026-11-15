@@ -16,23 +16,19 @@ using vtcontrol::TargetCandidate;
 struct Fixture
 {
     vtcontrol::testing::SequentialUuidSource uuids;
-    TargetCandidate a { .ref = { ObjectKind::Pane, uuids.next() },
-                        .label = "logs",
-                        .position = std::nullopt };
-    TargetCandidate b { .ref = { ObjectKind::Pane, uuids.next() },
-                        .label = "Logs",
-                        .position = std::nullopt };
+    TargetCandidate a { .ref = { ObjectKind::Pane, uuids.next() }, .name = "logs", .position = std::nullopt };
+    TargetCandidate b { .ref = { ObjectKind::Pane, uuids.next() }, .name = "Logs", .position = std::nullopt };
     TargetCandidate c { .ref = { ObjectKind::Pane, uuids.next() },
-                        .label = "build",
+                        .name = "build",
                         .position = std::nullopt };
-    TargetCandidate t1 { .ref = { ObjectKind::Tab, uuids.next() }, .label = "", .position = 1 };
-    TargetCandidate t2 { .ref = { ObjectKind::Tab, uuids.next() }, .label = "", .position = 2 };
+    TargetCandidate t1 { .ref = { ObjectKind::Tab, uuids.next() }, .name = "", .position = 1 };
+    TargetCandidate t2 { .ref = { ObjectKind::Tab, uuids.next() }, .name = "", .position = 2 };
     std::vector<TargetCandidate> panes { a, b, c };
     std::vector<TargetCandidate> tabs { t1, t2 };
 };
 } // namespace
 
-TEST_CASE("resolveTarget: id, label, position, suffix, ambiguity", "[vtcontrol][target]")
+TEST_CASE("resolveTarget: id, name, position, suffix, ambiguity", "[vtcontrol][target]")
 {
     auto const f = Fixture {};
     CHECK(resolveTarget(ObjectKind::Pane, toString(f.a.ref), f.panes) == f.a.ref);
@@ -68,9 +64,9 @@ TEST_CASE("resolveTarget: a suffix shared by two objects is ambiguous, an unknow
     CHECK(missing.error().message.contains("nonesuch"));
 }
 
-TEST_CASE("resolveTarget: an id wins over a label that spells it", "[vtcontrol][target]")
+TEST_CASE("resolveTarget: an id wins over a name that spells it", "[vtcontrol][target]")
 {
     auto f = Fixture {};
-    f.panes[2].label = toString(f.a.ref);
+    f.panes[2].name = toString(f.a.ref);
     CHECK(resolveTarget(ObjectKind::Pane, toString(f.a.ref), f.panes) == f.a.ref);
 }

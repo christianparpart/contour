@@ -26,11 +26,11 @@ namespace vthost
 /// An opaque 128-bit object id. The snapshot keeps raw bytes, so it names no id type of a later phase.
 using ObjectUuid = std::array<std::uint8_t, 16>;
 
-/// The identity of a workspace, tab or pane: its id and its label.
+/// The identity of a workspace, tab or pane: its id and its name.
 struct ObjectIdentityRecord
 {
     ObjectUuid uuid {};
-    std::optional<std::string> label {};
+    std::optional<std::string> name {};
 
     bool operator==(ObjectIdentityRecord const&) const = default;
 };
@@ -70,6 +70,9 @@ enum class TabZoom : std::uint8_t
 struct TabSnapshot
 {
     std::optional<ObjectIdentityRecord> identity {};
+    /// compat(0.9.0): the runtime title a GUI rename set before 0.9.0, as an older daemon's snapshot carries
+    /// it. Never written now, and read only as the name of a tab that has none
+    /// (vtworkspace::restoredTabName()).
     std::optional<std::string> title {};
     std::optional<vtbackend::RGBColor> color {};
     PaneNode root {};

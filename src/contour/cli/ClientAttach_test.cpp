@@ -28,3 +28,24 @@ TEST_CASE("HostExclusions: --workspace may be given beside --host", "[cli][clien
         CHECK(std::ranges::any_of(contour::cli::HostExclusions,
                                   [name](auto const& option) { return option.name == name; }));
 }
+
+TEST_CASE(
+    "clientDaemonOf: --daemon says what --socket, --connect-tcp or --host said, or names a local daemon",
+    "[cli][client]")
+{
+    using contour::cli::clientDaemonOf;
+    using vthost::client::DaemonTarget;
+    using vthost::client::DaemonWordKind;
+    CHECK(clientDaemonOf(DaemonTarget { .kind = DaemonWordKind::SocketPath, .text = "/run/x" }).socket
+          == "/run/x");
+    CHECK(clientDaemonOf(DaemonTarget { .kind = DaemonWordKind::LocalName, .text = "work" }).name == "work");
+    CHECK(clientDaemonOf(DaemonTarget { .kind = DaemonWordKind::HostPort, .text = "box:2222" }).connectTcp
+          == "box:2222");
+    CHECK(clientDaemonOf(DaemonTarget { .kind = DaemonWordKind::SshUrl, .text = "ssh://box" }).host
+          == "ssh://box");
+    CHECK(clientDaemonOf(DaemonTarget { .kind = DaemonWordKind::SavedHost, .text = "box" }).host == "box");
+    // Each option that already says where the daemon is is refused beside --daemon.
+    for (auto const* option: { "socket", "connect-tcp", "host" })
+        CHECK(std::ranges::any_of(contour::cli::DaemonExclusions,
+                                  [option](auto const& excluded) { return excluded.name == option; }));
+}

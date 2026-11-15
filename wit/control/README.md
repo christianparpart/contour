@@ -54,7 +54,7 @@ The prompt names each permission by what it lets the extension do:
 | `read`     | May see the workspaces, tabs and panes.              |
 | `screen`   | May read what panes show, and their command history. |
 | `input`    | May type into panes.                                 |
-| `write`    | May open, split, close and label tabs and panes.     |
+| `write`    | May open, split, close and name tabs and panes.      |
 
 Each verb needs one of them, and some requests a second:
 
@@ -65,7 +65,6 @@ Each verb needs one of them, and some requests a second:
 | `tab-create`         | `write`    | `input`, for running a command   |
 | `pane-split`         | `write`    | `input`, for running a command   |
 | `workspace-create`   | `write`    |                                  |
-| `workspace-rename`   | `write`    |                                  |
 | `workspace-close`    | `write`    |                                  |
 | `workspace-move`     | `write`    |                                  |
 | `tab-move`           | `write`    |                                  |
@@ -74,7 +73,7 @@ Each verb needs one of them, and some requests a second:
 | `pane-capture`       | `screen`   |                                  |
 | `pane-close`         | `write`    |                                  |
 | `tab-close`          | `write`    |                                  |
-| `object-set-label`   | `write`    |                                  |
+| `object-rename`      | `write`    |                                  |
 | `pane-report-status` | `input`    |                                  |
 | `pane-clear-status`  | `input`    |                                  |
 | `block-list`         | `screen`   |                                  |

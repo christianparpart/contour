@@ -21,7 +21,7 @@ Wherever a verb takes a pane, tab or workspace (`--pane P`), `P` is resolved in 
 match wins:
 
 1. a full id (`pane:018f3c4e-...`);
-2. a label, compared case-insensitively (see `contour label`);
+2. a name, compared case-insensitively (see `contour rename`);
 3. a 1-based position, for tabs and workspaces;
 4. an id suffix of at least four hex digits.
 
@@ -34,21 +34,20 @@ pane.
 | Verb | What it does |
 | --- | --- |
 | `contour ls [--workspace W]` | Lists workspaces, tabs and panes as a tree; ids are shortened to their last 8 hex digits and `*` marks the active ones. |
-| `contour new [--workspace W \| --new-workspace] [--cwd DIR] [--name NAME] [--no-focus] [-- CMD...]` | Opens a tab, labelled `NAME` with `--name`, and prints its pane id. Without `--cwd` the shell starts in the calling pane's directory, when run from one. |
-| `contour split [--pane P] [--right \| --below] [--ratio PCT] [--cwd DIR] [--name NAME] [--no-focus] [-- CMD...]` | Splits a pane, labelling the new one `NAME` with `--name`, and prints the new pane's id. Without `--cwd` the shell starts in the split pane's directory. |
+| `contour new [--workspace W \| --new-workspace] [--cwd DIR] [--name NAME] [--no-focus] [-- CMD...]` | Opens a tab, named `NAME` with `--name`, and prints its pane id. Without `--cwd` the shell starts in the calling pane's directory, when run from one. |
+| `contour split [--pane P] [--right \| --below] [--ratio PCT] [--cwd DIR] [--name NAME] [--no-focus] [-- CMD...]` | Splits a pane, naming the new one `NAME` with `--name`, and prints the new pane's id. Without `--cwd` the shell starts in the split pane's directory. |
 | `contour send [--pane P] [--enter] [--wait] TEXT...\|-` | Types text into a pane. `--enter` appends a carriage return, `-` reads standard input, `--wait` waits for the command the text starts and exits with that command's own status. |
 | `contour pane capture [--pane P] [--scrollback N \| --all]` | Prints a pane's text. |
 | `contour close [--pane P \| --tab T]` | Closes a pane, or a tab with all its panes. |
-| `contour label OBJECT LABEL` | Labels a workspace, tab or pane (`contour label pane:018f logs`); an empty label clears it. A workspace's or a tab's label is the name its windows show for it, in the sidebar, the tab strip and the switcher, over its title; cleared, it shows its title again. |
-| `contour workspace new [--cwd DIR] [--name NAME]` | Opens a workspace with one tab and prints its id. The shell starts in `--cwd`, and the workspace is named after that folder (its repository's, inside one) unless `--name` labels it. |
-| `contour workspace rename WORKSPACE LABEL` | Renames a workspace, which `object.setLabel` does too; an empty label clears it. Every window listing it shows the new name. |
+| `contour rename OBJECT NAME` | Names a workspace, tab or pane (`contour rename pane:018f logs`); an empty name clears it. A workspace's or a tab's name is what its windows show for it, in the sidebar, the tab strip and the switcher, over its title; cleared, it shows its title again. The window's **Rename…** sets this same name. |
+| `contour workspace new [--cwd DIR] [--name NAME]` | Opens a workspace with one tab and prints its id. The shell starts in `--cwd`, and the workspace is named after that folder (its repository's, inside one) unless `--name` names it. |
 | `contour workspace close WORKSPACE` | Closes a workspace with all its tabs and panes, and ends their shells. Whatever it holds at that moment goes, in one step, and the workspace is removed. The daemon's last workspace cannot be closed. |
 | `contour workspace move --to N WORKSPACE` | Moves a workspace to position `N` of the workspace order, counted from 1 as `contour ls` lists them; a position past the end puts it last. |
 | `contour tab move [--workspace W] --to N TAB` | Moves a tab to position `N` of a workspace, counted from 1: another workspace to take it there, its own to reorder it. Its panes keep running, and a workspace left without tabs is closed. Without `--workspace`, the calling pane's workspace. |
 | `contour pane move (--tab T \| --workspace W [--to N] \| --new-workspace) PANE` | Moves a pane: into tab `T` as a split beside its active pane, into workspace `W` as a tab of its own (at position `N`, counted from 1, or last), or into a new workspace. It keeps running; a tab or a workspace left empty is closed. Prints the workspace it is in now. |
 | `contour block list [--pane P] [--limit N]` | Lists a pane's recent command blocks, newest first: `id  exit  duration  command`. |
 | `contour block read [BLOCK] [--pane P] [--prompt \| --output]` | Prints a block's text; without `BLOCK`, the pane's last finished block. With neither flag, the prompt and then the output. |
-| `contour switch [--workspace W] (--to-label L \| --to-host H \| --to-workspace W2) [--to-workspace W2]` | Asks one window to switch to another workspace or daemon, in place. See [Switching a window](#switching-a-window). |
+| `contour switch [--workspace W] (--to-name N \| --to-host H \| --to-workspace W2) [--to-workspace W2]` | Asks one window to switch to another workspace or daemon, in place. See [Switching a window](#switching-a-window). |
 | `contour wait [BLOCK] [--pane P] [--timeout SECONDS]` | Waits for a block to finish and exits with the command's own status. |
 | `contour events [--follow] [--kind K[,K...]] [--pane P]` | Prints the first matching event and exits, or with `--follow` every event until Ctrl+C (exit status 130). |
 | `contour api list [-q]` | Lists the API's methods and events; `-q` prints names only. |
@@ -58,6 +57,13 @@ pane.
 
 `contour pane capture` is spelled that way because `contour capture` is the older verb that captures the
 screen of the terminal it runs in.
+
+Until 0.9.0 the older spellings still work, each with a note on standard error naming its replacement:
+`contour label OBJECT NAME` and `contour workspace rename WORKSPACE NAME` run `contour rename`, and
+`contour switch --to-label` is `--to-name`. Across an upgrade, the daemon and its clients agree on the words:
+a Contour older than this one is answered in its own spelling (`label` keys, `object.setLabel`,
+`workspace.rename`, the event `workspace.labelChanged`), and this one speaks that spelling to an older
+daemon. The MCP tool `object_setLabel` stays listed, as a deprecated alias of `object_rename`.
 
 Options that look like words (`--pane`, but also the bare `pane`) can be mistaken for typed text, and a word
 that starts with a dash but names no option is refused rather than typed: put `--` before text that starts
@@ -71,19 +77,22 @@ Every verb takes:
 | Option | Meaning |
 | --- | --- |
 | `--json` | Prints the reply JSON as received, plus a newline, instead of the human form. |
-| `--daemon PATH\|HOST:PORT\|NAME\|URL` | The daemon. Defaults to `$CONTOUR_DAEMON`, then the default socket. A verb never starts a daemon. |
-| `--label L` | A local daemon, by the label it serves (`contour daemon --label L`), resolved as `contour client --label` does. Instead of `--daemon`: giving both exits 2. On every verb `--label` picks the daemon; the verbs that make a workspace, tab or pane label it with `--name`. |
+| `--daemon PATH\|HOST:PORT\|URL\|NAME` | The daemon. Defaults to `$CONTOUR_DAEMON`, then the default socket. A verb never starts a daemon. On every verb `--daemon` picks the daemon; the verbs that make a workspace, tab or pane name it with `--name`. |
 | `--token-file FILE` | The token a `HOST:PORT` daemon expects. |
 | `--tls-ca FILE` | The CA certificate (PEM) a `HOST:PORT` daemon is verified against. |
 
 A `HOST:PORT` daemon without `--tls-ca` is refused before anything is sent, with a message naming the
 option: control requests, which can type into panes, never travel over an unverified connection.
 
-A bare word (`--daemon homepc`) names a saved host of the configuration's `hosts:` section, and an
-`ssh://` URL an ad-hoc one, exactly as `contour client --host` reads them (see
+A bare word (`--daemon work`) names a local daemon by its name (`contour daemon --name work`), else a saved
+host of the configuration's `hosts:` section. A word that names both is refused (exit status 2) with the two
+spellings that pick one: `--daemon name:work` and `--daemon host:work`, which are accepted everywhere. An
+`ssh://` URL names an ad-hoc host. A host is read exactly as `contour client --host` reads it (see
 [Remote hosts](remote-hosts.md)): the host's own `token_file` and `tls_ca` apply, and `--token-file` and
 `--tls-ca` do not. A saved `tls://` host without `tls_ca` is refused like a `HOST:PORT` daemon without
-`--tls-ca`. A name no saved host has exits 4 with the names that are saved.
+`--tls-ca`. A word that names neither a local daemon nor a saved host exits 4 with the names that are saved.
+
+Until 0.9.0, `--label L` is still accepted, as `--daemon name:L`, with a note on standard error.
 
 ### Workspace order
 
@@ -97,15 +106,14 @@ is refused as `failed`, and changes nothing.
 
 | Method | Request | Grant |
 | --- | --- | --- |
-| `workspace.create` | `{"cwd":"/home/me/src/contour","label":""}`, both optional | `write` |
-| `workspace.rename` | `{"workspace":"build","label":"release"}` | `write` |
+| `workspace.create` | `{"cwd":"/home/me/src/contour","name":""}`, both optional | `write` |
 | `workspace.close` | `{"workspace":"build"}` | `write` |
 | `workspace.move` | `{"workspace":"build","toPosition":1}` | `write` |
 | `tab.move` | `{"tab":"logs","toWorkspace":"build","toPosition":1}` | `write` |
 | `pane.move` | `{"pane":"logs","to":"tab","toTab":"build"}`; `to` is `tab`, `workspace` (with `toWorkspace` and an optional `toPosition`) or `newWorkspace` | `write` |
 
-`workspace.create` replies with the `workspace`, `tab` and `pane` ids. `workspace.rename` is `object.setLabel`
-on a workspace and publishes the same `workspace.labelChanged` event. A `toPosition` of `0`, which a missing key reads as, is a bad request
+`workspace.create` replies with the `workspace`, `tab` and `pane` ids. `object.rename` names a workspace, as it
+does a tab or a pane, and publishes `object.renamed`. A `toPosition` of `0`, which a missing key reads as, is a bad request
 (in `pane.move` too, where a missing key is the end instead),
 one past the end is clamped, and a target no object matches is `notFound`. `contour api describe NAME` prints
 the schemas and an example of each.
@@ -123,26 +131,26 @@ socket method (an extension cannot call it) and needs `write`; it is not an MCP 
 pane must not re-point the window it runs in.
 
 ```json
-{"toLabel":"admin","toHost":"","toWorkspace":"build"}
+{"toName":"admin","toHost":"","toWorkspace":"build"}
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `workspace` | Optional. The workspace whose window switches (id, label, position or suffix): the window selecting it that was focused last. Absent: the window selecting the caller's pane's workspace, and from outside any pane the window that rings and raises for the daemon (the most recently focused one). |
-| `toLabel` | A local daemon, by label. |
-| `toHost` | A saved host, or an `ssh://` URL. Not together with `toLabel`; with neither, the window stays on this daemon. |
-| `toWorkspace` | The destination workspace, as a spec the window resolves against the destination daemon (id, label, position or suffix). Empty lets the window decide. |
+| `workspace` | Optional. The workspace whose window switches (id, name, position or suffix): the window selecting it that was focused last. Absent: the window selecting the caller's pane's workspace, and from outside any pane the window that rings and raises for the daemon (the most recently focused one). |
+| `toName` | A local daemon, by name. |
+| `toHost` | A saved host, or an `ssh://` URL. Not together with `toName`; with neither, the window stays on this daemon. |
+| `toWorkspace` | The destination workspace, as a spec the window resolves against the destination daemon (id, name, position or suffix). Empty lets the window decide. |
 
 From the command line:
 
 ```sh
-contour switch --to-label admin                       # this pane's window goes to the daemon labelled admin
+contour switch --to-name admin                        # this pane's window goes to the daemon named admin
 contour switch --to-host homepc --to-workspace build  # a saved host, and its workspace build
 contour switch --to-workspace 2                       # another workspace of the same daemon
-contour switch --label work --workspace w1 --to-label admin   # the window selecting w1, from outside any pane
+contour switch --daemon work --workspace w1 --to-name admin   # the window selecting w1, from outside any pane
 ```
 
-`--daemon`/`--label` choose the daemon the window is on now, and `--workspace`, optionally, the workspace its
+`--daemon` chooses the daemon the window is on now, and `--workspace`, optionally, the workspace its
 window selects (default: the workspace of `$CONTOUR_PANE`, so inside a pane no flags are needed; outside a
 pane, the window focused last). `--to-host` takes a saved
 host's name or an `ssh://` URL; any other URL is refused with exit status 2, and must be saved in the
@@ -151,7 +159,7 @@ creates one) is used; with several, the window asks which in its switcher popup 
 exit 0, `refused`
 exits 5, `failed` exits 1, and a workspace that no window selects (or a daemon with no window attached) exits 3 with the
 reason. To open a window on another daemon instead of re-pointing one, use
-`contour client --label L --workspace W` or `contour client --host H --workspace W` (see
+`contour client --daemon NAME --workspace W` or `contour client --host H --workspace W` (see
 [Remote hosts](remote-hosts.md)).
 
 The window asks its user before it switches: a prompt names the destination in full and offers Deny or
@@ -224,7 +232,7 @@ separated list of:
 | `pane.bell` | A pane rang the bell. |
 | `pane.titleChanged` | A pane's title changed. |
 | `pane.cwdChanged` | A pane's working directory changed. |
-| `workspace.labelChanged` | A workspace's label changed (`object.setLabel`, `workspace.rename`, or a window's rename); the payload's `label` is empty when it was cleared. |
+| `object.renamed` | A workspace, tab or pane was renamed (`object.rename`, or a window's **Rename…**); the payload carries its `object` id and its `name`, empty when it was cleared. |
 | `pane.programStatusChanged` | A pane's program status changed. |
 | `pane.created`, `pane.closed` | A pane was created or closed. |
 | `tab.created`, `tab.closed` | A tab was created or closed. |
@@ -401,7 +409,7 @@ tools (an agent sees only those the daemon's grants permit, see `daemon.info`):
 | `pane_run` | Runs a command in a pane and waits for its result | `input`, `screen` |
 | `pane_type` | Types into a pane | `input` |
 | `pane_split`, `tab_create` | Opens a split or a tab | `write` |
-| `pane_close`, `tab_close`, `object_setLabel` | Closes or labels | `write` |
+| `pane_close`, `tab_close`, `object_rename` | Closes or names | `write` |
 
 `pane_run` needs OSC 133 shell integration in the pane. It types one command line (join several with `&&`
 or `;`), waits, and returns the exit code and the last 64 KiB of output (`maxOutputBytes` changes that). A
@@ -409,7 +417,7 @@ result of `timedOut` means the command is still running; fetch its output later 
 refuses the agent's own pane, as does `pane_type`: use `pane_split` to get a shell pane.
 
 By default the agent acts only on the panes of its own tab: an action aimed at another tab is refused, and a
-label or id suffix is matched within the own tab only. `workspace_list` still lists every tab, so the agent
+name or id suffix is matched within the own tab only. `workspace_list` still lists every tab, so the agent
 can tell you what exists; scoping limits what it may do, not what it can see. Without `$CONTOUR_PANE` the
 server refuses to start (exit status 2) unless you pass `--allow-all-tabs`, which lets the agent act on every
 tab and enables `tab_create` and `tab_close`. `--read-only` leaves out the tools that type or change the

@@ -24,7 +24,7 @@ std::vector<DiscoveredDaemon> daemons(std::vector<std::string> const& labels)
 
 SwitchTarget label(std::string name)
 {
-    return { .kind = SwitchDaemonKind::Label, .daemon = std::move(name), .workspace = {} };
+    return { .kind = SwitchDaemonKind::Name, .daemon = std::move(name), .workspace = {} };
 }
 
 SwitchTarget host(std::string name)

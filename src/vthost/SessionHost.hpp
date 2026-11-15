@@ -898,7 +898,7 @@ struct SessionSpawnRequest
     /// (@see SessionHost::interruptedCommandOf). Empty for none.
     std::string interruptedCommand {};
 
-    /// The UUIDs and labels the objects this spawn creates come back with, instead of fresh ones: a restored
+    /// The UUIDs and names the objects this spawn creates come back with, instead of fresh ones: a restored
     /// workspace keeps its ids. Nullopt mints them all.
     std::optional<PresetObjectIds> presetIds {};
 
@@ -1211,10 +1211,10 @@ class SessionHost final: public vtworkspace::ModelEvents
     ///         and another workspace takes this role (@see discardWorkspace).
     [[nodiscard]] vtworkspace::WorkspaceId workspaceId() const noexcept { return _workspace; }
 
-    /// @return The UUIDs and labels of this host's workspaces, tabs and panes.
+    /// @return The UUIDs and names of this host's workspaces, tabs and panes.
     [[nodiscard]] ObjectRegistry& objects() noexcept { return _objects; }
 
-    /// @return The UUIDs and labels of this host's workspaces, tabs and panes.
+    /// @return The UUIDs and names of this host's workspaces, tabs and panes.
     [[nodiscard]] ObjectRegistry const& objects() const noexcept { return _objects; }
 
     /// @return The authoritative client area, in cells: layout projection and
@@ -1818,6 +1818,15 @@ class SessionHost final: public vtworkspace::ModelEvents
     [[nodiscard]] vtworkspace::Workspace& createEmptyWorkspace(vtcontrol::Uuid name);
     /// Gives @p tab a name if no creation path did, as for a tab a move made.
     void bindUnnamed(vtworkspace::TabId tab);
+    /// Mirrors a tab's name the registry changed into the model, so the model's observers (a tmux client, a
+    /// status line) see the rename as a retitle and read it as vtworkspace::Tab::name().
+    /// @param ref The object whose name changed; anything but a tab is ignored.
+    /// @param name Its name now.
+    void mirrorTabName(vtcontrol::ObjectRef const& ref, std::string_view name);
+    /// Gives every tab a handover brought back its name in the model, as the registry holds it, migrating an
+    /// older daemon's runtime title (vtworkspace::restoredTabName()) into a tab that has none.
+    /// @param tree The tree the handover brought back.
+    void restoreTabNames(vtworkspace::WorkspaceTreeState const& tree);
 
     /// Spawns and registers the backing session for the next model allocation
     /// (the pre-mint half of the handshake).
@@ -1837,7 +1846,7 @@ class SessionHost final: public vtworkspace::ModelEvents
     struct StagedTab
     {
         vtcontrol::Uuid uuid {};
-        std::string label {};
+        std::string name {};
     };
 
     /// @param incoming What this creation overrides about the session.
@@ -1948,8 +1957,8 @@ class SessionHost final: public vtworkspace::ModelEvents
 
     /// @return The name a workspace made from @p request starts with: after the folder its first shell
     ///         @p seeded starts in (@see vtbackend::defaultWorkspaceName); empty when that is unknown.
-    [[nodiscard]] std::string defaultWorkspaceLabel(SessionSpawnRequest const& request,
-                                                    vtworkspace::SessionId seeded) const;
+    [[nodiscard]] std::string defaultWorkspaceName(SessionSpawnRequest const& request,
+                                                   vtworkspace::SessionId seeded) const;
 
     /// Destroys session @p session and forgets everything kept beside it, so no erase site can leave a
     /// stale entry behind.
@@ -2521,9 +2530,11 @@ class SessionHost final: public vtworkspace::ModelEvents
     std::vector<RestoredWorkspace>
         _restoreAnnouncement {}; ///< What @ref takeRestoreAnnouncement has yet to tell.
 
-    /// The UUIDs and labels of workspaces, tabs and panes. Declared before the model, whose events bind into
+    /// The UUIDs and names of workspaces, tabs and panes. Declared before the model, whose events bind into
     /// it.
     ObjectRegistry _objects;
+    /// Mirrors every tab name the registry changes into the model (@see mirrorTabName()).
+    ObjectRegistry::Subscription _tabNameMirror;
     /// The UUID of the tab a creation path is about to add; bound by `tabAdded`, then cleared.
     std::optional<StagedTab> _stagedTab;
 

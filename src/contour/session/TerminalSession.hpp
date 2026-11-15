@@ -928,12 +928,12 @@ class TerminalSession: public QAbstractItemModel, public vtbackend::Terminal::Ev
         // TerminalSessionManager::updateStatusLine(), reached from a posted refreshGuiTabInfoForStatusLine
         // or on tab activation) while the parser thread writes the title strings under that mutex.
         // Reading them across separate unlocked accessor calls would race the writer.
-        return terminal().resolvedTabName();
+        return terminal().resolvedProgramTabTitle();
     }
 
     /// The raw OS-window title, for the GUI tab-label {WindowTitle} placeholder.
     ///
-    /// Distinct from name(): name() goes through resolvedTabName(), which honors TabsNamingMode and
+    /// Distinct from name(): name() goes through resolvedProgramTabTitle(), which honors TabsNamingMode and
     /// returns nullopt unless Title mode is active (the status-line {Tabs} semantics). The GUI tab
     /// label wants the raw title regardless of mode, read thread-safely.
     /// @return The raw window title (empty if none has been set).
@@ -1560,7 +1560,7 @@ class TerminalSession: public QAbstractItemModel, public vtbackend::Terminal::Ev
     void requestWindowResize(vtbackend::LineCount, vtbackend::ColumnCount) override;
     void requestWindowResize(vtbackend::Width, vtbackend::Height) override;
     void setWindowTitle(std::string_view title) override;
-    void setTabName(std::string_view name) override;
+    void setProgramTabTitle(std::string_view name) override;
     void setWindowFrameColor(vtbackend::RGBColor color) override;
     void resetWindowFrameColor() override;
     /// Runs on whichever thread holds the terminal lock (the parser thread, or the GUI thread for a
@@ -1860,7 +1860,7 @@ class TerminalSession: public QAbstractItemModel, public vtbackend::Terminal::Ev
     bool operator()(actions::SwitchToPreviousTab);
     bool operator()(actions::SwitchToTabLeft);
     bool operator()(actions::SwitchToTabRight);
-    bool operator()(actions::SetTabTitle);
+    bool operator()(actions::RenameTab);
     bool operator()(actions::SetTabColor const& action);
     bool operator()(actions::ResetTabColor);
     bool operator()(actions::SplitVertical);

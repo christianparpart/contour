@@ -44,10 +44,20 @@ void ActionList::clear() noexcept
     _actions.clear();
 }
 
+ActionAlias const* actionAliasOf(std::string_view name)
+{
+    auto const lowerCaseName = toLower(name);
+    auto const alias = std::ranges::find_if(
+        ActionAliases, [&](ActionAlias const& row) { return toLower(row.oldName) == lowerCaseName; });
+    return alias != ActionAliases.end() ? &*alias : nullptr;
+}
+
 optional<Action> fromString(string const& name)
 {
     // Case-insensitive, so `input_mapping:` may spell an action however it reads best.
-    auto const lowerCaseName = toLower(name);
+    // compat(0.9.0): an old action name is read as its new one.
+    auto const* const alias = actionAliasOf(name);
+    auto const lowerCaseName = toLower(alias != nullptr ? alias->name : name);
     auto const& catalog = actionCatalog();
     auto const entry = std::ranges::find_if(
         catalog, [&](auto const& candidate) { return toLower(candidate.name) == lowerCaseName; });
@@ -103,12 +113,12 @@ namespace
         return arguments + formatOwnArguments(action);
     }
 
-    /// Renders @p daemon as the `label:` or `host:` key it was parsed from.
+    /// Renders @p daemon as the `name:` or `host:` key it is parsed from.
     /// @param daemon The reference to render.
-    /// @return E.g. ", label: 'admin'".
+    /// @return E.g. ", name: 'admin'".
     [[nodiscard]] std::string formatDaemonRef(DaemonRef const& daemon)
     {
-        return std::format(", {}: '{}'", daemon.kind == DaemonRefKind::Host ? "host" : "label", daemon.name);
+        return std::format(", {}: '{}'", daemon.kind == DaemonRefKind::Host ? "host" : "name", daemon.name);
     }
 
     /// Renders the arguments @p action carries as YAML sibling keys, e.g. ", position: 3".
@@ -360,7 +370,7 @@ span<ActionCatalogEntry const> actionCatalog()
             "SwitchToTabLeft", Action { SwitchToTabLeft {} }, documentation::SwitchToTabLeft },
         ActionCatalogEntry {
             "SwitchToTabRight", Action { SwitchToTabRight {} }, documentation::SwitchToTabRight },
-        ActionCatalogEntry { "SetTabTitle", Action { SetTabTitle {} }, documentation::SetTabTitle },
+        ActionCatalogEntry { "RenameTab", Action { RenameTab {} }, documentation::RenameTab },
         ActionCatalogEntry { "SplitVertical", Action { SplitVertical {} }, documentation::SplitVertical },
         ActionCatalogEntry {
             "SplitHorizontal", Action { SplitHorizontal {} }, documentation::SplitHorizontal },

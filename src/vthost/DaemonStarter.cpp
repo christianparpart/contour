@@ -21,17 +21,17 @@ ServiceBackendFactory nativeServiceBackendFactory(ServiceBackendServices const& 
     };
 }
 
-std::optional<RegisteredService> findRegisteredService(std::string_view label,
+std::optional<RegisteredService> findRegisteredService(std::string_view name,
                                                        ServiceBackendFactory const& makeBackend)
 {
     // A backend whose status cannot be had (a Boot/Manual one on a POSIX host answers with an error) is
     // not a registration.
-    for (auto const& name: registrationNamesForLabel(label))
+    for (auto const& registration: registrationNamesFor(name))
         for (auto const& mode: ServiceStartModeNames | std::views::values)
-            if (auto backend = makeBackend(mode, name))
+            if (auto backend = makeBackend(mode, registration))
                 if (auto found = backend->status(); found && found->state != ServiceRunState::NotInstalled)
                     return RegisteredService { .backend = std::move(backend),
-                                               .name = name,
+                                               .name = registration,
                                                .status = *std::move(found) };
     return std::nullopt;
 }
@@ -49,12 +49,12 @@ std::expected<RegistrationRepair, ServiceError> repairRegistration(RegisteredSer
     return RegistrationRepair::Retargeted;
 }
 
-std::optional<RegisteredService> findRepairedRegisteredService(std::string_view label,
+std::optional<RegisteredService> findRepairedRegisteredService(std::string_view name,
                                                                ServiceBackendFactory const& makeBackend,
                                                                RegistrationRepairInputs const& inputs,
                                                                RegistrationUse use)
 {
-    auto found = findRegisteredService(label, makeBackend);
+    auto found = findRegisteredService(name, makeBackend);
     if (!found)
         return found;
     auto repairFailure = std::string {};
@@ -135,7 +135,7 @@ bool isSameSocketPath(std::filesystem::path const& lhs, std::filesystem::path co
 }
 
 std::unique_ptr<DaemonStarter> chooseDaemonStarter(std::optional<RegisteredService> registered,
-                                                   std::filesystem::path const& labelDefaultSocket,
+                                                   std::filesystem::path const& namedDefaultSocket,
                                                    OnDemandSpawn onDemand)
 {
     if (registered)
@@ -143,7 +143,7 @@ std::unique_ptr<DaemonStarter> chooseDaemonStarter(std::optional<RegisteredServi
         // A registration the user disabled cannot start anything: spawn on demand rather than run it.
         if (registered->status.state == ServiceRunState::Disabled)
             return std::make_unique<OnDemandDaemonStarter>(std::move(onDemand));
-        auto const served = registeredSocketPath(registered->status.commandLine).value_or(labelDefaultSocket);
+        auto const served = registeredSocketPath(registered->status.commandLine).value_or(namedDefaultSocket);
         if (isSameSocketPath(served, onDemand.endpoint.socketPath))
             return std::make_unique<ServiceDaemonStarter>(
                 std::move(*registered),

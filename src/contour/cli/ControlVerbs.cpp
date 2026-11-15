@@ -123,17 +123,14 @@ namespace
     [[nodiscard]] CLI::OptionList withConnectionOptions(CLI::OptionList options)
     {
         options.emplace_back(jsonOption());
-        options.emplace_back(
-            CLI::Option { "daemon",
-                          CLI::Value { ""s },
-                          "The daemon to talk to: a socket path, HOST:PORT, or a host of hosts: by its name "
-                          "or an ssh:// URL. Defaults to $CONTOUR_DAEMON, then the default socket.",
-                          "PATH|HOST:PORT|NAME|URL" });
         options.emplace_back(CLI::Option {
-            "label",
+            "daemon",
             CLI::Value { ""s },
-            "The local daemon to talk to, by its label, as for contour client --label. Not with --daemon.",
-            "L" });
+            "The daemon to talk to: a socket path, HOST:PORT, an ssh:// URL, or a name: a local "
+            "daemon's, else a host of hosts:. `name:NAME` picks a local daemon, `host:NAME` a saved host; a "
+            "number after them that names no such daemon or host is a port. Defaults to $CONTOUR_DAEMON, "
+            "then the default socket.",
+            "PATH|HOST:PORT|URL|NAME" });
         options.emplace_back(CLI::Option { "token-file",
                                            CLI::Value { ""s },
                                            "Reads the token a HOST:PORT daemon expects from FILE.",
@@ -155,7 +152,7 @@ namespace
     {
         return CLI::Option { "pane",
                              CLI::Value { ""s },
-                             "The pane: an id, a label, or a position. Defaults to $CONTOUR_PANE.",
+                             "The pane: an id, a name, or a position. Defaults to $CONTOUR_PANE.",
                              "P" };
     }
 
@@ -183,20 +180,20 @@ namespace
             out << std::format("workspace {}  {}{}\n",
                                workspace.position,
                                shortId(workspace.id),
-                               workspace.label.empty() ? ""s : "  " + workspace.label);
+                               workspace.name.empty() ? ""s : "  " + workspace.name);
             for (auto const& tab: workspace.tabs)
             {
                 out << std::format("  {} tab {}  {}  {}\n",
                                    tab.isActive ? '*' : ' ',
                                    tab.position,
                                    shortId(tab.id),
-                                   tab.label.empty() ? tab.title : tab.label);
+                                   tab.name.empty() ? tab.title : tab.name);
                 for (auto const& pane: tab.panes)
                 {
                     out << std::format("    {} pane  {}  {}  {}x{}",
                                        pane.isActive ? '*' : ' ',
                                        shortId(pane.id),
-                                       pane.label.empty() ? pane.title : pane.label,
+                                       pane.name.empty() ? pane.title : pane.name,
                                        pane.size.columns,
                                        pane.size.lines);
                     if (!pane.cwd.empty())
@@ -341,8 +338,8 @@ namespace
                     return event.title;
                 else if constexpr (std::same_as<Event, vtcontrol::CwdChangedEvent>)
                     return event.cwd;
-                else if constexpr (std::same_as<Event, vtcontrol::WorkspaceLabelChangedEvent>)
-                    return event.label;
+                else if constexpr (std::same_as<Event, vtcontrol::ObjectRenamedEvent>)
+                    return event.name;
                 else if constexpr (std::same_as<Event, vtcontrol::ProgramStatusChangedEvent>)
                     return std::format(
                         "{} record(s), {}", event.records.size(), vtcontrol::nameOf(event.reason));
@@ -398,7 +395,7 @@ namespace
                                                   : vtcontrol::WorkspacePlacement::Existing,
             .cwd = f.text("cwd"),
             .command = toStrings(f.words()),
-            .label = f.text("name"),
+            .name = f.text("name"),
             .focus = f.isSet("no-focus") ? vtcontrol::FocusPolicy::Keep : vtcontrol::FocusPolicy::Take });
     }
 
@@ -430,7 +427,7 @@ namespace
             .ratioPercent = *ratio,
             .cwd = f.text("cwd"),
             .command = toStrings(f.words()),
-            .label = f.text("name"),
+            .name = f.text("name"),
             .focus = f.isSet("no-focus") ? vtcontrol::FocusPolicy::Keep : vtcontrol::FocusPolicy::Take });
     }
 
@@ -475,30 +472,20 @@ namespace
         return !VerbFlags { flags, "close" }.text("tab").empty();
     }
 
-    [[nodiscard]] Params buildLabel(CLI::FlagStore const& flags)
+    [[nodiscard]] Params buildRename(CLI::FlagStore const& flags)
     {
-        auto const& words = VerbFlags { flags, "label" }.words();
+        auto const& words = VerbFlags { flags, "rename" }.words();
         if (words.size() != 2)
-            return std::unexpected("label takes an OBJECT and a LABEL (an empty one clears it)"s);
-        return vtcontrol::encodeJson(vtcontrol::SetLabelRequest { .object = std::string { words[0] },
-                                                                  .label = std::string { words[1] } });
+            return std::unexpected("rename takes an OBJECT and a NAME (an empty one clears it)"s);
+        return vtcontrol::encodeJson(vtcontrol::ObjectRenameRequest { .object = std::string { words[0] },
+                                                                      .name = std::string { words[1] } });
     }
 
     [[nodiscard]] Params buildWorkspaceNew(CLI::FlagStore const& flags)
     {
         auto const f = VerbFlags { flags, "workspace.new" };
         return vtcontrol::encodeJson(
-            vtcontrol::CreateWorkspaceRequest { .cwd = f.text("cwd"), .label = f.text("name") });
-    }
-
-    [[nodiscard]] Params buildWorkspaceRename(CLI::FlagStore const& flags)
-    {
-        auto const& words = VerbFlags { flags, "workspace.rename" }.words();
-        if (words.size() != 2)
-            return std::unexpected(
-                "workspace rename takes a WORKSPACE and a LABEL (an empty one clears it)"s);
-        return vtcontrol::encodeJson(vtcontrol::RenameWorkspaceRequest {
-            .workspace = std::string { words[0] }, .label = std::string { words[1] } });
+            vtcontrol::CreateWorkspaceRequest { .cwd = f.text("cwd"), .name = f.text("name") });
     }
 
     /// @param verb The verb whose `--to` is read, for the message.
@@ -625,19 +612,19 @@ namespace
     [[nodiscard]] Params buildSwitch(CLI::FlagStore const& flags)
     {
         auto const f = VerbFlags { flags, "switch" };
-        auto const& toLabel = f.text("to-label");
+        auto const& toName = f.text("to-name");
         auto const& toHost = f.text("to-host");
         auto const& toWorkspace = f.text("to-workspace");
-        if (!toLabel.empty() && !toHost.empty())
-            return std::unexpected("--to-label and --to-host exclude each other"s);
-        if (toLabel.empty() && toHost.empty() && toWorkspace.empty())
-            return std::unexpected("switch needs a destination: --to-label, --to-host or --to-workspace"s);
+        if (!toName.empty() && !toHost.empty())
+            return std::unexpected("--to-name and --to-host exclude each other"s);
+        if (toName.empty() && toHost.empty() && toWorkspace.empty())
+            return std::unexpected("switch needs a destination: --to-name, --to-host or --to-workspace"s);
         if (auto const unusable = unusableSwitchHost(toHost))
             return std::unexpected(*unusable);
         auto const& workspace = f.text("workspace");
         return vtcontrol::encodeJson(vtcontrol::SwitchWorkspaceRequest {
             .workspace = workspace.empty() ? std::nullopt : std::optional { workspace },
-            .toLabel = toLabel,
+            .toName = toName,
             .toHost = toHost,
             .toWorkspace = toWorkspace });
     }
@@ -785,7 +772,7 @@ namespace
                             CLI::Option {
                                 "new-workspace", CLI::Value { false }, "Opens the tab in a new workspace." },
                             CLI::Option { "cwd", CLI::Value { ""s }, "The working directory.", "DIR" },
-                            CLI::Option { "name", CLI::Value { ""s }, "Labels the new tab NAME.", "NAME" },
+                            CLI::Option { "name", CLI::Value { ""s }, "Names the new tab NAME.", "NAME" },
                             noFocusOption(),
                         });
                     },
@@ -810,7 +797,7 @@ namespace
                                           "The share of the old pane the new one gets, 1 to 99.",
                                           "PCT" },
                             CLI::Option { "cwd", CLI::Value { ""s }, "The working directory.", "DIR" },
-                            CLI::Option { "name", CLI::Value { ""s }, "Labels the new pane NAME.", "NAME" },
+                            CLI::Option { "name", CLI::Value { ""s }, "Names the new pane NAME.", "NAME" },
                             noFocusOption(),
                         });
                     },
@@ -882,14 +869,17 @@ namespace
                 .usesAlternateMethod = closesTab,
             },
             ControlVerb {
-                .path = "label",
-                .method = "object.setLabel",
-                .usage = "label OBJECT LABEL",
-                .summary = "Labels a workspace, tab or pane to address it by; an empty label clears it.",
+                .path = "rename",
+                .method = "object.rename",
+                .usage = "rename OBJECT NAME",
+                .summary = "Names a workspace, tab or pane, which addresses it too; an empty name clears it.",
                 .options = [] { return withConnectionOptions({}); },
                 .verbatim =
-                    CLI::Verbatim { "OBJECT LABEL", "The object, e.g. pane:logs, and its new label." },
-                .buildParams = buildLabel,
+                    CLI::Verbatim {
+                        "OBJECT NAME",
+                        "The object, e.g. pane:logs or workspace:2, and its new name.",
+                    },
+                .buildParams = buildRename,
                 .printHuman = humanNothing,
             },
             ControlVerb {
@@ -903,7 +893,7 @@ namespace
                             CLI::Option { "cwd", CLI::Value { ""s }, "Where the first pane starts.", "DIR" },
                             CLI::Option { "name",
                                           CLI::Value { ""s },
-                                          "Labels the workspace NAME; without it, it is named after its "
+                                          "Names the workspace NAME; without it, it is named after its "
                                           "folder.",
                                           "NAME" },
                         });
@@ -911,16 +901,6 @@ namespace
                 .verbatim = std::nullopt,
                 .buildParams = buildWorkspaceNew,
                 .printHuman = humanWorkspace<vtcontrol::CreateWorkspaceReply>,
-            },
-            ControlVerb {
-                .path = "workspace.rename",
-                .method = "workspace.rename",
-                .usage = "workspace rename WORKSPACE LABEL",
-                .summary = "Renames a workspace; an empty label clears it.",
-                .options = [] { return withConnectionOptions({}); },
-                .verbatim = CLI::Verbatim { "WORKSPACE LABEL", "The workspace, and its new label." },
-                .buildParams = buildWorkspaceRename,
-                .printHuman = humanNothing,
             },
             ControlVerb {
                 .path = "workspace.close",
@@ -994,7 +974,7 @@ namespace
             ControlVerb {
                 .path = "switch",
                 .method = "workspace.switch",
-                .usage = "switch [--workspace W] (--to-label L | --to-host H | --to-workspace W2) "
+                .usage = "switch [--workspace W] (--to-name N | --to-host H | --to-workspace W2) "
                          "[--to-workspace W2]",
                 .summary = "Asks one window to switch to another workspace or daemon.",
                 .options =
@@ -1007,10 +987,10 @@ namespace
                                           "of $CONTOUR_PANE, and without a pane the window that raises for "
                                           "the daemon.",
                                           "W" },
-                            CLI::Option { "to-label",
+                            CLI::Option { "to-name",
                                           CLI::Value { ""s },
-                                          "Switches to the local daemon with this label.",
-                                          "L" },
+                                          "Switches to the local daemon of this name.",
+                                          "N" },
                             CLI::Option { "to-host",
                                           CLI::Value { ""s },
                                           "Switches to a saved host's daemon, or an ssh:// URL's.",
@@ -1018,7 +998,7 @@ namespace
                             CLI::Option { "to-workspace",
                                           CLI::Value { ""s },
                                           "Switches to this workspace of the destination daemon (an id, a "
-                                          "label, a position); without it the window decides or asks.",
+                                          "name, a position); without it the window decides or asks.",
                                           "W2" },
                         });
                     },
@@ -1517,7 +1497,7 @@ std::span<ControlVerbGroup const> controlVerbGroups()
 {
     static constexpr auto Groups = std::array {
         ControlVerbGroup { "pane", "Reads panes." },
-        ControlVerbGroup { "workspace", "Opens, renames and reorders workspaces." },
+        ControlVerbGroup { "workspace", "Opens, closes and reorders workspaces." },
         ControlVerbGroup { "tab", "Moves tabs." },
         ControlVerbGroup { "api", "Explores and calls the control API." },
     };
@@ -1554,11 +1534,6 @@ std::expected<std::unique_ptr<ControlChannel>, ExitStatus> openControlChannel(CL
                                                                               ControlIo const& io)
 {
     auto const f = VerbFlags { flags, flagPath };
-    if (!f.text("daemon").empty() && !f.text("label").empty())
-    {
-        (void) reportBadUsage("--daemon and --label exclude each other", io.err);
-        return std::unexpected(ExitStatus::BadUsage);
-    }
     auto const token = readOptionFile(io.fs, "token-file", f.text("token-file"));
     auto const authority = readOptionFile(io.fs, "tls-ca", f.text("tls-ca"));
     if (!token || !authority)
@@ -1568,14 +1543,15 @@ std::expected<std::unique_ptr<ControlChannel>, ExitStatus> openControlChannel(CL
     }
     auto const transport = vthost::client::resolveControlEndpoint(
         vthost::client::ControlEndpointOptions { .daemon = f.text("daemon"),
-                                                 .label = f.text("label"),
                                                  .token = cleanToken(*token),
                                                  .tlsCaPem = *authority,
                                                  .daemonFingerprint = f.text("daemon-fingerprint"),
                                                  .knownDaemons = io.knownDaemons,
                                                  .pinPrompt = io.pinPrompt,
                                                  .keySourceProvider = io.keySourceProvider,
-                                                 .resolveSavedHost = io.resolveSavedHost },
+                                                 .resolveSavedHost = io.resolveSavedHost,
+                                                 .localDaemons = io.localDaemons,
+                                                 .savedHosts = io.savedHosts },
         io.env);
     if (!transport)
     {

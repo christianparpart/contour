@@ -516,7 +516,7 @@ TEST_CASE("the Window menu gains and loses the daemon rows as it opens", "[displ
         command::Command { .id = "SwitchToDaemon:work",
                            .title = "Switch to daemon work",
                            .description = {},
-                           .action = actions::SwitchToDaemon { { actions::DaemonRefKind::Label, "work" } },
+                           .action = actions::SwitchToDaemon { { actions::DaemonRefKind::Name, "work" } },
                            .category = command::CommandCategory::Daemons,
                            .argument = "work" };
     fixture.state.switching = command::DaemonSwitching::Available;

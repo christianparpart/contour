@@ -116,16 +116,16 @@ TEST_CASE("taskbarAttention.aDirectoryCountsItsBlockedTabsButTheDisplayedWorkspa
         };
     };
     auto const tab = [](std::vector<DirectoryPane> panes) {
-        return DirectoryTab { .id = 0, .title = {}, .label = {}, .panes = std::move(panes) };
+        return DirectoryTab { .id = 0, .title = {}, .name = {}, .panes = std::move(panes) };
     };
     auto const blocked = pane(vtbackend::ProgramState::Blocked);
     auto const working = pane(vtbackend::ProgramState::Working);
     auto const directory = contour::window::WorkspaceDirectory {
         .workspaces = { DirectoryWorkspace {
-                            .id = 1, .label = {}, .tabs = { tab({ blocked }), tab({ working }) } },
+                            .id = 1, .name = {}, .tabs = { tab({ blocked }), tab({ working }) } },
                         // A split tab with one blocked pane waits once.
-                        DirectoryWorkspace { .id = 2, .label = {}, .tabs = { tab({ working, blocked }) } },
-                        DirectoryWorkspace { .id = 3, .label = {}, .tabs = { tab({ blocked }) } } },
+                        DirectoryWorkspace { .id = 2, .name = {}, .tabs = { tab({ working, blocked }) } },
+                        DirectoryWorkspace { .id = 3, .name = {}, .tabs = { tab({ blocked }) } } },
         .selected = 1,
     };
 

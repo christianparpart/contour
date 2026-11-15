@@ -250,7 +250,7 @@ Row {
                     // no shadowing.
                     required property int index
                     required property string title
-                    required property string rawTitle
+                    required property string name
                     required property color accentColor
                     required property bool isActive
                     required property int paneCount
@@ -273,7 +273,7 @@ Row {
                     window: root.window
                     tabIndex: index
                     tabTitle: title
-                    tabRawTitle: rawTitle
+                    tabName: name
                     tabColor: accentColor
                     tabActive: isActive
                     tabPaneCount: paneCount

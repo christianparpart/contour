@@ -16,10 +16,10 @@
 #include <vthost/HostedShell.hpp>
 #include <vthost/SocketPath.hpp>
 
-using vthost::LabelOrigin;
+using vthost::DaemonName;
+using vthost::DaemonNameOrigin;
 using vthost::muxSocketPath;
 using vthost::MuxSocketPathInputs;
-using vthost::SocketLabel;
 
 namespace
 {
@@ -55,7 +55,7 @@ TEST_CASE("the socket path is read as UTF-8, as the command line and the environ
     // temporary joined with `+`) that cannot happen, so it is built in pieces.
     auto labelledDirectory = std::u8string { u8"contour-" };
     labelledDirectory.append(Awkward);
-    CHECK(muxSocketPath(MuxSocketPathInputs { .label = awkward, .user = awkward })
+    CHECK(muxSocketPath(MuxSocketPathInputs { .name = awkward, .user = awkward })
           == std::filesystem::temp_directory_path() / labelledDirectory / Awkward);
 }
 
@@ -71,7 +71,7 @@ TEST_CASE("the XDG runtime dir hosts the per-label socket", "[vthost][socketpath
     CHECK(muxSocketPath(MuxSocketPathInputs { .xdgRuntimeDir = "/run/user/1000", .user = TestUser })
           == "/run/user/1000/contour/default");
     CHECK(muxSocketPath(
-              MuxSocketPathInputs { .label = "work", .xdgRuntimeDir = "/run/user/1000", .user = TestUser })
+              MuxSocketPathInputs { .name = "work", .xdgRuntimeDir = "/run/user/1000", .user = TestUser })
           == "/run/user/1000/contour/work");
 }
 
@@ -85,7 +85,7 @@ TEST_CASE("a sandboxed derivation lands where both sides of the sandbox can see 
     CHECK(muxSocketPath(MuxSocketPathInputs {
               .xdgRuntimeDir = "/run/user/1000", .sandboxAppId = SandboxedAs, .user = TestUser })
           == "/run/user/1000/app/org.contourterminal.Contour/contour/default");
-    CHECK(muxSocketPath(MuxSocketPathInputs { .label = "work",
+    CHECK(muxSocketPath(MuxSocketPathInputs { .name = "work",
                                               .xdgRuntimeDir = "/run/user/1000",
                                               .sandboxAppId = SandboxedAs,
                                               .user = TestUser })
@@ -113,7 +113,7 @@ TEST_CASE("without a runtime dir the sandbox rung has nothing to qualify", "[vth
     // The app-scoped directory only exists BENEATH a runtime dir, so with none there is nothing to
     // qualify and the temp fallback stands as it does off the sandbox.
     auto const path = muxSocketPath(
-        MuxSocketPathInputs { .label = "fallback", .sandboxAppId = SandboxedAs, .user = TestUser });
+        MuxSocketPathInputs { .name = "fallback", .sandboxAppId = SandboxedAs, .user = TestUser });
 
     CHECK(path.parent_path().filename() == std::string { "contour-" } + TestUser);
     CHECK(path.filename() == "fallback");
@@ -125,7 +125,7 @@ TEST_CASE("a relative runtime dir counts as unset", "[vthost][socketpath]")
     // beneath whatever directory the daemon or the client happened to start in, so the two would not
     // meet.
     auto const path = muxSocketPath(
-        MuxSocketPathInputs { .label = "fallback", .xdgRuntimeDir = "run/user", .user = TestUser });
+        MuxSocketPathInputs { .name = "fallback", .xdgRuntimeDir = "run/user", .user = TestUser });
 
     CHECK(path.parent_path().filename() == std::string { "contour-" } + TestUser);
     CHECK(path.filename() == "fallback");
@@ -140,10 +140,10 @@ TEST_CASE("an empty env value counts as unset", "[vthost][socketpath]")
 
 TEST_CASE("without a runtime dir the path falls back to a per-user temp dir", "[vthost][socketpath]")
 {
-    auto const path = muxSocketPath(MuxSocketPathInputs { .label = "fallback", .user = TestUser });
+    auto const path = muxSocketPath(MuxSocketPathInputs { .name = "fallback", .user = TestUser });
 
     CHECK(path.parent_path().filename() == std::string { "contour-" } + TestUser);
-    CHECK(path.filename() == "fallback"); // the label is the leaf, whatever the OS separator
+    CHECK(path.filename() == "fallback"); // the name is the leaf, whatever the OS separator
 }
 
 TEST_CASE("the production overload reads its inputs from the injected environment", "[vthost][socketpath]")
@@ -152,7 +152,8 @@ TEST_CASE("the production overload reads its inputs from the injected environmen
     // mutated to arrange this.
     auto const environment = core::testing::FakeEnvironment { { { "XDG_RUNTIME_DIR", "/run/user/4242" } } };
 
-    CHECK(muxSocketPath(vthost::socketLabelOf("work"), "", environment) == "/run/user/4242/contour/work");
+    CHECK(muxSocketPath(vthost::daemonNameFromOption("work"), "", environment)
+          == "/run/user/4242/contour/work");
 
     SECTION("and $CONTOUR_MUX still outranks it")
     {
@@ -161,21 +162,20 @@ TEST_CASE("the production overload reads its inputs from the injected environmen
             { "XDG_RUNTIME_DIR", "/run/user/4242" },
         } };
 
-        CHECK(muxSocketPath(SocketLabel { .name = "work" }, "", overridden) == "/env/mux.sock");
+        CHECK(muxSocketPath(DaemonName { .name = "work" }, "", overridden) == "/env/mux.sock");
     }
 }
 
 TEST_CASE("a label's own socket is what neither --socket nor $CONTOUR_MUX names", "[vthost][socketpath]")
 {
-    // What a daemon at a socket of its own is told apart from: where its label would serve otherwise.
+    // What a daemon at a socket of its own is told apart from: where its name would serve otherwise.
     auto const overridden = core::testing::FakeEnvironment { {
         { "CONTOUR_MUX", "/env/mux.sock" },
         { "XDG_RUNTIME_DIR", "/run/user/4242" },
     } };
-    CHECK(vthost::labelSocketPath("work", overridden) == "/run/user/4242/contour/work");
-    CHECK(vthost::labelSocketPath(vthost::DefaultSocketLabel, overridden)
-          == "/run/user/4242/contour/default");
-    CHECK(muxSocketPath(SocketLabel { .name = "work" }, "", overridden) == "/env/mux.sock");
+    CHECK(vthost::namedSocketPath("work", overridden) == "/run/user/4242/contour/work");
+    CHECK(vthost::namedSocketPath(vthost::DefaultDaemonName, overridden) == "/run/user/4242/contour/default");
+    CHECK(muxSocketPath(DaemonName { .name = "work" }, "", overridden) == "/env/mux.sock");
 }
 
 TEST_CASE("the production overload takes the sandbox from where it is injected too", "[vthost][socketpath]")
@@ -187,7 +187,7 @@ TEST_CASE("the production overload takes the sandbox from where it is injected t
                                                 .network = vtpty::NetworkAccess::Denied,
                                                 .applicationId = SandboxedAs };
 
-    CHECK(muxSocketPath(vthost::socketLabelOf("work"), "", environment, sandboxed)
+    CHECK(muxSocketPath(vthost::daemonNameFromOption("work"), "", environment, sandboxed)
           == "/run/user/4242/app/org.contourterminal.Contour/contour/work");
 }
 
@@ -243,16 +243,16 @@ TEST_CASE("an explicit label beats $CONTOUR_MUX, the default label yields to it"
 {
     constexpr auto Mux = "/run/user/1000/contour/default";
 
-    CHECK(muxSocketPath(MuxSocketPathInputs { .label = "dragtest",
-                                              .labelOrigin = LabelOrigin::Explicit,
+    CHECK(muxSocketPath(MuxSocketPathInputs { .name = "dragtest",
+                                              .nameOrigin = DaemonNameOrigin::Explicit,
                                               .contourMuxEnv = Mux,
                                               .xdgRuntimeDir = "/run/user/1000",
                                               .user = TestUser })
           == "/run/user/1000/contour/dragtest");
 
     // Nobody named a label: the daemon hosting the calling shell is the one meant.
-    CHECK(muxSocketPath(MuxSocketPathInputs { .label = "dragtest",
-                                              .labelOrigin = LabelOrigin::Default,
+    CHECK(muxSocketPath(MuxSocketPathInputs { .name = "dragtest",
+                                              .nameOrigin = DaemonNameOrigin::Default,
                                               .contourMuxEnv = "/env/mux.sock",
                                               .xdgRuntimeDir = "/run/user/1000",
                                               .user = TestUser })
@@ -261,8 +261,8 @@ TEST_CASE("an explicit label beats $CONTOUR_MUX, the default label yields to it"
 
 TEST_CASE("an explicitly given `default` label beats $CONTOUR_MUX too", "[vthost][socketpath]")
 {
-    CHECK(muxSocketPath(MuxSocketPathInputs { .label = vthost::DefaultSocketLabel,
-                                              .labelOrigin = LabelOrigin::Explicit,
+    CHECK(muxSocketPath(MuxSocketPathInputs { .name = vthost::DefaultDaemonName,
+                                              .nameOrigin = DaemonNameOrigin::Explicit,
                                               .contourMuxEnv = "/env/mux.sock",
                                               .xdgRuntimeDir = "/run/user/1000",
                                               .user = TestUser })
@@ -271,8 +271,8 @@ TEST_CASE("an explicitly given `default` label beats $CONTOUR_MUX too", "[vthost
 
 TEST_CASE("--socket beats both an explicit label and $CONTOUR_MUX", "[vthost][socketpath]")
 {
-    CHECK(muxSocketPath(MuxSocketPathInputs { .label = "dragtest",
-                                              .labelOrigin = LabelOrigin::Explicit,
+    CHECK(muxSocketPath(MuxSocketPathInputs { .name = "dragtest",
+                                              .nameOrigin = DaemonNameOrigin::Explicit,
                                               .explicitPath = "/tmp/explicit.sock",
                                               .contourMuxEnv = "/env/mux.sock",
                                               .xdgRuntimeDir = "/run/user/1000",
@@ -293,50 +293,50 @@ TEST_CASE(
                                                 .network = vtpty::NetworkAccess::Denied,
                                                 .applicationId = SandboxedAs };
 
-    CHECK(muxSocketPath(SocketLabel {}, "", environment, sandboxed)
+    CHECK(muxSocketPath(DaemonName {}, "", environment, sandboxed)
           == "/run/user/4242/app/org.contourterminal.Contour/contour/default");
-    CHECK(muxSocketPath(vthost::socketLabelOf("work"), "", environment, sandboxed)
+    CHECK(muxSocketPath(vthost::daemonNameFromOption("work"), "", environment, sandboxed)
           == "/run/user/4242/app/org.contourterminal.Contour/contour/work");
 }
 
-TEST_CASE("socketLabelOf reads an empty option as not given", "[vthost][socketpath]")
+TEST_CASE("daemonNameFromOption reads an empty option as not given", "[vthost][socketpath]")
 {
-    CHECK(vthost::socketLabelOf("").origin == LabelOrigin::Default);
-    CHECK(vthost::socketLabelOf("").name == vthost::DefaultSocketLabel);
-    CHECK(vthost::socketLabelOf("default").origin == LabelOrigin::Explicit);
-    CHECK(vthost::socketLabelOf("work").name == "work");
+    CHECK(vthost::daemonNameFromOption("").origin == DaemonNameOrigin::Default);
+    CHECK(vthost::daemonNameFromOption("").name == vthost::DefaultDaemonName);
+    CHECK(vthost::daemonNameFromOption("default").origin == DaemonNameOrigin::Explicit);
+    CHECK(vthost::daemonNameFromOption("work").name == "work");
 }
 
-TEST_CASE("validateSocketLabel accepts what can name a socket discovery lists", "[vthost][socketpath]")
+TEST_CASE("validateDaemonName accepts what can name a socket discovery lists", "[vthost][socketpath]")
 {
-    using vthost::SocketLabelError;
+    using vthost::DaemonNameError;
     struct Row
     {
-        std::string label;
-        std::optional<SocketLabelError> refused;
+        std::string name;
+        std::optional<DaemonNameError> refused;
     };
     auto const rows = std::to_array<Row>({
-        { .label = "work2", .refused = std::nullopt },
-        { .label = "admin_box-1.dev", .refused = std::nullopt },
-        { .label = std::string(vthost::MaxSocketLabelLength, 'a'), .refused = std::nullopt },
-        { .label = "", .refused = SocketLabelError::Empty },
-        { .label = std::string(vthost::MaxSocketLabelLength + 1, 'a'), .refused = SocketLabelError::TooLong },
-        { .label = ".", .refused = SocketLabelError::LeadingDot },
-        { .label = "..", .refused = SocketLabelError::LeadingDot },
-        { .label = ".hidden", .refused = SocketLabelError::LeadingDot },
-        { .label = "a/b", .refused = SocketLabelError::InvalidCharacter },
-        { .label = "a\\b", .refused = SocketLabelError::InvalidCharacter },
-        { .label = "with space", .refused = SocketLabelError::InvalidCharacter },
-        { .label = "tab\there", .refused = SocketLabelError::InvalidCharacter },
-        { .label = "caf\xc3\xa9", .refused = SocketLabelError::InvalidCharacter },
-        { .label = "work-native", .refused = SocketLabelError::SiblingSuffix },
-        { .label = "work-tmux", .refused = SocketLabelError::SiblingSuffix },
-        { .label = "work.log", .refused = SocketLabelError::SiblingSuffix },
+        { .name = "work2", .refused = std::nullopt },
+        { .name = "admin_box-1.dev", .refused = std::nullopt },
+        { .name = std::string(vthost::MaxDaemonNameLength, 'a'), .refused = std::nullopt },
+        { .name = "", .refused = DaemonNameError::Empty },
+        { .name = std::string(vthost::MaxDaemonNameLength + 1, 'a'), .refused = DaemonNameError::TooLong },
+        { .name = ".", .refused = DaemonNameError::LeadingDot },
+        { .name = "..", .refused = DaemonNameError::LeadingDot },
+        { .name = ".hidden", .refused = DaemonNameError::LeadingDot },
+        { .name = "a/b", .refused = DaemonNameError::InvalidCharacter },
+        { .name = "a\\b", .refused = DaemonNameError::InvalidCharacter },
+        { .name = "with space", .refused = DaemonNameError::InvalidCharacter },
+        { .name = "tab\there", .refused = DaemonNameError::InvalidCharacter },
+        { .name = "caf\xc3\xa9", .refused = DaemonNameError::InvalidCharacter },
+        { .name = "work-native", .refused = DaemonNameError::SiblingSuffix },
+        { .name = "work-tmux", .refused = DaemonNameError::SiblingSuffix },
+        { .name = "work.log", .refused = DaemonNameError::SiblingSuffix },
     });
     for (auto const& row: rows)
     {
-        INFO("label \"" << row.label << "\"");
-        auto const checked = vthost::validateSocketLabel(row.label);
+        INFO("label \"" << row.name << "\"");
+        auto const checked = vthost::validateDaemonName(row.name);
         if (!row.refused)
             CHECK(checked.has_value());
         else
@@ -346,5 +346,5 @@ TEST_CASE("validateSocketLabel accepts what can name a socket discovery lists", 
             CHECK_FALSE(vthost::describe(checked.error()).empty());
         }
     }
-    CHECK(vthost::describe(SocketLabelError::TooLong).contains(std::to_string(vthost::MaxSocketLabelLength)));
+    CHECK(vthost::describe(DaemonNameError::TooLong).contains(std::to_string(vthost::MaxDaemonNameLength)));
 }

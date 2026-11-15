@@ -43,7 +43,7 @@ namespace
     {
         for (auto const& pane: tab.panes)
             if (auto const ref = vtcontrol::parseObjectRef(pane.id))
-                out.push_back({ .ref = *ref, .label = pane.label, .position = std::nullopt });
+                out.push_back({ .ref = *ref, .name = pane.name, .position = std::nullopt });
     }
 
     [[nodiscard]] ScopeError fromControl(vtcontrol::ControlError const& error)

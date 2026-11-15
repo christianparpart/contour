@@ -238,16 +238,16 @@ workspace, beside the tab chords one level down. The command palette lists them 
 | `NewWorkspace` | none | Creates a workspace and shows it in this window; for a window attached to a daemon, the workspace is created on that daemon. |
 | `OpenWorkspace` | `index:` (1-based, required) | Shows it in a new window. |
 | `CycleWorkspace` | `direction: next\|previous` (default `next`) | Shows the next or previous workspace of this window's daemon here, hidden and left ones included, in their position order. |
-| `CycleDaemon` | `direction: next\|previous` (default `next`) | Shows the next or previous daemon here: the local daemons running, by label, then the saved hosts a window here shows. |
-| `SwitchToDaemon` | `label:` or `host:` (exactly one) | Shows the named local daemon, or saved host, here. |
-| `OpenDaemon` | `label:` or `host:` (exactly one) | Shows it in a new window. |
+| `CycleDaemon` | `direction: next\|previous` (default `next`) | Shows the next or previous daemon here: the local daemons running, by name, then the saved hosts a window here shows. |
+| `SwitchToDaemon` | `name:` or `host:` (exactly one) | Shows the named local daemon, or saved host, here. |
+| `OpenDaemon` | `name:` or `host:` (exactly one) | Shows it in a new window. |
 
 ```yaml
 input_mapping:
   - { mods: [Control, Alt], key: '2', action: SwitchToWorkspace, index: 2 }
   - { mods: [Control, Shift, Alt], key: PageDown, action: CycleWorkspace, direction: next }
   - { mods: [Control, Alt, Shift], key: RightArrow, action: CycleDaemon, direction: next }
-  - { mods: [Control, Alt], key: A, action: SwitchToDaemon, label: admin }
+  - { mods: [Control, Alt], key: A, action: SwitchToDaemon, name: admin }
   - { mods: [Control, Alt], key: H, action: OpenDaemon, host: home }
 ```
 
@@ -255,27 +255,28 @@ The cycling actions never wait on a daemon: they step through what was last look
 the background for the next press, so the first press after a change (or right after start-up) may still
 see the earlier list.
 
-A binding that gives no `index` (or 0), an unknown `direction`, or neither or both of `label` and `host`
-is dropped, and the reason is reported on startup. Landing on a daemon with several workspaces opens the
+A binding that gives no `index` (or 0), an unknown `direction`, or neither or both of `name` and `host`
+is dropped, and the reason is reported on startup. Until 0.9.0 a binding's `label:` still loads as `name:`,
+with a configuration warning naming the new key. Landing on a daemon with several workspaces opens the
 switcher popup on that daemon's workspaces, to pick one; `Esc` there cancels the switch and changes nothing.
 
 | Action | What it does |
 | --- | --- |
 | `ShowSwitcher` | Opens the daemon and workspace switcher popup over this window. |
-| `NewDaemon` | Asks for a label, starts a local daemon under it, and opens a new window on it. |
+| `NewDaemon` | Asks for a name, starts a local daemon under it, and opens a new window on it. |
 | `UpgradeDaemon` | Upgrades this window's local daemon in place, keeping every program running (palette: **Upgrade daemon**). |
 
-The switcher popup lists the daemons under **This computer** (the local daemons running, by label) and
+The switcher popup lists the daemons under **This computer** (the local daemons running, by name) and
 **Saved hosts**. This window's daemon is expanded; `Right` expands any other one to its workspaces, each with
 its tab count and whether it is shown in *this window*, *shown elsewhere*, *hidden* or *not shown*, plus
 "+ new workspace on …". A saved host not connected yet says so, and is connected to when it is expanded or
 chosen. Typing filters the list, `Return` switches this window to the selected row, `Shift+Return` opens it
 in a new window, and `Esc` closes the popup without changing anything.
 
-`NewDaemon` (also the popup's **New daemon…** row) refuses a label that cannot name a socket (letters,
+`NewDaemon` (also the popup's **New daemon…** row) refuses a name a socket cannot be named after (letters,
 digits, `-`, `_` and `.` only, not starting with a dot, at most 64 characters) right under the field; a
-label that is already running is offered as "Switch to daemon …" instead of starting a second one. The daemon
-it starts keeps running when its last window closes, like one started with `contour daemon --label`.
+name that is already running is offered as "Switch to daemon …" instead of starting a second one. The daemon
+it starts keeps running when its last window closes, like one started with `contour daemon --name`.
 
 `UpgradeDaemon` (the palette's **Upgrade daemon** row) starts a [live upgrade](../persistent-sessions.md#live-upgrade)
 of the window's daemon at any time, without the daemon-drift chip: it also upgrades a daemon that runs the

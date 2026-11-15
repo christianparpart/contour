@@ -4,6 +4,7 @@ add_library(vtworkspace STATIC
     LayoutTree.cpp
     LayoutTree.hpp
     Move.hpp
+    ObjectName.hpp
     Pane.cpp
     Pane.hpp
     PaneLayout.hpp
@@ -35,6 +36,7 @@ if(VTWORKSPACE_TESTING)
         Arrange_test.cpp
         LayoutTree_test.cpp
         Move_test.cpp
+        ObjectName_test.cpp
         Pane_test.cpp
         PaneLayout_test.cpp
         Tab_test.cpp

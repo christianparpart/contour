@@ -20,6 +20,7 @@
 
 #include <vthost/CommandBlockWire.hpp>
 #include <vthost/SessionHost.hpp>
+#include <vthost/TabEdits.hpp>
 #include <vthost/WorkspaceCapture.hpp>
 #include <vtworkspace/Pane.hpp>
 #include <vtworkspace/Tab.hpp>
@@ -82,7 +83,7 @@ TEST_CASE("captureWorkspace records the layout as the model holds it", "[vthost]
     h.host.splitActivePane(second->id(), SplitState::Horizontal, 0.5);
     REQUIRE(second->paneCount() == 3);
     h.host.model().toggleActivePaneZoom(second->id());
-    h.host.model().setTabTitle(second->id(), "build");
+    vthost::RegistryTabNames { h.host.objects() }.setName(second->id(), "build");
     h.host.model().setTabColor(
         second->id(), vtworkspace::TabColorSource::User, vtbackend::RGBColor { 0x336699U });
     auto const* const other = h.host.createWorkspace();
@@ -105,7 +106,9 @@ TEST_CASE("captureWorkspace records the layout as the model holds it", "[vthost]
     CHECK(tab.root.children[1].children.size() == 2);
     CHECK(tab.activeLeaf == 2);
     CHECK(tab.zoom == TabZoom::Zoomed);
-    CHECK(tab.title == "build");
+    REQUIRE(tab.identity.has_value());
+    CHECK(tab.identity->name == "build");
+    CHECK_FALSE(tab.title.has_value()); // no runtime title is written any more
     CHECK(tab.color == vtbackend::RGBColor { 0x33, 0x66, 0x99 });
     CHECK(snapshot.workspaces[1].tabs.size() == 1);
 }

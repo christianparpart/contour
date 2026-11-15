@@ -342,7 +342,7 @@ window::WindowController* TerminalSessionManager::createWindowController(
     QQmlEngine::setObjectOwnership(controller, QQmlEngine::CppOwnership);
     _controllersByWindow[windowId] = controller;
     _inProcessDirectories[windowId] = std::make_unique<InProcessDirectory>(
-        *_model, *controller, *_paneStatus, _workspaceLabels, _gitTracker.get(), [controller] {
+        *_model, *controller, *_paneStatus, _workspaceNames, _gitTracker.get(), [controller] {
             emit controller->workspaceDirectoryChanged();
         });
     updateDirectorySource(*controller);
@@ -1529,7 +1529,7 @@ std::expected<vtworkspace::WorkspaceId, NewWorkspaceError> TerminalSessionManage
     if (!made)
         return std::unexpected(NewWorkspaceError::FirstShellFailed);
     if (!label.empty())
-        setWorkspaceLabel(*made, std::move(label));
+        setWorkspaceName(*made, std::move(label));
     return *made;
 }
 
@@ -1544,9 +1544,9 @@ std::string TerminalSessionManager::defaultWorkspaceName(std::filesystem::path c
     return vtbackend::defaultWorkspaceName(vtbackend::NativeGitFileSystem { _app.fileSystem() }, directory);
 }
 
-void TerminalSessionManager::setWorkspaceLabel(vtworkspace::WorkspaceId workspace, std::string label)
+void TerminalSessionManager::setWorkspaceName(vtworkspace::WorkspaceId workspace, std::string name)
 {
-    _workspaceLabels.set(workspace, std::move(label));
+    _workspaceNames.set(workspace, std::move(name));
     notifyDirectoriesChanged();
 }
 
@@ -1585,21 +1585,21 @@ bool TerminalSessionManager::ownsWorkspace(window::WindowController const& windo
 
 void TerminalSessionManager::renameWorkspace(window::WindowController& window,
                                              uint64_t workspace,
-                                             std::string label)
+                                             std::string name)
 {
     if (listsRemotely(window))
     {
-        // The daemon's label change comes back as the window's new directory.
-        if (factoryFor(window.displayedWorkspace()).requestRemoteRenameWorkspace(workspace, label)
+        // The daemon's name change comes back as the window's new directory.
+        if (factoryFor(window.displayedWorkspace()).requestRemoteRenameWorkspace(workspace, name)
             == RemoteRouting::Refused)
             managerLog()("The daemon cannot rename workspace {}.", workspace);
         return;
     }
     if (ownsWorkspace(window, vtworkspace::WorkspaceId { workspace }))
-        setWorkspaceLabel(vtworkspace::WorkspaceId { workspace }, std::move(label));
+        setWorkspaceName(vtworkspace::WorkspaceId { workspace }, std::move(name));
 }
 
-void TerminalSessionManager::renameTab(window::WindowController& window, uint64_t tab, std::string title)
+void TerminalSessionManager::renameTab(window::WindowController& window, uint64_t tab, std::string name)
 {
     auto const* const source = window.directorySource();
     if (source == nullptr)
@@ -1612,20 +1612,35 @@ void TerminalSessionManager::renameTab(window::WindowController& window, uint64_
     {
         if (listed->tab->panes.empty())
             return;
-        // The daemon's title change comes back as the window's new directory and, where it is mirrored,
-        // its tab.
+        // The daemon's rename comes back as the window's new directory and, where it is mirrored, its tab.
         if (factoryFor(window.displayedWorkspace())
-                .requestRemoteTabTitle(listed->tab->panes.front().key.value, title)
+                .requestRemoteTabRename(listed->tab->panes.front().key.value, name)
             == RemoteRouting::Refused)
-            managerLog()("The daemon cannot title tab {}.", tab);
+            managerLog()("The daemon cannot rename tab {}.", tab);
         return;
     }
     if (!ownsWorkspace(window, vtworkspace::WorkspaceId { listed->workspace->id }))
         return;
-    if (title.empty())
-        _model->resetTabTitle(vtworkspace::TabId { tab });
-    else
-        _model->setTabTitle(vtworkspace::TabId { tab }, std::move(title));
+    nameTab(vtworkspace::TabId { tab }, std::move(name));
+}
+
+void TerminalSessionManager::nameTab(vtworkspace::TabId tabId, std::string name)
+{
+    auto const* const tab = _model->findTab(tabId);
+    if (tab == nullptr)
+        return;
+    auto const before = tab->name();
+    _model->setTabName(tabId, std::move(name));
+    // Only a change is forwarded: the editor commits the name it opened with on a click-away, and tmux turns
+    // a window's automatic naming off for good at any rename-window, the same name included.
+    if (tab->name() == before || tab->activePane() == nullptr)
+        return;
+    auto* const session = sessionForId(tab->activePane()->session());
+    if (session == nullptr)
+        return;
+    // As the model holds it: a blank name was cleared.
+    std::ignore = factoryFor(_model->workspaceOfTab(tabId))
+                      .requestRemoteWindowRename(&session->terminal().device(), tab->name());
 }
 
 void TerminalSessionManager::moveWorkspace(window::WindowController& window,
@@ -1963,7 +1978,7 @@ void TerminalSessionManager::nameNewWorkspace(vtworkspace::WorkspaceId workspace
 {
     // Named after the folder -- once: a later cd renames nothing.
     if (auto name = defaultWorkspaceName(directory); !name.empty())
-        setWorkspaceLabel(workspace, std::move(name));
+        setWorkspaceName(workspace, std::move(name));
 }
 
 void TerminalSessionManager::closeWorkspace(window::WindowController& window, uint64_t workspace)
@@ -1979,7 +1994,7 @@ void TerminalSessionManager::closeWorkspace(window::WindowController& window, ui
         auto const* const listed = window::findWorkspace(directory, workspace);
         if (listed == nullptr || directory.workspaces.size() < 2)
             return;
-        label = listed->label;
+        label = listed->name;
         // A daemon's pane runs a program this process cannot name: it may be running vim.
         activities.assign(window::sessionsOf(listed->tabs).size(), window::PaneActivity::Unknown);
     }
@@ -1989,7 +2004,7 @@ void TerminalSessionManager::closeWorkspace(window::WindowController& window, ui
         auto const* const held = _model->workspace(id);
         if (held == nullptr || !ownsWorkspace(window, id) || ownsOneWorkspaceOnly(window))
             return;
-        label = std::string { _workspaceLabels.labelOf(id) };
+        label = std::string { _workspaceNames.nameOf(id) };
         for (auto const* const session: sessionsInWorkspace(*held))
         {
             auto const activity = session->paneActivity();
@@ -2037,7 +2052,7 @@ void TerminalSessionManager::confirmCloseWorkspace(window::WindowController& win
 
 void TerminalSessionManager::forgetDirectoryState(vtworkspace::WorkspaceId workspace)
 {
-    _workspaceLabels.forget(workspace);
+    _workspaceNames.forget(workspace);
     if (_gitTracker)
         _gitTracker->forget(workspace);
 }
@@ -2152,7 +2167,7 @@ void TerminalSessionManager::cycleWorkspace(TerminalSession const& acting, actio
         for (auto const& [position, listed]: window::switchableWorkspacesOf(directory))
             workspaces.push_back(KnownWorkspace {
                 .position = position,
-                .name = listed->label,
+                .name = listed->name,
                 .role = directory.selected == listed->id ? WorkspaceRole::Current : WorkspaceRole::Other });
     }
     else
@@ -3180,7 +3195,7 @@ void TerminalSessionManager::reportTabPresentation(vtworkspace::TabId tabId)
     factory.reportTabPresentation(LocalTabPresentation {
         .activePty = active,
         .zoomedPty = tab->isZoomed() ? ptyOf(tab->activePane()) : nullptr,
-        .title = tab->runtimeTitle(),
+        .name = tab->name(),
         .color = tab->color(vtworkspace::TabColorSource::User).transform([](vtbackend::RGBColor color) {
             return color.value();
         }),
@@ -3265,8 +3280,7 @@ void TerminalSessionManager::tabTitleChanged(vtworkspace::TabId tab)
     notifyDirectoriesChanged();
     if (auto* c = controllerDisplaying(_model->workspaceOfTab(tab)))
         c->notifyTabRowChanged(
-            tab,
-            { window::WindowController::Roles::TitleRole, window::WindowController::Roles::RawTitleRole });
+            tab, { window::WindowController::Roles::TitleRole, window::WindowController::Roles::NameRole });
     reportTabPresentation(tab);
 }
 
@@ -3675,10 +3689,10 @@ void TerminalSessionManager::publishTaskbarAttention()
     _publishedAttention = std::move(tally);
 }
 
-void TerminalSessionManager::setTabTitleForSession(vtworkspace::SessionId session, std::string title)
+void TerminalSessionManager::setTabNameForSession(vtworkspace::SessionId session, std::string name)
 {
     if (auto* tab = findTabHostingSession(session))
-        _model->setTabTitle(tab->id(), std::move(title));
+        _model->setTabName(tab->id(), std::move(name));
 }
 
 void TerminalSessionManager::setTabColorForSession(vtworkspace::SessionId session, vtbackend::RGBColor color)

@@ -43,7 +43,7 @@
 
 using namespace contour;
 using contour::session::SwitchMode;
-using contour::test::switcherLabelled;
+using contour::test::switcherNamed;
 using contour::test::switcherWorkspaceRef;
 using contour::window::SwitcherWorkspaceState;
 using contour::window::Urgency;
@@ -109,7 +109,7 @@ struct Fixture
     {
         presenter->open(in,
                         window::SwitcherOpening { .window = ThisWindow,
-                                                  .windowDaemon = switcherLabelled("work"),
+                                                  .windowDaemon = switcherNamed("work"),
                                                   .mode = SwitchMode::Switch,
                                                   .prompt = window::SwitcherPrompt::Browse,
                                                   .pick = std::nullopt,
@@ -133,7 +133,7 @@ struct Fixture
     {
         presenter->open(host,
                         window::SwitcherOpening { .window = ThisWindow,
-                                                  .windowDaemon = switcherLabelled("work"),
+                                                  .windowDaemon = switcherNamed("work"),
                                                   .mode = SwitchMode::Switch,
                                                   .prompt = window::SwitcherPrompt::NewDaemon,
                                                   .pick = std::nullopt,
@@ -432,7 +432,7 @@ TEST_CASE("Switcher: the row's button opens that workspace in a new window", "[c
     QTest::mouseClick(
         f.scene->window, Qt::LeftButton, {}, test::SwitcherWindow::sceneRectOf(*button).center().toPoint());
     REQUIRE(f.world.requested.size() == 1);
-    CHECK(f.world.requested[0].target == switcherLabelled("work", switcherWorkspaceRef("api-docs")));
+    CHECK(f.world.requested[0].target == switcherNamed("work", switcherWorkspaceRef("api-docs")));
     CHECK(f.world.requested[0].mode == SwitchMode::Open);
     test::waitForPopupClosed(*f.scene->popup);
 }
@@ -461,7 +461,7 @@ TEST_CASE("Switcher: a click switches on release inside the row; a drag out of i
     {
         QTest::mouseClick(f.scene->window, Qt::LeftButton, {}, rect.center().toPoint());
         REQUIRE(f.world.requested.size() == 1);
-        CHECK(f.world.requested[0].target == switcherLabelled("work", switcherWorkspaceRef("docs")));
+        CHECK(f.world.requested[0].target == switcherNamed("work", switcherWorkspaceRef("docs")));
         CHECK(f.world.requested[0].mode == SwitchMode::Switch);
     }
 }
@@ -522,7 +522,7 @@ TEST_CASE("Switcher: New Daemon shows the verdict, the equivalent command and on
     f.rebuild();
     f.openNewDaemon();
     REQUIRE(test::switcherWaitUntil([&] { return !f.switcher->isDiscovering(); }));
-    auto const typeLabel = [&](std::string_view label) {
+    auto const typeName = [&](std::string_view label) {
         f.switcher->setFilter({});
         for (auto const character: label)
             QTest::keyClick(f.scene->window, character);
@@ -533,10 +533,10 @@ TEST_CASE("Switcher: New Daemon shows the verdict, the equivalent command and on
         return part != nullptr && part->isVisible() ? part->property("text").toString() : QString {};
     };
 
-    typeLabel("research");
-    CHECK(text("switcherLabelVerdict") == "Available");
-    CHECK(text("switcherLabelCommand") == "contour daemon --label research");
-    auto* command = f.scene->part(QStringLiteral("switcherLabelCommand"));
+    typeName("research");
+    CHECK(text("switcherNameVerdict") == "Available");
+    CHECK(text("switcherNameCommand") == "contour daemon --name research");
+    auto* command = f.scene->part(QStringLiteral("switcherNameCommand"));
     REQUIRE(command != nullptr);
     CHECK(command->property("font").value<QFont>().family()
           == test::qmlSupport::providerOf(f.engine)
@@ -548,15 +548,15 @@ TEST_CASE("Switcher: New Daemon shows the verdict, the equivalent command and on
     CHECK(f.switcher->currentIndex() == 0);
     CHECK(partOfRow(f, 0, "switcherSelection")->isVisible());
 
-    typeLabel("work");
-    CHECK(text("switcherLabelVerdict").contains("already running"));
+    typeName("work");
+    CHECK(text("switcherNameVerdict").contains("already running"));
     REQUIRE(f.switcher->rowCount() == 1);
     CHECK(f.switcher->rows().front().title == "Switch this window to daemon “work”");
 
-    typeLabel("a b");
-    CHECK(text("switcherLabelVerdict").toStdString()
-          == vthost::describe(vthost::SocketLabelError::InvalidCharacter));
-    CHECK(text("switcherLabelCommand").isEmpty());
+    typeName("a b");
+    CHECK(text("switcherNameVerdict").toStdString()
+          == vthost::describe(vthost::DaemonNameError::InvalidCharacter));
+    CHECK(text("switcherNameCommand").isEmpty());
     CHECK(f.switcher->rowCount() == 0);
     CHECK(f.warnings.count(test::isQmlDiagnostic) == 0);
 }
@@ -693,7 +693,7 @@ TEST_CASE("Switcher: the window it is presented in going away drops the daemon s
     auto other = std::make_unique<test::MockSwitcherHost>();
     f.presenter->open(*other,
                       window::SwitcherOpening { .window = ThisWindow,
-                                                .windowDaemon = switcherLabelled("work"),
+                                                .windowDaemon = switcherNamed("work"),
                                                 .mode = SwitchMode::Switch,
                                                 .prompt = window::SwitcherPrompt::NewDaemon,
                                                 .pick = std::nullopt,
@@ -701,7 +701,7 @@ TEST_CASE("Switcher: the window it is presented in going away drops the daemon s
                                                 .windowWorkspaces = workWorkspaces(),
                                                 .origin = window::SwitcherOrigin::Centred },
                       std::nullopt);
-    f.switcher->submitLabel("research", static_cast<int>(SwitchMode::Switch));
+    f.switcher->submitName("research", static_cast<int>(SwitchMode::Switch));
     REQUIRE(start.awaitStarted());
 
     other.reset();

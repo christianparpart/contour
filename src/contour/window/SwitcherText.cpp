@@ -148,7 +148,7 @@ SwitcherDetail switcherDetail(SwitcherRow const& row,
         case SwitcherRowKind::NewDaemon:
         case SwitcherRowKind::Discovering:
         case SwitcherRowKind::Connecting:
-        case SwitcherRowKind::LabelAction:
+        case SwitcherRowKind::NameAction:
         case SwitcherRowKind::Failure: break;
     }
     return {};
@@ -176,11 +176,10 @@ std::string switcherDescription(SwitcherRow const& row,
         case SwitcherRowKind::Daemon: return std::format("Show the workspaces on {}", daemon);
         case SwitcherRowKind::NewWorkspace: return std::format("Create a workspace on {}", daemon);
         case SwitcherRowKind::NewDaemon: return "Starts a new daemon with one workspace";
-        case SwitcherRowKind::LabelAction:
-            // What Return does with the label: start a daemon under it, or switch to the one running.
-            if (switcherLabelVerdict(row.target.daemon, switcherRunningLabels(inputs))
-                == LabelVerdict::Running)
-                return switcherLabelActionTitle(row.target.daemon, LabelVerdict::Running);
+        case SwitcherRowKind::NameAction:
+            // What Return does with the name: start a daemon under it, or switch to the one running.
+            if (switcherNameVerdict(row.target.daemon, switcherRunningNames(inputs)) == NameVerdict::Running)
+                return switcherNameActionTitle(row.target.daemon, NameVerdict::Running);
             return "Starts a new daemon with one workspace";
         case SwitcherRowKind::Discovering:
         case SwitcherRowKind::Connecting:
@@ -263,32 +262,32 @@ std::string switcherFooterHints(SwitcherHintSubject subject,
     return switcherFooterHintSets(subject, escape, style, mode, SwitcherScope::Everything).front();
 }
 
-SwitcherLabelState switcherLabelState(std::string_view label,
-                                      std::span<std::string const> runningLabels,
-                                      command::ShortcutStyle style)
+SwitcherNameState switcherNameState(std::string_view name,
+                                    std::span<std::string const> runningNames,
+                                    command::ShortcutStyle style)
 {
-    auto const verdict = switcherLabelVerdict(label, runningLabels);
-    auto state = SwitcherLabelState { .verdict = verdict,
-                                      .message = {},
-                                      .actionTitle = switcherLabelActionTitle(label, verdict),
-                                      .equivalentCommand = {},
-                                      .subject = SwitcherHintSubject::None };
+    auto const verdict = switcherNameVerdict(name, runningNames);
+    auto state = SwitcherNameState { .verdict = verdict,
+                                     .message = {},
+                                     .actionTitle = switcherNameActionTitle(name, verdict),
+                                     .equivalentCommand = {},
+                                     .subject = SwitcherHintSubject::None };
     switch (verdict)
     {
-        case LabelVerdict::Empty: break;
-        case LabelVerdict::Available:
+        case NameVerdict::Empty: break;
+        case NameVerdict::Available:
             state.message = "Available";
-            state.equivalentCommand = std::format("contour daemon --label {}", label);
+            state.equivalentCommand = std::format("contour daemon --name {}", name);
             state.subject = SwitcherHintSubject::CreateDaemon;
             break;
-        case LabelVerdict::Running:
+        case NameVerdict::Running:
             state.message = std::format("A daemon named “{}” is already running — {} switches to it instead",
-                                        label,
+                                        name,
                                         keyText(vtbackend::Key::Enter, style));
             state.subject = SwitcherHintSubject::SwitchToRunning;
             break;
-        case LabelVerdict::Invalid:
-            state.message = vthost::describe(vthost::validateSocketLabel(label).error());
+        case NameVerdict::Invalid:
+            state.message = vthost::describe(vthost::validateDaemonName(name).error());
             break;
     }
     return state;
@@ -298,7 +297,7 @@ std::string switcherHintText(SwitcherView const& view, std::string_view daemonNa
 {
     switch (view.level)
     {
-        case SwitcherLevel::NewDaemon: return "Label, such as work2";
+        case SwitcherLevel::NewDaemon: return "Name, such as work2";
         case SwitcherLevel::Daemon: return std::format("Filter workspaces on {}…", daemonName);
         case SwitcherLevel::Top: break;
     }

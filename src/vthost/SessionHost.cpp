@@ -34,6 +34,7 @@
 #include <vtworkspace/Pane.hpp>
 #include <vtworkspace/PaneLayout.hpp>
 #include <vtworkspace/Tab.hpp>
+#include <vtworkspace/TabName.hpp>
 
 namespace vthost
 {
@@ -542,6 +543,8 @@ SessionHost::SessionHost(core::net::EventLoop& loop,
     _announcedStatusPatience(config.announcedStatusPatience),
     _extensionControl(vtcontrol::nullControlApi()),
     _objects(std::move(config.uuids)),
+    _tabNameMirror(_objects.onNameChanged(
+        [this](vtcontrol::ObjectRef const& ref, std::string_view name) { mirrorTabName(ref, name); })),
     _model(*this,
            [this]() -> SessionId {
                // The allocator hand-back half of the pre-mint handshake (the GUI's
@@ -757,7 +760,7 @@ std::optional<SessionId> SessionHost::seedSession(SessionSpawnRequest const& inc
     installSession(std::move(session));
     _objects.bind(id, ids.pane);
     if (incoming.presetIds)
-        _objects.setLabel(ObjectRef { ObjectKind::Pane, ids.pane }, incoming.presetIds->paneLabel);
+        _objects.setName(ObjectRef { ObjectKind::Pane, ids.pane }, incoming.presetIds->paneName);
     _pendingSessionId = id;
     if (!request.initialInput.empty())
         holdInitialInput(id, request.initialInput);
@@ -921,7 +924,7 @@ void SessionHost::realizeStartupLayout(vtworkspace::WorkspaceId workspace, vtwor
             if (!tabUuid)
             {
                 tabUuid = _objects.mint();
-                _stagedTab = StagedTab { .uuid = *tabUuid, .label = {} };
+                _stagedTab = StagedTab { .uuid = *tabUuid, .name = tabSpec.name.value_or(std::string {}) };
             }
             return seedSession(
                        SessionSpawnRequest { .commandOverride = std::move(commandOverride),
@@ -980,7 +983,6 @@ namespace
     {
         // Held by pointer: the leaf index names addresses inside the layout, which must not move.
         auto restored = std::make_unique<RestoredTab>();
-        restored->layout.title = tab.title;
         restored->layout.color = tab.color;
         restored->layout.root = layoutPaneOf(tab.root);
         indexLeaves(restored->layout.root, tab.root, restored->panes);
@@ -997,10 +999,10 @@ namespace
         return leafAt(*pane.second(), index);
     }
 
-    /// @return The label @p identity carries; empty for none.
-    [[nodiscard]] std::string labelOf(std::optional<ObjectIdentityRecord> const& identity)
+    /// @return The name @p identity carries; empty for none.
+    [[nodiscard]] std::string nameOf(std::optional<ObjectIdentityRecord> const& identity)
     {
-        return identity ? identity->label.value_or(std::string {}) : std::string {};
+        return identity ? identity->name.value_or(std::string {}) : std::string {};
     }
 } // namespace
 
@@ -1025,8 +1027,8 @@ SessionHost::RealizedRestore SessionHost::realizeRestoredWorkspace(WorkspaceRest
         // keeping it.
         auto const uuid = restoredUuid(ObjectKind::Workspace, workspace.identity);
         _objects.bind(id, uuid);
-        _objects.setLabel(ObjectRef { .kind = ObjectKind::Workspace, .uuid = uuid },
-                          labelOf(workspace.identity));
+        _objects.setName(ObjectRef { .kind = ObjectKind::Workspace, .uuid = uuid },
+                         nameOf(workspace.identity));
         auto const inWorkspace = realizeRestoredWorkspace(id, workspace, restore);
         // A workspace none of whose panes came back is not left behind empty.
         if (inWorkspace.panes == 0 && id != _workspace)
@@ -1058,7 +1060,7 @@ SessionHost::RealizedWorkspace SessionHost::realizeRestoredWorkspace(WorkspaceId
         auto const panesBefore = realized.panes;
         auto const restored = restoredTabOf(tabSnapshot);
         // As for a startup layout: the tab's UUID is staged with its first pane and bound when the model
-        // announces the tab. A restored object keeps the UUID and label it was captured with.
+        // announces the tab. A restored object keeps the UUID and name it was captured with.
         auto tabUuid = std::optional<Uuid> {};
         auto const seeder = [&](vtworkspace::LayoutPane const& leaf) -> bool {
             auto const& pane = *restored->panes.at(&leaf);
@@ -1077,11 +1079,14 @@ SessionHost::RealizedWorkspace SessionHost::realizeRestoredWorkspace(WorkspaceId
             else if (pane.runningCommandLine)
                 request.interruptedCommand = *pane.runningCommandLine;
             auto const paneUuid = restoredUuid(ObjectKind::Pane, pane.identity);
-            request.presetIds = PresetObjectIds { .pane = paneUuid, .paneLabel = labelOf(pane.identity) };
+            request.presetIds = PresetObjectIds { .pane = paneUuid, .paneName = nameOf(pane.identity) };
             if (!tabUuid)
             {
                 tabUuid = restoredUuid(ObjectKind::Tab, tabSnapshot.identity);
-                _stagedTab = StagedTab { .uuid = *tabUuid, .label = labelOf(tabSnapshot.identity) };
+                _stagedTab = StagedTab { .uuid = *tabUuid,
+                                         // compat(0.9.0): an older image's tab carries its name as a title.
+                                         .name = std::string { vtworkspace::restoredTabName(
+                                             nameOf(tabSnapshot.identity), tabSnapshot.title) } };
             }
             auto const seeded =
                 seedSession(
@@ -1262,7 +1267,7 @@ Tab* SessionHost::createTabIn(vtworkspace::WorkspaceId workspace, SessionSpawnRe
         return nullptr;
 
     _stagedTab = StagedTab { .uuid = tabUuid,
-                             .label = request.presetIds ? request.presetIds->tabLabel : std::string {} };
+                             .name = request.presetIds ? request.presetIds->tabName : std::string {} };
     auto* tab = _model.createTab(workspace);
     _stagedTab.reset();
     _pendingSessionId.reset(); // consumed by the allocator; clear any leftover
@@ -1276,7 +1281,7 @@ Tab* SessionHost::createTabIn(vtworkspace::WorkspaceId workspace, SessionSpawnRe
     return tab;
 }
 
-std::string SessionHost::defaultWorkspaceLabel(SessionSpawnRequest const& request, SessionId seeded) const
+std::string SessionHost::defaultWorkspaceName(SessionSpawnRequest const& request, SessionId seeded) const
 {
     // The directory the shell was started in, as settleStartDirectory settled it: a stated or inherited one
     // that is no directory here (a foreign path from another machine's hello) was dropped, and names nothing.
@@ -1317,15 +1322,14 @@ vtworkspace::Workspace* SessionHost::createWorkspace(SessionSpawnRequest const& 
         return nullptr;
 
     auto* workspace = &createEmptyWorkspace(newWorkspace);
-    // A restored or handed-over workspace keeps the label it had; any other is named once, after where its
+    // A restored or handed-over workspace keeps the name it had; any other is named once, after where its
     // first shell starts, and stays so after a cd.
     if (request.presetIds)
-        _objects.setLabel(ObjectRef { ObjectKind::Workspace, newWorkspace },
-                          request.presetIds->workspaceLabel);
-    else if (auto name = defaultWorkspaceLabel(request, *seeded); !name.empty())
-        _objects.setLabel(ObjectRef { ObjectKind::Workspace, newWorkspace }, std::move(name));
+        _objects.setName(ObjectRef { ObjectKind::Workspace, newWorkspace }, request.presetIds->workspaceName);
+    else if (auto name = defaultWorkspaceName(request, *seeded); !name.empty())
+        _objects.setName(ObjectRef { ObjectKind::Workspace, newWorkspace }, std::move(name));
     _stagedTab = StagedTab { .uuid = tabUuid,
-                             .label = request.presetIds ? request.presetIds->tabLabel : std::string {} };
+                             .name = request.presetIds ? request.presetIds->tabName : std::string {} };
     auto* tab = _model.createTab(workspace->id());
     _stagedTab.reset();
     _pendingSessionId.reset(); // consumed by the allocator; clear any leftover
@@ -2941,13 +2945,38 @@ void SessionHost::bindUnnamed(TabId tab)
         _objects.bind(tab, _objects.mint());
 }
 
+void SessionHost::mirrorTabName(ObjectRef const& ref, std::string_view name)
+{
+    if (ref.kind != ObjectKind::Tab)
+        return;
+    if (auto const handle = _objects.find(ref))
+        _model.setTabName(std::get<TabId>(*handle), std::string { name });
+}
+
+void SessionHost::restoreTabNames(vtworkspace::WorkspaceTreeState const& tree)
+{
+    for (auto const& workspace: tree.workspaces)
+        for (auto const& tab: workspace.tabs)
+        {
+            auto const uuid = _objects.uuidOf(tab.id);
+            if (!uuid)
+                continue;
+            auto const ref = ObjectRef { .kind = ObjectKind::Tab, .uuid = *uuid };
+            // compat(0.9.0): an older image's tab carries its name as a title.
+            auto name = std::string { vtworkspace::restoredTabName(_objects.nameOf(ref), tab.view.title) };
+            // The registry was restored before the model held the tab, so its mirror missed it.
+            _objects.setName(ref, name);
+            _model.setTabName(tab.id, std::move(name));
+        }
+}
+
 void SessionHost::tabAdded(WorkspaceId workspace, TabId tab, int index)
 {
     // Named before the fan-out, so an observer told of the tab can already look its UUID up.
     if (_stagedTab)
     {
         _objects.bind(tab, _stagedTab->uuid);
-        _objects.setLabel(ObjectRef { ObjectKind::Tab, _stagedTab->uuid }, _stagedTab->label);
+        _objects.setName(ObjectRef { ObjectKind::Tab, _stagedTab->uuid }, _stagedTab->name);
         _stagedTab.reset();
     }
     // A tab a move made (a pane extracted into a tab of its own) was named by no creation path; every

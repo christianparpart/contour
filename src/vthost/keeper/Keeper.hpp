@@ -59,13 +59,13 @@ class Keeper
 {
   public:
     /// @param ports         The system, as ports; they outlive the keeper.
-    /// @param labelLock     The lock on the label, held until the daemon announces Shutdown or the keeper
+    /// @param nameLock     The lock on the name, held until the daemon announces Shutdown or the keeper
     /// ends.
     /// @param policy        The crash-loop policy's numbers, and how long a stopped daemon has to exit.
     /// @param daemonImage   The daemon executable to start, and to restart unless a newer one is named.
     /// @param launchOptions The daemon's options record, opaque to the keeper, sent with every Launch.
     Keeper(KeeperPorts ports,
-           std::unique_ptr<LabelLock> labelLock,
+           std::unique_ptr<NameLock> nameLock,
            RestartPolicyConfig policy,
            std::filesystem::path daemonImage,
            std::vector<uint8_t> launchOptions);
@@ -190,10 +190,10 @@ class Keeper
     void onTimers();
     void apply(RestartDecision decision, WireExitStatus status);
     void beginEnding(KeeperOutcome outcome, int exitStatus);
-    /// Lets go of the label and of every deposited listener, removing their socket files first: under the
-    /// lock, no keeper that starts on the label after it can have bound a path yet. What every ending of the
+    /// Lets go of the name and of every deposited listener, removing their socket files first: under the
+    /// lock, no keeper that starts on the name after it can have bound a path yet. What every ending of the
     /// daemon does, for a daemon behind a keeper never removes them itself (SocketFileRemoval::LeftToKeeper).
-    void releaseLabelAndListeners();
+    void releaseNameAndListeners();
     void dropChannel();
     void send(Message const& message, std::vector<int> fds = {});
     [[nodiscard]] bool linked() const noexcept;
@@ -226,7 +226,7 @@ class Keeper
     void handle(auto const& /*message*/, std::vector<UniqueFd>& /*fds*/) {}
 
     KeeperPorts _ports;
-    std::unique_ptr<LabelLock> _labelLock;
+    std::unique_ptr<NameLock> _nameLock;
     CrashRestartPolicy _policy;
     std::filesystem::path _daemonImage; ///< The committed image: what a crashed daemon is restarted from.
     /// The hold on @ref _daemonImage once a live upgrade moved it there; null for the image the keeper was

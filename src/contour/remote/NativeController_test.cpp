@@ -87,6 +87,7 @@
 #include <vthost/SshTransport.hpp>
 #include <vthost/StdioChild.hpp>
 #include <vthost/StdioPreamble.hpp>
+#include <vthost/TabEdits.hpp>
 #include <vthost/TappingPty.hpp>
 #include <vthost/Transport.hpp>
 #include <vthost/client/LayoutReconstruction.hpp>
@@ -1919,18 +1920,18 @@ void requirePaneSizes(
             daemon.clientFrames.count(vthost::proto::PduType::ResizePane)));
 }
 
-/// Has the daemon retitle its active tab to @p title, waits until @p gui holds that push, and reconciles it:
+/// Has the daemon rename its active tab to @p name, waits until @p gui holds that push, and reconciles it:
 /// whatever the daemon pushed before has then been reconciled too.
-void requirePushed(DaemonFixture& daemon, AttachedGui& gui, std::string const& title)
+void requirePushed(DaemonFixture& daemon, AttachedGui& gui, std::string const& name)
 {
-    daemon.onDaemon([&daemon, &title] {
+    daemon.onDaemon([&daemon, &name] {
         auto* tab = daemon.host->model().workspace(daemon.host->workspaceId())->activeTab();
-        daemon.host->model().setTabTitle(tab->id(), title);
+        vthost::RegistryTabNames { daemon.host->objects() }.setName(tab->id(), name);
         return 0;
     });
     REQUIRE(waitUntil([&] {
         auto const layout = gui.controller->settledLayout();
-        return layout && !layout->tabs.empty() && layout->tabs.front().title == title;
+        return layout && !layout->tabs.empty() && layout->tabs.front().name == name;
     }));
     gui.reconcile();
 }
@@ -1973,9 +1974,14 @@ TEST_CASE("a second client sees the first client's zoom, title and colour", "[at
         return tab.isZoomed() && b.remoteOf(*tab.activePane()) == zoomed;
     }));
 
-    // A renames the tab, then colours it.
-    a.app.manager().model().setTabTitle(tabA.id(), "build");
-    CHECK(bShows([](vtworkspace::Tab const& tab) { return tab.runtimeTitle() == "build"; }));
+    // A renames the tab, then colours it. The name is the daemon's tab's, addressed by it.
+    a.app.manager().model().setTabName(tabA.id(), "build");
+    CHECK(bShows([](vtworkspace::Tab const& tab) { return tab.name() == "build"; }));
+    CHECK(daemon.onDaemon([&daemon] {
+        auto const* tab = daemon.host->model().workspace(daemon.host->workspaceId())->tabAt(0);
+        return std::string { daemon.host->objects().nameOf(vtcontrol::ObjectRef {
+            .kind = vtcontrol::ObjectKind::Tab, .uuid = *daemon.host->objects().uuidOf(tab->id()) }) };
+    }) == "build");
     auto constexpr Color = vtbackend::RGBColor { 0x336699 };
     a.app.manager().model().setTabColor(tabA.id(), vtworkspace::TabColorSource::User, Color);
     CHECK(bShows(
@@ -1992,7 +1998,7 @@ TEST_CASE("a second client sees the first client's zoom, title and colour", "[at
     b.controller->stop();
 }
 
-TEST_CASE("a tab's control label names it in the window, over its title, until it is cleared",
+TEST_CASE("a tab's name set through the control API names it in the window until it is cleared",
           "[attach][controller][sync-back]")
 {
     auto daemon = DaemonFixture {};
@@ -2005,36 +2011,38 @@ TEST_CASE("a tab's control label names it in the window, over its title, until i
     }));
     gui.reconcile();
     REQUIRE(gui.app.manager().model().workspace(gui.window.id)->tabCount() == 1);
-    gui.app.manager().model().setTabTitle(gui.tab().id(), "renamed");
 
-    // The label `contour label tab:… NAME` gives the daemon's only tab.
-    auto const labelTab = [&](std::string const& label) {
+    // The name `contour rename tab:… NAME` gives the daemon's only tab.
+    auto const nameTab = [&](std::string const& name) {
         std::ignore = daemon.onDaemon([&] {
             auto const* tab = daemon.host->model().workspace(daemon.host->workspaceId())->tabAt(0);
-            daemon.host->objects().setLabel(
+            daemon.host->objects().setName(
                 vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab,
                                        .uuid = *daemon.host->objects().uuidOf(tab->id()) },
-                label);
+                name);
             return 0;
         });
     };
-    // Whether the window's tab holds @p label, and its tab strip and its list name it @p name.
-    auto const shows = [&](std::string_view name, std::string_view label) {
+    // Whether the window's tab is named @p name, and its tab strip and its list show it.
+    auto const shows = [&](std::string_view name) {
         return waitUntil([&] {
             gui.reconcile();
             auto const directory = gui.controller->directory();
-            return gui.tab().label() == label && gui.window->tabTitleOf(gui.tab().id()) == name
+            return gui.tab().name() == name && gui.window->tabTitleOf(gui.tab().id()) == name
                    && !directory.workspaces.empty() && !directory.workspaces.front().tabs.empty()
-                   && directory.workspaces.front().tabs.front().label == name;
+                   && directory.workspaces.front().tabs.front().name == name;
         });
     };
-    REQUIRE(shows("renamed", ""));
 
-    labelTab("build");
-    CHECK(shows("build", "build"));
+    nameTab("build");
+    CHECK(shows("build"));
 
-    labelTab("");
-    CHECK(shows("renamed", ""));
+    // Cleared, the tab is named by its title again, in the window as on the daemon.
+    nameTab("");
+    CHECK(waitUntil([&] {
+        gui.reconcile();
+        return gui.tab().name().empty() && gui.window->tabTitleOf(gui.tab().id()) != "build";
+    }));
 
     gui.controller->stop();
 }
@@ -4045,12 +4053,12 @@ TEST_CASE("a split orientation toggled over a daemon is kept by the next layout 
     CHECK(waitUntil([&] { return daemonAxis() == vtworkspace::SplitState::Horizontal; }));
     // An unrelated change pushes the layout again.
     std::ignore = daemon.onDaemon([&] {
-        daemon.host->model().setTabTitle(tabId, "pushed");
+        vthost::RegistryTabNames { daemon.host->objects() }.setName(tabId, "pushed");
         return true;
     });
     REQUIRE(waitUntil([&] {
         auto const layout = gui.controller->settledLayout(followed);
-        return layout != nullptr && !layout->tabs.empty() && layout->tabs.front().title == "pushed";
+        return layout != nullptr && !layout->tabs.empty() && layout->tabs.front().name == "pushed";
     }));
     gui.reconcile();
     CHECK(gui.manager().model().workspace(gui.windowId())->activeTab()->rootPane()->splitState()
@@ -4599,13 +4607,13 @@ namespace
     return found != directory.workspaces.end() ? *found : contour::window::DirectoryWorkspace {};
 }
 
-/// Labels the daemon's workspace @p workspace @p label, as `object.setLabel` would.
+/// Names the daemon's workspace @p workspace @p label, as `object.rename` would.
 /// @return The workspace's control UUID.
 vtcontrol::Uuid labelOnDaemon(DaemonFixture& daemon, uint64_t workspace, std::string const& label)
 {
     return daemon.onDaemon([&] {
         auto const uuid = *daemon.host->objects().uuidOf(vtworkspace::WorkspaceId { workspace });
-        daemon.host->objects().setLabel(
+        daemon.host->objects().setName(
             vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace, .uuid = uuid }, label);
         return uuid;
     });
@@ -4627,13 +4635,13 @@ TEST_CASE("directory carries label and control id from WorkspaceMeta", "[attach]
     auto const stopOnExit = StopOnExit { controller };
     requireConnected(controller);
 
-    REQUIRE(waitUntil([&] { return workspaceOf(controller, second.id).label == "ops"; }));
+    REQUIRE(waitUntil([&] { return workspaceOf(controller, second.id).name == "ops"; }));
     CHECK(workspaceOf(controller, second.id).controlId == uuid.bytes);
     CHECK_FALSE(workspaceOf(controller, second.id).git.has_value());
 
     // And one stated since reaches it as it changes.
     std::ignore = labelOnDaemon(daemon, second.id, "build");
-    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).label == "build"; }));
+    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).name == "build"; }));
 }
 
 TEST_CASE("a workspace the daemon moved is listed in its new place", "[attach][controller][directory]")
@@ -4686,11 +4694,11 @@ TEST_CASE("a window's move and rename of a workspace reach the daemon and come b
 
     CHECK(controller.requestRemoteRenameWorkspace(second.id, "ops")
           == contour::session::RemoteRouting::Routed);
-    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).label == "ops"; }));
-    CHECK(workspaceOf(controller, first).label.empty());
+    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).name == "ops"; }));
+    CHECK(workspaceOf(controller, first).name.empty());
 }
 
-TEST_CASE("a window titles a tab of a workspace it does not show, and the directory follows",
+TEST_CASE("a window renames a tab of a workspace it does not show, and the directory follows",
           "[attach][controller][directory][sidebar]")
 {
     auto daemon = DaemonFixture {};
@@ -4704,17 +4712,17 @@ TEST_CASE("a window titles a tab of a workspace it does not show, and the direct
     requireConnected(controller);
     REQUIRE(waitUntil([&] { return controller.directory().workspaces.size() == 2; }));
 
-    CHECK(controller.requestRemoteTabTitle(second.session.value, "logs")
+    CHECK(controller.requestRemoteTabRename(second.session.value, "logs")
           == contour::session::RemoteRouting::Routed);
     CHECK(waitUntil([&] {
         auto const& workspace = workspaceOf(controller, second.id);
-        return !workspace.tabs.empty() && workspace.tabs.front().title == "logs";
+        return !workspace.tabs.empty() && workspace.tabs.front().name == "logs";
     }));
 
-    // An empty title returns the tab to its automatic one.
-    CHECK(controller.requestRemoteTabTitle(second.session.value, "")
+    // An empty name clears it: the tab is named by its title again.
+    CHECK(controller.requestRemoteTabRename(second.session.value, "")
           == contour::session::RemoteRouting::Routed);
-    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).tabs.front().title.empty(); }));
+    CHECK(waitUntil([&] { return workspaceOf(controller, second.id).tabs.front().name != "logs"; }));
 }
 
 TEST_CASE("the directory states a workspace's place in the daemon's count, tabless ones included",
@@ -4751,7 +4759,7 @@ TEST_CASE("the metadata of a removed workspace is pruned", "[attach][controller]
     auto& controller = *controllerOwned;
     auto const stopOnExit = StopOnExit { controller };
     requireConnected(controller);
-    REQUIRE(waitUntil([&] { return workspaceOf(controller, second.id).label == "ops"; }));
+    REQUIRE(waitUntil([&] { return workspaceOf(controller, second.id).name == "ops"; }));
     REQUIRE(contour::remote::NativeControllerTestAccess::workspaceMetaCount(controller) == 2);
 
     // Its one pane ends, and the daemon removes the workspace.
@@ -4797,7 +4805,7 @@ TEST_CASE("a labelled workspace that held no tab is stated in full once it holds
     });
 
     REQUIRE(waitUntil([&] { return !workspaceOf(controller, empty).tabs.empty(); }));
-    CHECK(waitUntil([&] { return workspaceOf(controller, empty).label == "ops"; }));
+    CHECK(waitUntil([&] { return workspaceOf(controller, empty).name == "ops"; }));
     CHECK(workspaceOf(controller, empty).controlId == uuid.bytes);
 }
 
@@ -4813,11 +4821,11 @@ TEST_CASE("an empty label clears it", "[attach][controller][directory]")
     auto& controller = *controllerOwned;
     auto const stopOnExit = StopOnExit { controller };
     requireConnected(controller);
-    REQUIRE(waitUntil([&] { return workspaceOf(controller, first).label == "ops"; }));
+    REQUIRE(waitUntil([&] { return workspaceOf(controller, first).name == "ops"; }));
 
     std::ignore = labelOnDaemon(daemon, first, "");
 
-    REQUIRE(waitUntil([&] { return workspaceOf(controller, first).label.empty(); }));
+    REQUIRE(waitUntil([&] { return workspaceOf(controller, first).name.empty(); }));
     // The control id stays: clearing a label changes nothing else.
     CHECK(workspaceOf(controller, first).controlId == uuid.bytes);
 }
@@ -5446,7 +5454,7 @@ TEST_CASE("a wake probes the daemon", "[attach][controller][power]")
     auto const before = controller.settledLayout();
     daemon.onDaemon([&daemon] {
         auto* tab = daemon.host->model().workspace(daemon.host->workspaceId())->activeTab();
-        daemon.host->model().setTabTitle(tab->id(), "awake");
+        vthost::RegistryTabNames { daemon.host->objects() }.setName(tab->id(), "awake");
         return 0;
     });
     CHECK(waitUntil([&] { return controller.settledLayout() != before; }));
@@ -6580,12 +6588,12 @@ TEST_CASE("a hello that restored nothing raises no summary", "[attach][controlle
     controller.stop();
 }
 
-TEST_CASE("a client attaching to a titled multi-pane layout shows each tab's own title (#2187)",
+TEST_CASE("a client attaching to a named multi-pane layout shows each tab's own name (#2187)",
           "[attach][controller][sync-back]")
 {
-    auto const titled = [](std::string title) {
+    auto const titled = [](std::string name) {
         auto tab = vtworkspace::LayoutTab {};
-        tab.title = std::move(title);
+        tab.name = std::move(name);
         tab.root.orientation = vtworkspace::SplitState::Vertical;
         auto nested = vtworkspace::LayoutPane {};
         nested.orientation = vtworkspace::SplitState::Horizontal;
@@ -6609,17 +6617,16 @@ TEST_CASE("a client attaching to a titled multi-pane layout shows each tab's own
     auto* const win = gui.app.manager().model().workspace(gui.window.id);
     REQUIRE(win != nullptr);
     REQUIRE(win->tabCount() == 2);
-    CHECK(win->tabAt(0)->runtimeTitle() == "editor");
-    CHECK(win->tabAt(1)->runtimeTitle() == "logs");
+    CHECK(win->tabAt(0)->name() == "editor");
+    CHECK(win->tabAt(1)->name() == "logs");
 
-    // Nothing the client applied went back to the daemon as an edit, and the daemon still has both titles.
+    // Nothing the client applied went back to the daemon as an edit, and the daemon still has both names.
     gui.reconcile();
     std::this_thread::sleep_for(100ms);
     CHECK(editTabsReceived(capture.text()) == 0);
     auto const titles = daemon.onDaemon([&daemon] {
         auto const* window = daemon.host->model().workspace(daemon.host->workspaceId());
-        return window->tabAt(0)->runtimeTitle().value_or("") + ","
-               + window->tabAt(1)->runtimeTitle().value_or("");
+        return window->tabAt(0)->name() + "," + window->tabAt(1)->name();
     });
     CHECK(titles == "editor,logs");
 

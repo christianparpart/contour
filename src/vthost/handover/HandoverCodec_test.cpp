@@ -6,10 +6,13 @@
 
 #include <algorithm>
 #include <chrono>
+#include <iostream>
 #include <ranges>
+#include <span>
 
 #include <vthost/SessionSettings.hpp>
 #include <vthost/handover/HandoverCodec.hpp>
+#include <vthost/testing/RecordedNameEncodings.hpp>
 
 using namespace vthost;
 using namespace vthost::handover;
@@ -38,7 +41,7 @@ namespace
     auto session = HandoverSession {};
     session.id = vtworkspace::SessionId { id };
     session.uuid = uuidOf(static_cast<uint8_t>(id));
-    session.label = "shell";
+    session.name = "shell";
     session.profileName = "default";
     session.origin = SettingsOrigin::Client;
     auto settings = defaultSessionSettings();
@@ -98,8 +101,8 @@ namespace
     image.objects.tabs = { BoundObject { .id = 5, .uuid = uuidOf(0xA2) } };
     image.objects.panes = { BoundObject { .id = 1, .uuid = uuidOf(0xA3) },
                             BoundObject { .id = 2, .uuid = uuidOf(0xA4) } };
-    image.objects.labels = { LabeledObject { .ref = { vtcontrol::ObjectKind::Tab, uuidOf(0xA2) },
-                                             .label = "work" } };
+    image.objects.names = { NamedObject { .ref = { vtcontrol::ObjectKind::Tab, uuidOf(0xA2) },
+                                          .name = "work" } };
     image.sessions = { sessionOf(1), sessionOf(2) };
     image.listeners = { InheritedListener { .name = "control", .handle = vtpty::CrossingHandle { 20 } },
                         InheritedListener { .name = "native-tcp",
@@ -144,8 +147,8 @@ void requireSame(HandoverImage const& actual, HandoverImage const& expected)
     CHECK(tab.view.colors == wanted.tabs.at(0).view.colors);
     CHECK(actual.objects.workspaces.size() == 1);
     CHECK(actual.objects.panes.at(1).uuid == uuidOf(0xA4));
-    CHECK(actual.objects.labels.at(0).label == "work");
-    CHECK(actual.objects.labels.at(0).ref == expected.objects.labels.at(0).ref);
+    CHECK(actual.objects.names.at(0).name == "work");
+    CHECK(actual.objects.names.at(0).ref == expected.objects.names.at(0).ref);
     CHECK(actual.defaultColorPreference == expected.defaultColorPreference);
     CHECK(actual.cellPixelSize == expected.cellPixelSize);
     CHECK(actual.listeners.size() == 2);
@@ -162,7 +165,7 @@ void requireSame(HandoverImage const& actual, HandoverImage const& expected)
         auto const& want = expected.sessions.at(index);
         CHECK(got.id == want.id);
         CHECK(got.uuid == want.uuid);
-        CHECK(got.label == want.label);
+        CHECK(got.name == want.name);
         CHECK(got.profileName == want.profileName);
         CHECK(got.origin == want.origin);
         CHECK(got.statedSettings == want.statedSettings);
@@ -430,4 +433,91 @@ TEST_CASE("a mutated handover stream is refused or decoded, never fatal", "[hand
             (void) encodeHandover(*decoded);
     }
     SUCCEED();
+}
+
+namespace
+{
+
+/// An image whose every name-bearing field is set: the workspace's, the tab's and the pane's name, the tab's
+/// runtime title, and the session's name. Recorded as testing::RecordedHandoverNames.
+[[nodiscard]] HandoverImage namedImage()
+{
+    auto tab = vtworkspace::TabState {};
+    tab.id = vtworkspace::TabId { 2 };
+    tab.root = leaf(3, 1);
+    tab.view.activePane = vtworkspace::PaneId { 3 };
+    tab.view.recentPanes = { vtworkspace::PaneId { 3 } };
+    tab.view.title = "edited {Cwd}";
+    auto workspace = vtworkspace::WorkspaceState {};
+    workspace.id = vtworkspace::WorkspaceId { 1 };
+    workspace.tabs = { tab };
+    workspace.activeTabIndex = 0;
+
+    auto session = HandoverSession {};
+    session.id = vtworkspace::SessionId { 1 };
+    session.uuid = uuidOf(0xC3);
+    session.name = "logs";
+    session.pty.pageSize = vtpty::PageSize { vtpty::LineCount(24), vtpty::ColumnCount(80) };
+
+    auto image = HandoverImage {};
+    image.fromRelease = "0.8.1";
+    image.tree.workspaces = { workspace };
+    image.modelIds = { vtworkspace::WorkspaceId { 2 }, vtworkspace::TabId { 3 }, vtworkspace::PaneId { 4 } };
+    image.nextSessionId = vtworkspace::SessionId { 2 };
+    image.defaultWorkspace = 1;
+    image.objects.workspaces = { BoundObject { .id = 1, .uuid = uuidOf(0xC1) } };
+    image.objects.tabs = { BoundObject { .id = 2, .uuid = uuidOf(0xC2) } };
+    image.objects.panes = { BoundObject { .id = 1, .uuid = uuidOf(0xC3) } };
+    image.objects.names = {
+        NamedObject { .ref = { vtcontrol::ObjectKind::Workspace, uuidOf(0xC1) }, .name = "ops" },
+        NamedObject { .ref = { vtcontrol::ObjectKind::Tab, uuidOf(0xC2) }, .name = "build" },
+        NamedObject { .ref = { vtcontrol::ObjectKind::Pane, uuidOf(0xC3) }, .name = "logs" },
+    };
+    image.sessions = { session };
+    return image;
+}
+
+} // namespace
+
+TEST_CASE("the handover stream of a named workspace, tab and pane is pinned", "[handover][encoding-pin]")
+{
+    auto const image = namedImage();
+    auto const encoded = encodeHandover(image);
+    if (testing::isFixtureUpdateRequested(core::LiveEnvironment {}))
+    {
+        std::cout << testing::spelledFixture("RecordedHandoverNames", std::as_bytes(std::span { encoded }));
+        FAIL("printed RecordedHandoverNames instead of comparing; paste it into RecordedNameEncodings.hpp");
+    }
+    CHECK(std::ranges::equal(encoded, testing::RecordedHandoverNames));
+
+    auto const decoded = decodeHandover(testing::RecordedHandoverNames);
+    REQUIRE(decoded.has_value());
+    CHECK(decoded->fromRelease == image.fromRelease);
+    CHECK(decoded->defaultWorkspace == image.defaultWorkspace);
+    CHECK(decoded->nextSessionId == image.nextSessionId);
+    REQUIRE(decoded->tree.workspaces.size() == 1);
+    auto const& workspace = decoded->tree.workspaces.at(0);
+    CHECK(workspace.id == vtworkspace::WorkspaceId { 1 });
+    CHECK(workspace.activeTabIndex == 0);
+    REQUIRE(workspace.tabs.size() == 1);
+    auto const& tab = workspace.tabs.at(0);
+    CHECK(tab.id == vtworkspace::TabId { 2 });
+    CHECK(tab.root.id == vtworkspace::PaneId { 3 });
+    CHECK(tab.root.session == vtworkspace::SessionId { 1 });
+    CHECK(tab.view.activePane == vtworkspace::PaneId { 3 });
+    CHECK(tab.view.recentPanes == image.tree.workspaces.at(0).tabs.at(0).view.recentPanes);
+    CHECK(tab.view.title == std::optional<std::string> { "edited {Cwd}" });
+    CHECK(decoded->objects.workspaces.at(0).uuid == uuidOf(0xC1));
+    CHECK(decoded->objects.tabs.at(0).uuid == uuidOf(0xC2));
+    CHECK(decoded->objects.panes.at(0).uuid == uuidOf(0xC3));
+    REQUIRE(decoded->objects.names.size() == image.objects.names.size());
+    for (auto const index: std::views::iota(size_t { 0 }, image.objects.names.size()))
+    {
+        CHECK(decoded->objects.names.at(index).ref == image.objects.names.at(index).ref);
+        CHECK(decoded->objects.names.at(index).name == image.objects.names.at(index).name);
+    }
+    REQUIRE(decoded->sessions.size() == 1);
+    CHECK(decoded->sessions.at(0).id == vtworkspace::SessionId { 1 });
+    CHECK(decoded->sessions.at(0).uuid == uuidOf(0xC3));
+    CHECK(decoded->sessions.at(0).name == "logs");
 }

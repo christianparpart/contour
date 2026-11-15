@@ -42,6 +42,9 @@ struct ToolRow
     std::string_view summary;       ///< Description (composite rows); catalog rows read it from the API.
     std::string_view inputSchema;   ///< JSON Schema (composite rows); catalog rows read it from the API.
     TabScope requiredScope = TabScope::OwnTab; ///< The scope under which the tool is listed at all.
+    /// compat(0.9.0): for an old tool name kept as an alias, the method it was spelled after; its
+    /// arguments are read in that method's old spelling first. Empty for every other tool.
+    std::string_view legacyMethod {};
 };
 
 /// @return Every tool in table order.

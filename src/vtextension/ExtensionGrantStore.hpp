@@ -22,26 +22,26 @@ namespace vtextension
 inline constexpr auto ExtensionGrantsFileName = std::string_view { "extension-grants.txt" };
 
 /// The side file, beside its configuration, a daemon (`contour daemon`) remembers its users' answers in when
-/// it serves the default socket label. Never the GUI's: two processes rewriting one file whole would undo
+/// it serves the default socket name. Never the GUI's: two processes rewriting one file whole would undo
 /// each other's answers, and a daemon's answers come from any attached client and govern commands that run
 /// on the daemon's machine -- another authority. @see daemonExtensionGrantsFileName
 inline constexpr auto DaemonExtensionGrantsFileName = std::string_view { "extension-grants.daemon.txt" };
 
-/// Which daemon a grants file belongs to: the socket it serves, as its socket label and path name it.
+/// Which daemon a grants file belongs to: the socket it serves, as its socket name and path name it.
 struct DaemonIdentity
 {
-    std::string_view label;                ///< The socket label it serves.
-    std::string_view defaultLabel;         ///< The label a daemon serves when given none.
-    std::filesystem::path socketPath;      ///< The socket it serves, canonical.
-    std::filesystem::path labelSocketPath; ///< Where a daemon of @ref label serves when no socket is named.
+    std::string_view name;                ///< The socket name it serves.
+    std::string_view defaultName;         ///< The name a daemon serves when given none.
+    std::filesystem::path socketPath;     ///< The socket it serves, canonical.
+    std::filesystem::path nameSocketPath; ///< Where a daemon of @ref name serves when no socket is named.
 };
 
-/// The grants file of @p daemon: DaemonExtensionGrantsFileName for the default label at its own socket,
+/// The grants file of @p daemon: DaemonExtensionGrantsFileName for the default name at its own socket,
 /// else one qualified by what tells the daemon apart, so that daemons sharing a configuration directory
-/// keep apart -- `extension-grants.daemon.<label>.txt` for another label, and an eight-digit hash of the
-/// socket's path (lexically normalized) before `.txt` where a socket other than the label's own is named.
-/// @param daemon The daemon. Every character of its label but ASCII letters, digits, `.`, `-` and `_` is
-///        spelled `_`, so the name never leaves the directory; an empty label is the default one.
+/// keep apart -- `extension-grants.daemon.<name>.txt` for another name, and an eight-digit hash of the
+/// socket's path (lexically normalized) before `.txt` where a socket other than the name's own is named.
+/// @param daemon The daemon. Every character of its name but ASCII letters, digits, `.`, `-` and `_` is
+///        spelled `_`, so the name never leaves the directory; an empty name is the default one.
 /// @return The file's name.
 [[nodiscard]] std::string daemonExtensionGrantsFileName(DaemonIdentity const& daemon);
 

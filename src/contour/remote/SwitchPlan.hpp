@@ -32,13 +32,13 @@
 namespace contour::remote
 {
 
-/// A daemon as a switch names it: a local daemon by its socket label, or a saved host by its name.
+/// A daemon as a switch names it: a local daemon by its name, or a saved host by its name.
 struct DaemonAddress
 {
-    /// Label or Host; Same for a daemon no switch can name (`--connect-tcp`, a socket outside the label
+    /// Name or Host; Same for a daemon no switch can name (`--connect-tcp`, a socket outside the label
     /// directory).
     vthost::proto::SwitchDaemonKind kind {};
-    std::string name; ///< The label or the host's name; empty for Same.
+    std::string name; ///< The local daemon's or the host's name; empty for Same.
     bool operator==(DaemonAddress const&) const = default;
 };
 
@@ -48,13 +48,13 @@ struct DaemonAddress
 /// "default", which would make an unrelated `default` daemon look like this window's.
 /// @param controlPath The control socket the launch resolved.
 /// @param labelDirectory The directory discovery lists the labelled daemons' sockets from.
-/// @return The Label address of the socket's file name when it sits in @p labelDirectory, else Same.
+/// @return The Name address of the socket's file name when it sits in @p labelDirectory, else Same.
 [[nodiscard]] inline DaemonAddress launchDaemonAddress(std::filesystem::path const& controlPath,
                                                        std::filesystem::path const& labelDirectory)
 {
     auto const normal = controlPath.lexically_normal();
     if (normal.parent_path() == labelDirectory.lexically_normal())
-        return DaemonAddress { .kind = vthost::proto::SwitchDaemonKind::Label,
+        return DaemonAddress { .kind = vthost::proto::SwitchDaemonKind::Name,
                                .name = normal.filename().string() };
     return DaemonAddress { .kind = vthost::proto::SwitchDaemonKind::Same, .name = {} };
 }
@@ -85,9 +85,9 @@ struct WorkspaceRow
 {
     uint64_t id = 0;             ///< The daemon's native id of it, which a connection follows it by.
     vtcontrol::ObjectRef ref {}; ///< Its control id, `workspace:<uuid>`.
-    std::string label;           ///< Its label; empty for none.
+    std::string name;            ///< Its name; empty for none.
     uint32_t position = 0;       ///< Its 1-based position among the daemon's workspaces.
-    std::string name;            ///< How it is shown: @see workspaceDisplayName().
+    std::string displayName;     ///< How it is shown: @see workspaceDisplayName().
     vthost::WorkspaceVisibility visibility = vthost::WorkspaceVisibility::Hidden; ///< Shown or hidden.
     std::size_t tabs = 0;                                                         ///< How many tabs it holds.
     /// The window of this process that shows it; none when no window here does.
@@ -215,12 +215,12 @@ using ShownHere = std::function<std::optional<vtworkspace::WorkspaceId>(uint64_t
     std::span<window::SidebarRow const> sidebarWorkspaces,
     vtworkspace::WorkspaceId window);
 
-/// How a workspace is named to the user: its label, else its active tab's title, else "workspace N".
-/// @param label The workspace's label; empty for none.
+/// How a workspace is named to the user: its name, else its active tab's title, else "workspace N".
+/// @param name The workspace's name; empty for none.
 /// @param activeTabTitle Its active tab's title; empty for none.
 /// @param position Its 1-based position among the daemon's workspaces.
 /// @return The name.
-[[nodiscard]] std::string workspaceDisplayName(std::string_view label,
+[[nodiscard]] std::string workspaceDisplayName(std::string_view name,
                                                std::string_view activeTabTitle,
                                                uint32_t position);
 

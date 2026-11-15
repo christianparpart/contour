@@ -126,10 +126,10 @@ update that adds a command, say), is asked about again. Answers are kept beside 
 - `extension-grants.txt` for the GUI;
 - `extension-grants.daemon.txt` for `contour daemon`, named after the socket it serves, so that daemons
   sharing a configuration directory, and the GUI, keep their answers apart:
-  - `extension-grants.daemon.<label>.txt` for a daemon serving another socket label than the default one
-    (every character of the label but letters, digits, `.`, `-` and `_` spelled `_`);
-  - `extension-grants.daemon[.<label>].<hash>.txt` for a daemon given a `socket` path other than its
-    label's own, where `<hash>` is eight hex digits computed from that path.
+  - `extension-grants.daemon.<name>.txt` for a daemon of another name than the default one
+    (every character of the name but letters, digits, `.`, `-` and `_` spelled `_`);
+  - `extension-grants.daemon[.<name>].<hash>.txt` for a daemon given a `socket` path other than its
+    name's own, where `<hash>` is eight hex digits computed from that path.
 
   A daemon's answers govern commands that run on the daemon's machine.
 

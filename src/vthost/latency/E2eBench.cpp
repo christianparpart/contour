@@ -50,13 +50,6 @@ namespace
     constexpr auto DaemonReadyTimeout = 10s;
     constexpr auto DaemonGoneTimeout = 5s;
 
-    /// Which GUI a launch runs.
-    enum class LaunchMode : uint8_t
-    {
-        InProcess = 0, ///< `contour terminal`.
-        Daemon,        ///< `contour client`.
-    };
-
     /// What one GUI launch measured.
     struct Launch
     {
@@ -98,14 +91,10 @@ namespace
     class Rig
     {
       public:
-        Rig(E2eOptions const& options,
-            std::filesystem::path directory,
-            std::filesystem::path config,
-            std::string label):
+        Rig(E2eOptions const& options, std::filesystem::path directory, std::filesystem::path config):
             _options { options },
             _directory { std::move(directory) },
             _config { std::move(config) },
-            _label { std::move(label) },
             _socket { _directory / "daemon" }
         {
         }
@@ -133,7 +122,12 @@ namespace
         {
             auto const& clock = core::platform::defaultSteadyClock();
             auto const reportFile = _directory / std::format("probe-{}.txt", index);
-            auto argv = guiArguments(mode, reportFile);
+            auto argv = guiLaunchArguments(GuiLaunch { .mode = mode,
+                                                       .socket = _socket,
+                                                       .config = _config,
+                                                       .reportFile = reportFile,
+                                                       .keys = _options.keys,
+                                                       .pacing = _options.pacing });
             auto const spawnedAt = clock.now();
             auto process = BenchProcess::start(_options.contour, std::move(argv));
             if (!process)
@@ -165,29 +159,6 @@ namespace
         }
 
       private:
-        [[nodiscard]] std::vector<std::string> guiArguments(LaunchMode mode,
-                                                            std::filesystem::path const& reportFile) const
-        {
-            auto argv = std::vector<std::string> {};
-            switch (mode)
-            {
-                case LaunchMode::InProcess: argv.emplace_back("terminal"); break;
-                case LaunchMode::Daemon:
-                    argv.emplace_back("client");
-                    argv.push_back(std::format("--socket={}", _socket.string()));
-                    // Unique, so that no registered service of the user's answers for this launch.
-                    argv.push_back(std::format("--label={}", _label));
-                    break;
-            }
-            argv.push_back(std::format("--config={}", _config.string()));
-            argv.push_back(std::format("--profile={}", ProfileName));
-            argv.push_back(std::format("--latency-probe={}", reportFile.string()));
-            argv.push_back(std::format("--latency-probe-keys={}", _options.keys));
-            if (_options.pacing == FramePacing::VSync)
-                argv.emplace_back("--latency-probe-vsync");
-            return argv;
-        }
-
         [[nodiscard]] std::expected<Launch, std::string> readReport(std::filesystem::path const& file,
                                                                     SteadyTimePoint spawnedAt) const
         {
@@ -218,7 +189,6 @@ namespace
         E2eOptions const& _options;
         std::filesystem::path _directory;
         std::filesystem::path _config;
-        std::string _label;
         std::filesystem::path _socket;
     };
 
@@ -240,6 +210,27 @@ namespace
         return true;
     }
 } // namespace
+
+std::vector<std::string> guiLaunchArguments(GuiLaunch const& launch)
+{
+    auto argv = std::vector<std::string> {};
+    switch (launch.mode)
+    {
+        case LaunchMode::InProcess: argv.emplace_back("terminal"); break;
+        case LaunchMode::Daemon:
+            argv.emplace_back("client");
+            // A path alone: no registered service of the user's answers for a path that is not its own.
+            argv.push_back(std::format("--daemon={}", launch.socket.string()));
+            break;
+    }
+    argv.push_back(std::format("--config={}", launch.config.string()));
+    argv.push_back(std::format("--profile={}", ProfileName));
+    argv.push_back(std::format("--latency-probe={}", launch.reportFile.string()));
+    argv.push_back(std::format("--latency-probe-keys={}", launch.keys));
+    if (launch.pacing == FramePacing::VSync)
+        argv.emplace_back("--latency-probe-vsync");
+    return argv;
+}
 
 int runE2eBench(E2eOptions const& given, std::ostream& out, std::ostream& err)
 {
@@ -272,7 +263,7 @@ int runE2eBench(E2eOptions const& given, std::ostream& out, std::ostream& err)
         return EXIT_FAILURE;
     }
 
-    auto const rig = Rig { options, directory, config, directory.filename().string() };
+    auto const rig = Rig { options, directory, config };
     auto daemon = BenchProcess::start(options.contour, rig.daemonArguments());
     if (!daemon)
     {

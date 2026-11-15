@@ -52,6 +52,7 @@
 #include <vthost/PduPump.hpp>
 #include <vthost/SessionHost.hpp>
 #include <vthost/SessionSettings.hpp>
+#include <vthost/TabEdits.hpp>
 #include <vthost/TappingPty.hpp>
 #include <vthost/client/ControlClient.hpp>
 #include <vthost/client/LayoutReconstruction.hpp>
@@ -2788,7 +2789,7 @@ TEST_CASE("against a daemon without the capabilities nothing new is written", "[
                            std::vector<proto::DecodedFrame> const* seen,
                            vthost::client::Delivery* delivery) -> Task<void> {
             co_await core::net::testing::waitUntil(loop, [&] { return client->connected(); });
-            *delivery = client->editTab({ .session = 1, .kind = proto::TabEditKind::SetTitle, .title = "x" });
+            *delivery = client->editTab({ .session = 1, .kind = proto::TabEditKind::SetName, .name = "x" });
             client->createTab(0, "x");
             client->splitPane(1, 1, 5000, "z");
             co_await core::net::testing::waitUntil(
@@ -3192,16 +3193,16 @@ TEST_CASE("editTab is sent when the daemon shares TabEdits", "[vthost][attach][i
     auto scenario = [](IntentHarness* h, vthost::client::Delivery* delivery) -> Task<void> {
         co_await core::net::testing::waitUntil(&h->loop, [h] { return !h->layouts.empty(); });
         auto const session = h->layouts.back().tabs.front().root.session;
-        *delivery = h->client->editTab(
-            { .session = session, .kind = proto::TabEditKind::SetTitle, .title = "build" });
+        *delivery =
+            h->client->editTab({ .session = session, .kind = proto::TabEditKind::SetName, .name = "build" });
         co_await core::net::testing::waitUntil(
-            &h->loop, [h] { return h->layouts.back().tabs.front().title == "build"; });
+            &h->loop, [h] { return h->layouts.back().tabs.front().name == "build"; });
         h->client->detach();
     }(&h, &delivery);
     h.drive(std::move(scenario));
 
     CHECK(delivery == vthost::client::Delivery::Sent);
-    CHECK(h.layouts.back().tabs.front().title == "build");
+    CHECK(h.layouts.back().tabs.front().name == "build");
 }
 
 TEST_CASE("the workspace verbs reach the daemon when it shares WorkspaceMeta",
@@ -3223,9 +3224,9 @@ TEST_CASE("the workspace verbs reach the daemon when it shares WorkspaceMeta",
         deliveries->push_back(h->client->moveWorkspace(second, 0));
         co_await core::net::testing::waitUntil(
             &h->loop, [h, second] { return h->host.model().workspaceAt(0)->id().value == second; });
-        deliveries->push_back(h->client->setWorkspaceLabel(second, "ops"));
+        deliveries->push_back(h->client->setWorkspaceName(second, "ops"));
         co_await core::net::testing::waitUntil(&h->loop, [h, second] {
-            return h->host.objects().labelOf(vtcontrol::ObjectRef {
+            return h->host.objects().nameOf(vtcontrol::ObjectRef {
                        .kind = vtcontrol::ObjectKind::Workspace,
                        .uuid = *h->host.objects().uuidOf(vtworkspace::WorkspaceId { second }) })
                    == "ops";
@@ -3257,7 +3258,7 @@ TEST_CASE("the workspace verbs are Unsupported, and nothing is written, without 
                        std::vector<vthost::client::Delivery>* deliveries) -> Task<void> {
         co_await core::net::testing::waitUntil(&h->loop, [h] { return !h->layouts.empty(); });
         deliveries->push_back(h->client->moveWorkspace(second, 0));
-        deliveries->push_back(h->client->setWorkspaceLabel(second, "ops"));
+        deliveries->push_back(h->client->setWorkspaceName(second, "ops"));
         deliveries->push_back(h->client->closeWorkspace(first));
         h->client->detach();
         co_return;
@@ -3558,9 +3559,9 @@ struct FocusRace
             h->client->editTab({ .session = other.session, .kind = proto::TabEditKind::ActivatePane });
         CHECK(delivery == vthost::client::Delivery::Sent);
         // Before the daemon reads the edit: it pushes a layout with the old pane active.
-        h->host.model().setTabTitle(tabId, "racing");
+        vthost::RegistryTabNames { h->host.objects() }.setName(tabId, "racing");
         co_await core::net::testing::waitUntil(&h->loop, [h, race, seen] {
-            return h->layouts.size() > seen + 1 && h->layouts.back().tabs.front().title == "racing"
+            return h->layouts.size() > seen + 1 && h->layouts.back().tabs.front().name == "racing"
                    && h->layouts.back().tabs.front().activePane == race->activated;
         });
         race->pushes.assign(h->layouts.begin() + static_cast<std::ptrdiff_t>(seen), h->layouts.end());

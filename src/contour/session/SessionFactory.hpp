@@ -157,7 +157,7 @@ struct LocalTabPresentation
 {
     vtpty::Pty const* activePty = nullptr; ///< The active pane's pty, which also names the tab; never null.
     vtpty::Pty const* zoomedPty = nullptr; ///< The zoomed pane's pty; null when the tab is not zoomed.
-    std::optional<std::string> title {};   ///< The user's title; std::nullopt for the automatic one.
+    std::string name {};                   ///< The user-given name; empty for none.
     /// The colour the user chose (vtworkspace::TabColorSource::User) as 0xRRGGBB; std::nullopt for none. Not
     /// the effective colour: a profile's or an application's is this client's own, not the user's choice.
     std::optional<uint32_t> color {};
@@ -386,27 +386,40 @@ class SessionFactory
         return RemoteRouting::Local;
     }
 
-    /// Attach mode: renames the DAEMON's workspace @p workspace; the daemon's label change reaches every
+    /// Attach mode: renames the DAEMON's workspace @p workspace; the daemon's name change reaches every
     /// window listing it (WorkspaceMeta).
     /// @param workspace The daemon's workspace id, as a directory lists it.
-    /// @param label The new label; empty clears it.
-    /// @return Routed if handed to the daemon; Refused if the daemon owns the labels and cannot take it (the
-    ///         capability not shared, no connection); Local for a local factory, whose caller labels the
+    /// @param name The new name; empty clears it.
+    /// @return Routed if handed to the daemon; Refused if the daemon owns the names and cannot take it (the
+    ///         capability not shared, no connection); Local for a local factory, whose caller names the
     ///         workspace itself.
     [[nodiscard]] virtual RemoteRouting requestRemoteRenameWorkspace(uint64_t /*workspace*/,
-                                                                     std::string_view /*label*/)
+                                                                     std::string_view /*name*/)
     {
         return RemoteRouting::Local;
     }
 
-    /// Attach mode: sets the title of the DAEMON's tab that holds @p session, whether or not this client
-    /// mirrors it (proto::EditTab, which names a tab by any session it holds); the daemon's change reaches
-    /// every window listing it.
+    /// Attach mode: renames the DAEMON's tab that holds @p session, whether or not this client mirrors it
+    /// (proto::EditTab, which names a tab by any session it holds); the daemon's change reaches every window
+    /// listing it.
     /// @param session A daemon session id of the tab, as a directory lists its panes.
-    /// @param title The new title; empty returns the tab to its automatic title.
+    /// @param name The new name; empty clears it, so the tab's title names it again.
     /// @return As requestRemoteRenameWorkspace().
-    [[nodiscard]] virtual RemoteRouting requestRemoteTabTitle(uint64_t /*session*/,
-                                                              std::string_view /*title*/)
+    [[nodiscard]] virtual RemoteRouting requestRemoteTabRename(uint64_t /*session*/,
+                                                               std::string_view /*name*/)
+    {
+        return RemoteRouting::Local;
+    }
+
+    /// Attach mode: the user renamed the tab whose active pane @p pty backs, which the window has named in
+    /// its own model already. A factory whose tabs are another multiplexer's windows (tmux) renames the
+    /// window there too, or that multiplexer's next rename of its own overwrites the user's; a daemon's
+    /// factory does nothing, as the tab's presentation report carries the name (reportTabPresentation()).
+    /// @param pty The tab's active pane's pty.
+    /// @param name The tab's new name; empty clears it.
+    /// @return Routed when the remote end was told, Local otherwise.
+    [[nodiscard]] virtual RemoteRouting requestRemoteWindowRename(vtpty::Pty const* /*pty*/,
+                                                                  std::string const& /*name*/)
     {
         return RemoteRouting::Local;
     }

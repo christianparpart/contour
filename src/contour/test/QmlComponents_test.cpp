@@ -656,7 +656,7 @@ TEST_CASE("a tab drag carries the node payload (offscreen)", "[contour][gui][qml
     initial.insert("window", QVariant::fromValue(static_cast<QObject*>(&controller)));
     initial.insert("tabIndex", 3);
     initial.insert("tabTitle", QStringLiteral("shell"));
-    initial.insert("tabRawTitle", QString {});
+    initial.insert("tabName", QString {});
     initial.insert("tabColor", QColor {});
     initial.insert("tabActive", false);
     initial.insert("tabPaneCount", 1);
@@ -1155,7 +1155,7 @@ TEST_CASE("A colored TabItem fills with the user color and picks contrasting tex
     initial.insert("window", QVariant::fromValue(static_cast<QObject*>(&controller)));
     initial.insert("tabIndex", 0);
     initial.insert("tabTitle", QStringLiteral("shell"));
-    initial.insert("tabRawTitle", QString {});
+    initial.insert("tabName", QString {});
     initial.insert("tabColor", red);
     initial.insert("tabActive", true);
     initial.insert("tabPaneCount", 1);
@@ -1700,7 +1700,7 @@ TEST_CASE("A zoomed TabItem shows the zoom badge and gives it back its width whe
     initial.insert("window", QVariant::fromValue(static_cast<QObject*>(&controller)));
     initial.insert("tabIndex", 0);
     initial.insert("tabTitle", QStringLiteral("vim"));
-    initial.insert("tabRawTitle", QString {});
+    initial.insert("tabName", QString {});
     initial.insert("tabColor", QColor(Qt::transparent));
     initial.insert("tabActive", true);
     initial.insert("tabPaneCount", 2);
@@ -1755,7 +1755,7 @@ TEST_CASE("A TabItem shows its badge and gives it back its width when there is n
     initial.insert("window", QVariant::fromValue(static_cast<QObject*>(&controller)));
     initial.insert("tabIndex", 0);
     initial.insert("tabTitle", QStringLiteral("cargo"));
-    initial.insert("tabRawTitle", QString {});
+    initial.insert("tabName", QString {});
     initial.insert("tabColor", QColor(Qt::transparent));
     initial.insert("tabActive", false);
     initial.insert("tabPaneCount", 1);
@@ -2069,7 +2069,7 @@ TEST_CASE("A TabItem's tooltip shows a program's status text literally, never as
     initial.insert("window", QVariant::fromValue(static_cast<QObject*>(&controller)));
     initial.insert("tabIndex", 0);
     initial.insert("tabTitle", QStringLiteral("cargo"));
-    initial.insert("tabRawTitle", QString {});
+    initial.insert("tabName", QString {});
     initial.insert("tabColor", QColor(Qt::transparent));
     initial.insert("tabActive", false);
     initial.insert("tabPaneCount", 1);
@@ -2124,7 +2124,7 @@ TEST_CASE("A TabItem paints its OSC 9;4 progress bar only while an operation is 
     initial.insert("window", QVariant::fromValue(static_cast<QObject*>(&controller)));
     initial.insert("tabIndex", 0);
     initial.insert("tabTitle", QStringLiteral("build"));
-    initial.insert("tabRawTitle", QString {});
+    initial.insert("tabName", QString {});
     initial.insert("tabColor", QColor(Qt::transparent));
     initial.insert("tabActive", true);
     initial.insert("tabPaneCount", 1);

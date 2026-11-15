@@ -28,7 +28,7 @@ namespace
         static auto const schema =
             std::string {
                 R"({"type":"object","properties":{)"
-                R"("pane":{"type":"string","description":"Pane: id, label or hex id suffix; required, and never the pane this agent runs in."},)"
+                R"("pane":{"type":"string","description":"Pane: id, name or hex id suffix; required, and never the pane this agent runs in."},)"
                 R"("command":{"type":"string","description":"One command line to run; join several with && or ;."},)"
                 R"("timeoutSeconds":{"type":"integer","minimum":1,"maximum":)"
             }
@@ -70,12 +70,20 @@ namespace
               {},
               {},
               TabScope::AllTabs },
-            { "object_setLabel",
+            { "object_rename",
               ToolKind::Catalog,
-              "object.setLabel",
+              "object.rename",
               ControlGrants::of({ Permission::Write }),
               {},
               {} },
+            // compat(0.9.0): the tool's old name, which also still takes its old `label` key.
+            { .name = "object_setLabel",
+              .kind = ToolKind::Catalog,
+              .catalogMethod = "object.rename",
+              .needs = ControlGrants::of({ Permission::Write }),
+              .summary = "Deprecated, and removed in 0.9.0: use object_rename.",
+              .inputSchema = {},
+              .legacyMethod = "object.setLabel" },
             { "block_list",
               ToolKind::Catalog,
               "block.list",
@@ -100,12 +108,12 @@ namespace
               ControlGrants::of({ Permission::Write }),
               "Split a pane and optionally run a command in the new pane.",
               R"({"type":"object","properties":{)"
-              R"("pane":{"type":"string","description":"Pane: id, label or hex id suffix; defaults to the pane this agent runs in"},)"
+              R"("pane":{"type":"string","description":"Pane: id, name or hex id suffix; defaults to the pane this agent runs in"},)"
               R"("direction":{"type":"string","enum":["right","below"],"description":"Where the new pane goes."},)"
               R"("ratioPercent":{"type":"integer","minimum":1,"maximum":100,"description":"Share of the space, in percent, the new pane takes."},)"
               R"("cwd":{"type":"string","description":"Working directory of the new pane."},)"
               R"("command":{"type":"array","items":{"type":"string"},"description":"Program and arguments to run in the new pane."},)"
-              R"("label":{"type":"string","description":"Label to give the new pane."}},)"
+              R"("name":{"type":"string","description":"Name to give the new pane."}},)"
               R"("required":["direction"],"additionalProperties":false})" },
             {
                 "pane_run",
@@ -127,7 +135,7 @@ namespace
               ControlGrants::of({ Permission::Input }),
               "Type text into a pane without waiting for anything. Refuses the pane this agent runs in.",
               R"({"type":"object","properties":{)"
-              R"("pane":{"type":"string","description":"Pane: id, label or hex id suffix; required, and never the pane this agent runs in."},)"
+              R"("pane":{"type":"string","description":"Pane: id, name or hex id suffix; required, and never the pane this agent runs in."},)"
               R"("text":{"type":"string","description":"The text to type."}},)"
               R"("required":["pane","text"],"additionalProperties":false})" },
             { "tab_create",
@@ -138,7 +146,7 @@ namespace
               R"({"type":"object","properties":{)"
               R"("cwd":{"type":"string","description":"Working directory of the new tab."},)"
               R"("command":{"type":"array","items":{"type":"string"},"description":"Program and arguments to run."},)"
-              R"("label":{"type":"string","description":"Label to give the new tab."}},)"
+              R"("name":{"type":"string","description":"Name to give the new tab."}},)"
               R"("additionalProperties":false})",
               TabScope::AllTabs },
         });
@@ -291,7 +299,9 @@ std::string toolsListJson(std::optional<std::vector<std::string>> const& grants,
             auto const description = vtcontrol::describeApi(row.catalogMethod);
             if (!description)
                 continue;
-            summary = description->summary;
+            // A catalog row's own summary, if any, comes first: an alias row's deprecation.
+            summary = row.summary.empty() ? description->summary
+                                          : std::format("{} {}", row.summary, description->summary);
             auto inlined = detail::inlineSchemaRefs(description->inputSchema.text);
             if (!inlined)
                 continue; // a catalog schema that cannot be made self-contained is not offered

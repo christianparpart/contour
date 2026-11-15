@@ -55,6 +55,8 @@
 #include <vtcontrol/Api.hpp>
 #include <vtcontrol/Events.hpp>
 #include <vtcontrol/Json.hpp>
+#include <vtcontrol/LegacySpelling.hpp>
+#include <vtcontrol/testing/LegacyShapes.hpp>
 #include <vthost/CommandBlockWire.hpp>
 #include <vthost/DaemonControlWire.hpp>
 #include <vthost/FlushPolicy.hpp>
@@ -2116,8 +2118,8 @@ TEST_CASE("an OSC 30 tab-name change is carried in the following incremental del
     auto const* delta = std::get_if<proto::Delta>(&received[4].pdu);
     REQUIRE(delta != nullptr);
     CHECK(delta->snapshot == 0);
-    CHECK(delta->tabNameChanged == 1);
-    CHECK(delta->tabName == "my-tab");
+    CHECK(delta->programTabTitleChanged == 1);
+    CHECK(delta->programTabTitle == "my-tab");
     CHECK(delta->titleChanged == 0); // the window title did not move
 }
 
@@ -2131,7 +2133,7 @@ TEST_CASE("an attach snapshot states the session's OSC 30 tab name", "[vthost][n
     REQUIRE(received.size() == AttachSnapshotFrames);
     auto const* state = std::get_if<proto::SessionState>(&received[2].pdu);
     REQUIRE(state != nullptr);
-    CHECK(state->tabName == "my-tab");
+    CHECK(state->programTabTitle == "my-tab");
 }
 
 namespace
@@ -5761,25 +5763,27 @@ TEST_CASE("a client without ProfileByName keeps the session-settings path", "[vt
     CHECK(unbox<int>(terminal->primaryScreen().grid().maxHistoryLineCount()) == 7000);
 }
 
-TEST_CASE("a title one client sets reaches the other client's layout", "[vthost][native][tab-edits]")
+TEST_CASE("a name one client sets reaches the other client's layout", "[vthost][native][tab-edits]")
 {
     auto h = TwoClientHarness {};
     auto const* tab = h.host.createTab();
     REQUIRE(tab != nullptr);
     auto const session = tab->rootPane()->session().value;
-    auto const editing =
-        proto::ClientHello { .capabilities = proto::CapabilitySet::of({ proto::Capability::TabEdits }) };
+    auto const editing = proto::ClientHello {
+        .capabilities = proto::CapabilitySet::of({ proto::Capability::TabEdits, proto::Capability::Names })
+    };
     auto const watcherHello = encodeRequest({ editing });
     auto const editorRequest = encodeRequest(
         { editing,
-          proto::EditTab { .session = session, .kind = proto::TabEditKind::SetTitle, .title = "build" } });
+          proto::EditTab { .session = session, .kind = proto::TabEditKind::SetName, .name = "build" } });
 
     auto fromOne = std::vector<proto::DecodedFrame> {};
     auto fromTwo = std::vector<proto::DecodedFrame> {};
     auto const titled = [workspace =
                              h.host.workspaceId().value](std::vector<proto::DecodedFrame> const& got) {
         auto const* layout = lastLayoutOf(got, workspace);
-        return layout != nullptr && !layout->tabs.empty() && layout->tabs.front().title == "build";
+        return layout != nullptr && !layout->tabs.empty() && layout->tabs.front().name == "build"
+               && layout->tabs.front().title.empty();
     };
     h.loop.blockOn(
         core::net::testing::allOf(h.serverOne->run(),
@@ -5794,7 +5798,49 @@ TEST_CASE("a title one client sets reaches the other client's layout", "[vthost]
                                   collectUntil(&h.loop, h.secondPair.second.get(), titled, &fromTwo)));
 
     CHECK(titled(fromTwo));
-    CHECK(tab->runtimeTitle() == "build");
+    CHECK(tab->name() == "build");
+}
+
+namespace
+{
+/// @return The first tab of the LayoutState a client gets on attaching with @p hello to a host whose only
+///         tab is named "build".
+[[nodiscard]] proto::WireTab namedTabAsAttachedWith(proto::ClientHello hello)
+{
+    auto h = NativeHarness {};
+    auto const session = newSession(h.host);
+    auto const [workspace, tab, pane] = h.host.model().findSessionLeaf(session);
+    REQUIRE(tab != nullptr);
+    h.host.objects().setName(vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab,
+                                                    .uuid = *h.host.objects().uuidOf(tab->id()) },
+                             "build");
+    auto const received = h.exchange({ proto::DecodedPdu { std::move(hello) } }, 2);
+    auto const layout = std::ranges::find_if(
+        received, [](auto const& frame) { return std::holds_alternative<proto::LayoutState>(frame.pdu); });
+    REQUIRE(layout != received.end());
+    auto const& tabs = std::get<proto::LayoutState>(layout->pdu).tabs;
+    REQUIRE(tabs.size() == 1);
+    return tabs.front();
+}
+} // namespace
+
+TEST_CASE("a window with the names capability gets a tab's name, and no title", "[vthost][native][tab-edits]")
+{
+    auto const tab = namedTabAsAttachedWith(proto::ClientHello {
+        .capabilities =
+            proto::CapabilitySet::of({ proto::Capability::TabEdits, proto::Capability::Names }) });
+    CHECK(tab.name == "build");
+    CHECK(tab.title.empty());
+}
+
+TEST_CASE("a window without the names capability gets a tab's name as its title too",
+          "[vthost][native][tab-edits][compat-0.9.0]")
+{
+    // An old window names a tab by its runtime title, and clears a name only by clearing a title it holds.
+    auto const tab = namedTabAsAttachedWith(
+        proto::ClientHello { .capabilities = proto::CapabilitySet::of({ proto::Capability::TabEdits }) });
+    CHECK(tab.name == "build");
+    CHECK(tab.title == "build");
 }
 
 TEST_CASE("an EditTab from a client without TabEdits is answered Unsupported", "[vthost][native][tab-edits]")
@@ -5805,8 +5851,8 @@ TEST_CASE("an EditTab from a client without TabEdits is answered Unsupported", "
     auto const received =
         h.exchangeUntil({ proto::ClientHello {},
                           proto::EditTab { .session = tab->rootPane()->session().value,
-                                           .kind = proto::TabEditKind::SetTitle,
-                                           .title = "x" } },
+                                           .kind = proto::TabEditKind::SetName,
+                                           .name = "x" } },
                         [](auto const& got) {
                             return std::ranges::any_of(got, [](auto const& frame) {
                                 return std::holds_alternative<proto::Unsupported>(frame.pdu);
@@ -5816,7 +5862,7 @@ TEST_CASE("an EditTab from a client without TabEdits is answered Unsupported", "
         received, [](auto const& frame) { return std::holds_alternative<proto::Unsupported>(frame.pdu); });
     REQUIRE(refused != received.end());
     CHECK(std::get<proto::Unsupported>(refused->pdu).ident == std::to_underlying(proto::PduType::EditTab));
-    CHECK_FALSE(tab->runtimeTitle());
+    CHECK(tab->name().empty());
 }
 
 TEST_CASE("a MergeTabIntoSplit grafts the tab, keeps its sessions running and pushes the merged layout",
@@ -5972,14 +6018,18 @@ namespace
 HarnessOptions controlApiOptions(HarnessOptions options = {})
 {
     options.control = ControlServing::Served;
-    options.services.handshake.capabilities = proto::CapabilitySet::of({ proto::Capability::ControlApi });
+    options.services.handshake.capabilities =
+        proto::CapabilitySet::of({ proto::Capability::ControlApi, proto::Capability::Names });
     return options;
 }
 
-/// @return A Control hello that offers the control API.
-proto::ClientHello controlApiHello()
+/// @return A Control hello that offers the control API, in the spelling @p spelling.
+proto::ClientHello controlApiHello(vtcontrol::Spelling spelling = vtcontrol::Spelling::Names)
 {
-    return proto::ClientHello { .capabilities = proto::CapabilitySet::of({ proto::Capability::ControlApi }),
+    auto capabilities = proto::CapabilitySet::of({ proto::Capability::ControlApi });
+    if (spelling == vtcontrol::Spelling::Names)
+        capabilities.idents.push_back(std::to_underlying(proto::Capability::Names));
+    return proto::ClientHello { .capabilities = std::move(capabilities),
                                 .role = proto::ConnectionRole::Control };
 }
 
@@ -6129,6 +6179,99 @@ TEST_CASE("a ControlRequest is answered with its reply", "[vthost][native][contr
     auto const error = vtcontrol::decodeJson<vtcontrol::ControlError>(unknown.body);
     REQUIRE(error.has_value());
     CHECK(error->code == vtcontrol::ControlErrorCode::MethodNotFound);
+}
+
+using vtcontrol::testing::legacyspelling::LegacyListReply;
+
+TEST_CASE("a client without the names capability is answered in the old spelling",
+          "[vthost][native][control][compat-0.9.0]")
+{
+    auto h = NativeHarness { controlApiOptions() };
+    auto const session = newSession(h.host);
+    auto const [workspace, tabOfSession, pane] = h.host.model().findSessionLeaf(session);
+    REQUIRE(tabOfSession != nullptr);
+    auto const tab = vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab,
+                                            .uuid = *h.host.objects().uuidOf(tabOfSession->id()) };
+    h.host.objects().setName(tab, "build");
+    auto const got =
+        h.exchange({ controlApiHello(vtcontrol::Spelling::Legacy),
+                     controlCall(1, "workspace.list"),
+                     controlCall(2, "object.setLabel", R"({"object":"tab:build","label":"release"})"),
+                     controlCall(3, "workspace.list") },
+                   4);
+    REQUIRE(got.size() == 4);
+    REQUIRE(isControlReply(got[1]));
+    auto const& first = std::get<proto::ControlReply>(got[1].pdu);
+    REQUIRE(first.outcome == proto::ControlOutcome::Ok);
+    // Strict, as an old window decodes it: a `name` key would be an unknown key.
+    auto const legacy = vtcontrol::decodeJson<LegacyListReply>(first.body);
+    REQUIRE(legacy.has_value());
+    REQUIRE(legacy->workspaces.size() == 1);
+    REQUIRE(legacy->workspaces[0].tabs.size() == 1);
+    CHECK(legacy->workspaces[0].tabs[0].label == "build");
+
+    // The old setter is read as object.rename.
+    REQUIRE(isControlReply(got[2]));
+    CHECK(std::get<proto::ControlReply>(got[2].pdu).outcome == proto::ControlOutcome::Ok);
+    auto const renamed =
+        vtcontrol::decodeJson<LegacyListReply>(std::get<proto::ControlReply>(got[3].pdu).body);
+    REQUIRE(renamed.has_value());
+    CHECK(renamed->workspaces[0].tabs[0].label == "release");
+    CHECK(h.host.objects().nameOf(tab) == "release");
+}
+
+TEST_CASE("a subscriber without the names capability hears a workspace's rename in the old spelling only",
+          "[vthost][native][control][compat-0.9.0]")
+{
+    auto h = NativeHarness { controlApiOptions() };
+    auto const session = newSession(h.host);
+    auto const [workspace, tab, pane] = h.host.model().findSessionLeaf(session);
+    REQUIRE(tab != nullptr);
+    auto const workspaceId = vtcontrol::toString(vtcontrol::ObjectRef {
+        .kind = vtcontrol::ObjectKind::Workspace, .uuid = *h.host.objects().uuidOf(workspace->id()) });
+    auto const tabId = vtcontrol::toString(vtcontrol::ObjectRef {
+        .kind = vtcontrol::ObjectKind::Tab, .uuid = *h.host.objects().uuidOf(tab->id()) });
+
+    auto const repliedTo = [](uint64_t requestId) {
+        return [requestId](std::vector<proto::DecodedFrame> const& got) {
+            return std::ranges::any_of(got, [requestId](proto::DecodedFrame const& frame) {
+                auto const* reply = std::get_if<proto::ControlReply>(&frame.pdu);
+                return reply != nullptr && reply->requestId == requestId;
+            });
+        };
+    };
+    auto const got = h.exchangeUntil(
+        { controlApiHello(vtcontrol::Spelling::Legacy),
+          controlCall(1, "events.subscribe", R"({"kinds":["workspace.labelChanged"]})"),
+          controlCall(2, "object.setLabel", std::format(R"({{"object":"{}","label":"ops"}})", workspaceId)),
+          controlCall(3, "object.setLabel", std::format(R"({{"object":"{}","label":"build"}})", tabId)),
+          // Answered after every event the renames published: what arrived before it is all there is.
+          controlCall(4, "daemon.info") },
+        repliedTo(4));
+
+    auto events = std::vector<std::string> {};
+    for (auto const& frame: got)
+        if (auto const* event = std::get_if<proto::ControlEvent>(&frame.pdu))
+            events.push_back(event->event);
+    REQUIRE(events.size() == 1);
+    auto const envelope = vtcontrol::decodeJson<vtcontrol::EventEnvelope>(events.front());
+    REQUIRE(envelope.has_value());
+    CHECK(envelope->type == "workspace.labelChanged");
+    CHECK(envelope->workspace == workspaceId);
+    CHECK(envelope->tab.empty());
+    CHECK(envelope->payload.text == R"({"label":"ops"})");
+}
+
+TEST_CASE("a client with the names capability is answered with name keys", "[vthost][native][control]")
+{
+    auto h = NativeHarness { controlApiOptions() };
+    std::ignore = newSession(h.host);
+    auto const got = h.exchange({ controlApiHello(), controlCall(1, "workspace.list") }, 2);
+    REQUIRE(got.size() == 2);
+    REQUIRE(isControlReply(got[1]));
+    auto const body = std::get<proto::ControlReply>(got[1].pdu).body;
+    CHECK(vtcontrol::decodeJson<vtcontrol::ListReply>(body).has_value());
+    CHECK_FALSE(vtcontrol::decodeJson<LegacyListReply>(body).has_value());
 }
 
 TEST_CASE("without the ControlApi capability a ControlRequest is Unsupported", "[vthost][native][control]")
@@ -9797,7 +9940,7 @@ TEST_CASE("a client with WorkspaceMeta gets one WorkspaceMeta per workspace afte
           "[vthost][native][workspace-meta]")
 {
     auto f = MetaFixture {};
-    f.flush.h.host.objects().setLabel(f.refOf(f.second), "ops");
+    f.flush.h.host.objects().setName(f.refOf(f.second), "ops");
     auto& client = f.attachSelecting(f.first);
     f.settle();
 
@@ -9806,13 +9949,13 @@ TEST_CASE("a client with WorkspaceMeta gets one WorkspaceMeta per workspace afte
     CHECK(metas[0]
           == proto::WorkspaceMeta { .workspace = f.first,
                                     .controlId = f.refOf(f.first).uuid.bytes,
-                                    .label = std::string {},
+                                    .name = std::string {},
                                     .git = std::nullopt,
                                     .position = 0 });
     CHECK(metas[1]
           == proto::WorkspaceMeta { .workspace = f.second,
                                     .controlId = f.refOf(f.second).uuid.bytes,
-                                    .label = "ops",
+                                    .name = "ops",
                                     .git = std::nullopt,
                                     .position = 1 });
     // Each comes after its workspace's layout, so the client knows the workspace by then.
@@ -9835,7 +9978,7 @@ TEST_CASE("a client with WorkspaceMeta gets one WorkspaceMeta per workspace afte
         REQUIRE(created.size() == 1);
         CHECK(created[0].workspace == third);
         CHECK(created[0].controlId == f.refOf(third).uuid.bytes);
-        CHECK(created[0].label == std::optional<std::string> { "" });
+        CHECK(created[0].name == std::optional<std::string> { "" });
         CHECK(created[0].position == std::optional<uint32_t> { 2 });
     }
 }
@@ -10042,13 +10185,13 @@ TEST_CASE("a client's label for a workspace is every client's", "[vthost][native
     auto const skipOther = other.received.size();
 
     NativeSessionFlushTester::serveWorkspaceVerb(
-        *one.session, proto::SetWorkspaceLabel { .workspace = f.second, .label = "ops" });
+        *one.session, proto::SetWorkspaceName { .workspace = f.second, .name = "ops" });
     f.settle();
 
-    CHECK(f.flush.h.host.objects().labelOf(f.refOf(f.second)) == "ops");
+    CHECK(f.flush.h.host.objects().nameOf(f.refOf(f.second)) == "ops");
     auto const metas = MetaFixture::metasOf(other, skipOther);
     REQUIRE(metas.size() == 1);
-    CHECK(metas[0].label == std::optional<std::string> { "ops" });
+    CHECK(metas[0].name == std::optional<std::string> { "ops" });
 }
 
 TEST_CASE("workspace verbs are refused without the capability", "[vthost][native][workspace-meta]")
@@ -10059,9 +10202,9 @@ TEST_CASE("workspace verbs are refused without the capability", "[vthost][native
     NativeSessionFlushTester::serveWorkspaceVerb(
         *client.session, proto::MoveWorkspace { .workspace = f.first, .toPosition = 1 });
     NativeSessionFlushTester::serveWorkspaceVerb(
-        *client.session, proto::SetWorkspaceLabel { .workspace = f.first, .label = "x" });
+        *client.session, proto::SetWorkspaceName { .workspace = f.first, .name = "x" });
     CHECK(f.flush.h.host.model().workspaceAt(0)->id().value == f.first);
-    CHECK(f.flush.h.host.objects().labelOf(f.refOf(f.first)).empty());
+    CHECK(f.flush.h.host.objects().nameOf(f.refOf(f.first)).empty());
 }
 
 TEST_CASE("a label change reaches every client", "[vthost][native][workspace-meta]")
@@ -10073,11 +10216,11 @@ TEST_CASE("a label change reaches every client", "[vthost][native][workspace-met
     auto const skipOne = one.received.size();
     auto const skipOther = other.received.size();
 
-    f.flush.h.host.objects().setLabel(f.refOf(f.second), "build");
-    f.flush.h.host.objects().setLabel(f.refOf(f.second), "");
-    // A tab's label is no workspace's.
+    f.flush.h.host.objects().setName(f.refOf(f.second), "build");
+    f.flush.h.host.objects().setName(f.refOf(f.second), "");
+    // A tab's name is no workspace's.
     auto const* tab = f.flush.h.host.model().workspace(vtworkspace::WorkspaceId { f.first })->activeTab();
-    f.flush.h.host.objects().setLabel(
+    f.flush.h.host.objects().setName(
         vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab,
                                .uuid = *f.flush.h.host.objects().uuidOf(tab->id()) },
         "tab");
@@ -10086,11 +10229,11 @@ TEST_CASE("a label change reaches every client", "[vthost][native][workspace-met
     auto const expected = std::vector {
         proto::WorkspaceMeta { .workspace = f.second,
                                .controlId = f.refOf(f.second).uuid.bytes,
-                               .label = "build",
+                               .name = "build",
                                .git = std::nullopt },
         proto::WorkspaceMeta { .workspace = f.second,
                                .controlId = f.refOf(f.second).uuid.bytes,
-                               .label = std::string {},
+                               .name = std::string {},
                                .git = std::nullopt },
     };
     CHECK(MetaFixture::metasOf(one, skipOne) == expected);
@@ -10106,35 +10249,35 @@ TEST_CASE("a tab's label reaches every client in its workspace's layout", "[vtho
     auto const* tab = f.flush.h.host.model().workspace(vtworkspace::WorkspaceId { f.first })->activeTab();
     auto const ref = vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab,
                                             .uuid = *f.flush.h.host.objects().uuidOf(tab->id()) };
-    // The label the last layout of the first workspace a client received names the tab by.
-    auto const lastLabel = [&](FlushClient const& client) -> std::optional<std::string> {
-        auto label = std::optional<std::string> {};
+    // The name the last layout of the first workspace a client received names the tab by.
+    auto const lastName = [&](FlushClient const& client) -> std::optional<std::string> {
+        auto name = std::optional<std::string> {};
         for (auto const& frame: client.received)
             if (auto const* layout = std::get_if<proto::LayoutState>(&frame.pdu);
                 layout != nullptr && layout->workspace == f.first)
                 for (auto const& wireTab: layout->tabs)
                     if (wireTab.tabId == tab->id().value)
-                        label = wireTab.label;
-        return label;
+                        name = wireTab.name;
+        return name;
     };
-    REQUIRE(lastLabel(one) == std::optional<std::string> { "" });
+    REQUIRE(lastName(one) == std::optional<std::string> { "" });
 
-    f.flush.h.host.objects().setLabel(ref, "build");
+    f.flush.h.host.objects().setName(ref, "build");
     f.settle();
-    CHECK(lastLabel(one) == std::optional<std::string> { "build" });
-    CHECK(lastLabel(other) == std::optional<std::string> { "build" });
+    CHECK(lastName(one) == std::optional<std::string> { "build" });
+    CHECK(lastName(other) == std::optional<std::string> { "build" });
 
-    f.flush.h.host.objects().setLabel(ref, "");
+    f.flush.h.host.objects().setName(ref, "");
     f.settle();
-    CHECK(lastLabel(one) == std::optional<std::string> { "" });
-    CHECK(lastLabel(other) == std::optional<std::string> { "" });
+    CHECK(lastName(one) == std::optional<std::string> { "" });
+    CHECK(lastName(other) == std::optional<std::string> { "" });
 }
 
 TEST_CASE("a client without the capability gets none", "[vthost][native][workspace-meta]")
 {
     auto f = MetaFixture {};
     auto& client = f.attachSelecting(f.first, OffersMeta::No);
-    f.flush.h.host.objects().setLabel(f.refOf(f.first), "ops");
+    f.flush.h.host.objects().setName(f.refOf(f.first), "ops");
     client.session->sendWorkspaceGit(f.first,
                                      proto::WireGitInfo { .branch = "main",
                                                           .kind = proto::GitHeadKindWire::Branch,
@@ -10191,7 +10334,7 @@ TEST_CASE("a git change reaches a client", "[vthost][native][workspace-meta][git
     CHECK(metas[0]
           == proto::WorkspaceMeta { .workspace = f.second,
                                     .controlId = f.refOf(f.second).uuid.bytes,
-                                    .label = std::nullopt,
+                                    .name = std::nullopt,
                                     .git = proto::WireGitInfo { .branch = "abc1234",
                                                                 .kind = proto::GitHeadKindWire::Detached,
                                                                 .ahead = 2,
@@ -10227,7 +10370,7 @@ TEST_CASE("only a following client is told the git state", "[vthost][native][wor
                 { proto::Capability::AttachIntent, proto::Capability::WorkspaceMeta }),
             .attachIntent = { .kind = proto::AttachIntentKind::Select, .workspace = f.first } });
     f.settle();
-    REQUIRE_FALSE(MetaFixture::metasOf(plain).empty()); // labels and control ids it is told
+    REQUIRE_FALSE(MetaFixture::metasOf(plain).empty()); // names and control ids it is told
     auto const skip = plain.received.size();
 
     plain.session->workspaceGitChanged(vthost::WorkspaceGitChangedSignal {

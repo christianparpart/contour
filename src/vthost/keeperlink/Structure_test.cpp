@@ -156,7 +156,7 @@ struct TabWatcher final: vtworkspace::ModelEvents
     structure.sessions.push_back(handover::HandoverSession {
         .id = vtworkspace::SessionId { 7 },
         .uuid = {},
-        .label = "seven",
+        .name = "seven",
         .profileName = "main",
         .origin = vthost::SettingsOrigin::Client,
         .statedSettings = {},

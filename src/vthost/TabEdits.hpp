@@ -3,12 +3,15 @@
 
 /// @file
 /// What a client's EditTab does to the daemon's model: one row per TabEditKind, so a ninth kind is a row
-/// and an enumerator. Pure over the model, so every row is testable without a socket.
+/// and an enumerator. Pure over the model and where the tabs' names are held, so every row is testable
+/// without a socket.
 
 #include <cstdint>
 #include <expected>
+#include <string>
 #include <string_view>
 
+#include <vthost/ObjectRegistry.hpp>
 #include <vthost/proto/Pdu.hpp>
 #include <vtworkspace/SessionModel.hpp>
 
@@ -41,12 +44,59 @@ enum class TabEditEffect : uint8_t
     Changed = 1,   ///< The model took the value, and its observers were told.
 };
 
-/// Applies @p edit to @p model. Each kind compares before it mutates, so a client re-asserting state it
-/// shares with the model costs no event, and so no layout push to any client.
+/// Where a tab's name is held, which SetName and ClearName change: the daemon's object registry, which
+/// addresses a tab by it, or a window's own model.
+class TabNames
+{
+  public:
+    virtual ~TabNames() = default;
+
+    /// @param tab The tab.
+    /// @return Its name; empty for none.
+    [[nodiscard]] virtual std::string nameOf(vtworkspace::TabId tab) const = 0;
+
+    /// Names @p tab; an empty name clears it. Tells whoever watches the name, only when it changed.
+    /// @param tab The tab.
+    /// @param name The name.
+    virtual void setName(vtworkspace::TabId tab, std::string name) = 0;
+};
+
+/// The names a model holds itself (vtworkspace::Tab::name()), as a window's model does.
+class ModelTabNames final: public TabNames
+{
+  public:
+    /// @param model The model, which outlives this.
+    explicit ModelTabNames(vtworkspace::SessionModel& model) noexcept: _model { &model } {}
+
+    [[nodiscard]] std::string nameOf(vtworkspace::TabId tab) const override;
+    void setName(vtworkspace::TabId tab, std::string name) override;
+
+  private:
+    vtworkspace::SessionModel* _model;
+};
+
+/// The names a daemon's object registry holds, where a tab is addressed by its name.
+class RegistryTabNames final: public TabNames
+{
+  public:
+    /// @param objects The registry, which outlives this.
+    explicit RegistryTabNames(ObjectRegistry& objects) noexcept: _objects { &objects } {}
+
+    [[nodiscard]] std::string nameOf(vtworkspace::TabId tab) const override;
+    void setName(vtworkspace::TabId tab, std::string name) override;
+
+  private:
+    ObjectRegistry* _objects;
+};
+
+/// Applies @p edit to @p model, and a name to @p names. Each kind compares before it mutates, so a client
+/// re-asserting state it shares with the model costs no event, and so no layout push to any client.
 /// @param model The daemon's model.
+/// @param names Where the tabs' names are held.
 /// @param edit The client's edit.
 /// @return Whether the model moved, or why the edit was refused.
 [[nodiscard]] std::expected<TabEditEffect, TabEditError> applyTabEdit(vtworkspace::SessionModel& model,
+                                                                      TabNames& names,
                                                                       proto::EditTab const& edit);
 
 } // namespace vthost

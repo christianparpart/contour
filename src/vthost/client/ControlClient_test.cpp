@@ -37,6 +37,7 @@
 #include <vtcontrol/Api.hpp>
 #include <vtcontrol/Events.hpp>
 #include <vtcontrol/Json.hpp>
+#include <vtcontrol/LegacySpelling.hpp>
 #include <vthost/KeyAuth.hpp>
 #include <vthost/KnownDaemons.hpp>
 #include <vthost/NativeSession.hpp>
@@ -62,8 +63,9 @@ struct ControlClientHarness
 {
     /// @param handshake What the daemon's handshake admits; it offers the control API unless told otherwise.
     explicit ControlClientHarness(vthost::HandshakePolicy handshake =
-                                      vthost::HandshakePolicy { .capabilities = proto::CapabilitySet::of(
-                                                                    { proto::Capability::ControlApi }) }):
+                                      vthost::HandshakePolicy {
+                                          .capabilities = proto::CapabilitySet::of(
+                                              { proto::Capability::ControlApi, proto::Capability::Names }) }):
         session { std::make_unique<vthost::NativeSession>(
             loop,
             host,
@@ -160,6 +162,52 @@ Task<void> daemonWithoutControlApi(core::net::ISocket* socket, std::vector<proto
         received->push_back(*frame);
 }
 
+/// Writes @p pdu to @p socket under @p serial.
+Task<void> sendPdu(core::net::ISocket* socket, uint64_t serial, proto::DecodedPdu pdu)
+{
+    auto writer = proto::Writer {};
+    proto::encodePdu(writer, serial, pdu);
+    auto const bytes = writer.view();
+    std::ignore = co_await socket->write(std::span { bytes.data(), bytes.size() });
+}
+
+/// compat(0.9.0): a daemon of a release before the `names` capability: it shares the control API, answers
+/// every ControlRequest with @p reply, an event in the old spelling first, and records what it was sent.
+Task<void> daemonWithoutNames(core::net::ISocket* socket,
+                              std::string reply,
+                              std::vector<proto::DecodedFrame>* received)
+{
+    auto buffer = std::vector<std::byte> {};
+    auto hello = co_await readOne(socket, &buffer);
+    REQUIRE(hello);
+    co_await sendPdu(socket,
+                     hello->serial,
+                     proto::DecodedPdu { proto::ServerHello {
+                         .agreedVersion = proto::SupportedVersions.max,
+                         .versions = proto::SupportedVersions,
+                         .capabilities = proto::CapabilitySet::of({ proto::Capability::ControlApi }),
+                         .hostname = "devbox" } });
+    while (auto frame = co_await readOne(socket, &buffer))
+    {
+        received->push_back(*frame);
+        auto const* request = std::get_if<proto::ControlRequest>(&frame->pdu);
+        if (request == nullptr)
+            continue;
+        co_await sendPdu(
+            socket,
+            0,
+            proto::DecodedPdu { proto::ControlEvent {
+                .subscription = 1,
+                .event =
+                    R"({"type":"workspace.labelChanged","workspace":"workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab","tab":"","pane":"","payload":{"label":"ops"}})" } });
+        co_await sendPdu(socket,
+                         frame->serial,
+                         proto::DecodedPdu { proto::ControlReply { .requestId = request->requestId,
+                                                                   .outcome = proto::ControlOutcome::Ok,
+                                                                   .body = reply } });
+    }
+}
+
 /// A transport whose every attempt fails the same way, and that counts them.
 class CountingTransport final: public vthost::ITransportFactory
 {
@@ -199,6 +247,105 @@ TEST_CASE("ControlClient calls a method", "[vthost][client][control]")
     REQUIRE(list);
     REQUIRE(list->workspaces.size() == 1);
     CHECK(list->workspaces[0].tabs.size() == 1);
+}
+
+namespace
+{
+/// Handshakes, calls @p method once, then takes the event that arrived meanwhile.
+Task<void> callAgainstOldDaemon(ControlClient* client,
+                                std::string method,
+                                std::string params,
+                                std::expected<std::string, ControlClientError>* reply,
+                                std::expected<std::string, ControlClientError>* event,
+                                std::optional<vtcontrol::Spelling>* spelling)
+{
+    auto const handshaken = co_await client->handshake();
+    REQUIRE(handshaken);
+    *spelling = client->spelling();
+    *reply = co_await client->call(std::move(method), std::move(params), {});
+    *event = co_await client->nextEvent();
+    client->close();
+}
+
+struct OldDaemonExchange
+{
+    std::vector<proto::DecodedFrame> received;
+    std::expected<std::string, ControlClientError> reply;
+    std::expected<std::string, ControlClientError> event;
+    std::optional<vtcontrol::Spelling> spelling;
+};
+
+/// Runs one call against daemonWithoutNames(), which answers it with @p reply.
+OldDaemonExchange callOldDaemon(std::string method, std::string params, std::string reply)
+{
+    auto backend = core::net::makeDefaultBackend();
+    auto loop = core::net::EventLoop { *backend };
+    auto pair = *core::net::testing::makeSocketPair(loop);
+    auto client = ControlClient { loop,
+                                  std::make_unique<vthost::Connection>(vthost::Connection {
+                                      .lifetime = {}, .socket = std::move(pair.second), .token = {} }) };
+    auto exchange = OldDaemonExchange {};
+    loop.blockOn(
+        core::net::testing::allOf(daemonWithoutNames(pair.first.get(), std::move(reply), &exchange.received),
+                                  callAgainstOldDaemon(&client,
+                                                       std::move(method),
+                                                       std::move(params),
+                                                       &exchange.reply,
+                                                       &exchange.event,
+                                                       &exchange.spelling)));
+    return exchange;
+}
+} // namespace
+
+TEST_CASE("a daemon without the names capability is spoken to in the old spelling",
+          "[vthost][client][control][compat-0.9.0]")
+{
+    auto const exchange = callOldDaemon("object.rename", R"({"object":"pane:logs","name":"tail"})", "{}");
+    CHECK(exchange.spelling == vtcontrol::Spelling::Legacy);
+    auto const request = std::ranges::find_if(exchange.received, [](proto::DecodedFrame const& frame) {
+        return std::holds_alternative<proto::ControlRequest>(frame.pdu);
+    });
+    REQUIRE(request != exchange.received.end());
+    auto const& sent = std::get<proto::ControlRequest>(request->pdu);
+    CHECK(sent.method == "object.setLabel");
+    CHECK(sent.params == R"({"object":"pane:logs","label":"tail"})");
+    CHECK(exchange.reply == std::string { "{}" });
+    // Its event reaches the caller in the new spelling, the workspace it names its object.
+    REQUIRE(exchange.event);
+    auto const event = vtcontrol::decodeEvent(*exchange.event);
+    REQUIRE(event);
+    auto const* renamed = std::get_if<vtcontrol::ObjectRenamedEvent>(&event->payload);
+    REQUIRE(renamed != nullptr);
+    CHECK(renamed->object == "workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab");
+    CHECK(renamed->name == "ops");
+}
+
+TEST_CASE("an old daemon's listing reaches the caller with name keys",
+          "[vthost][client][control][compat-0.9.0]")
+{
+    auto const exchange = callOldDaemon(
+        "workspace.list",
+        "{}",
+        R"({"workspaces":[{"id":"workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab","label":"ops","position":1,"tabs":[]}]})");
+    REQUIRE(exchange.reply);
+    auto const list = vtcontrol::decodeJson<vtcontrol::ListReply>(*exchange.reply);
+    REQUIRE(list);
+    REQUIRE(list->workspaces.size() == 1);
+    CHECK(list->workspaces[0].name == "ops");
+}
+
+TEST_CASE("a daemon with the names capability is spoken to as it is", "[vthost][client][control]")
+{
+    auto h = ControlClientHarness {};
+    std::ignore = h.host.createTab();
+    auto spelling = std::optional<vtcontrol::Spelling> {};
+    h.run([](ControlClientHarness* h, std::optional<vtcontrol::Spelling>* out) -> Task<void> {
+        auto const handshaken = co_await h->client.handshake();
+        REQUIRE(handshaken);
+        *out = h->client.spelling();
+        h->client.close();
+    }(&h, &spelling));
+    CHECK(spelling == vtcontrol::Spelling::Names);
 }
 
 TEST_CASE("a remote error surfaces as ControlFailure::Remote", "[vthost][client][control]")
@@ -316,15 +463,34 @@ TEST_CASE("resolveControlEndpoint precedence", "[vthost][client][control]")
     CHECK(describe({ .daemon = "/run/user/1000/x:1" }, empty) == "unix:/run/user/1000/x:1");
     CHECK(describe({ .daemon = "./x:1" }, empty) == "unix:./x:1");
 
-    SECTION("a label names the local daemon of that label, over the environment")
+    SECTION("a daemon's name picks the local daemon of that name, over the environment")
     {
-        auto const labelled = [&](std::string_view label) {
+        auto const named = [&](std::string_view name) {
             return std::format(
-                "unix:{}", core::pathToUtf8(vthost::muxSocketPath(vthost::socketLabelOf(label), {}, empty)));
+                "unix:{}",
+                core::pathToUtf8(vthost::muxSocketPath(vthost::daemonNameFromOption(name), {}, empty)));
         };
-        CHECK(describe({ .label = "work" }, empty) == labelled("work"));
-        CHECK(describe({ .label = "work" }, withDaemon) == labelled("work"));
-        CHECK(describe({ .label = "work" }, empty) != describe({}, empty));
+        auto const work =
+            vthost::client::LocalDaemons { .contains = [](std::string_view name) { return name == "work"; } };
+        CHECK(describe({ .daemon = "name:work" }, empty) == named("work"));
+        CHECK(describe({ .daemon = "name:work" }, withDaemon) == named("work"));
+        CHECK(describe({ .daemon = "work", .localDaemons = work }, empty) == named("work"));
+        CHECK(describe({ .daemon = "name:work" }, empty) != describe({}, empty));
+    }
+    SECTION("a word naming both a local daemon and a saved host is refused, naming both spellings")
+    {
+        auto const everything = [](std::string_view) {
+            return true;
+        };
+        auto const resolved =
+            vthost::client::resolveControlEndpoint({ .daemon = "work",
+                                                     .localDaemons = { .contains = everything },
+                                                     .savedHosts = { .contains = everything } },
+                                                   empty);
+        REQUIRE_FALSE(resolved);
+        CHECK(resolved.error().failure == ControlFailure::Misconfigured);
+        CHECK(resolved.error().message.contains("--daemon name:work"));
+        CHECK(resolved.error().message.contains("--daemon host:work"));
     }
     SECTION("a TCP endpoint carries the CA, and so is verified")
     {

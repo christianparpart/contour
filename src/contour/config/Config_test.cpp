@@ -616,12 +616,12 @@ TEST_CASE("Config: a layout with plain leaf tabs parses", "[config][layout]")
 layouts:
     work:
         tabs:
-            - title: "editor"
+            - name: "editor"
               color: "#d75f00"
               directory: "/tmp"
               command: "nvim"
               arguments: ["."]
-            - title: "claude"
+            - name: "claude"
               command: "claude"
 )"sv);
 
@@ -631,7 +631,7 @@ layouts:
     REQUIRE(work.tabs.size() == 2);
 
     auto const& t0 = work.tabs[0];
-    CHECK(t0.title == "editor");
+    CHECK(t0.name == "editor");
     REQUIRE(t0.color.has_value());
     CHECK(*t0.color == vtbackend::RGBColor { "#d75f00" });
     CHECK(t0.root.isLeaf());
@@ -643,10 +643,43 @@ layouts:
     CHECK(*t0.root.directory == "/tmp");
 
     auto const& t1 = work.tabs[1];
-    CHECK(t1.title == "claude");
+    CHECK(t1.name == "claude");
     CHECK(t1.root.isLeaf());
     CHECK(*t1.root.command == "claude");
     CHECK_FALSE(t1.root.directory.has_value());
+}
+
+TEST_CASE("Config: a layout tab's name: loads without a warning", "[config][layout]")
+{
+    QTemporaryDir dir;
+    auto capture = core::log::ScopedCapture { "error" };
+    auto const config = loadFromYaml(dir, R"(
+layouts:
+    work:
+        tabs:
+            - name: "notes"
+              command: "nvim"
+)"sv);
+    CHECK(config.layouts.value().at("work").tabs.at(0).name == "notes");
+    INFO("captured error log:\n" << capture.text());
+    CHECK_FALSE(capture.contains("name:"));
+}
+
+TEST_CASE("Config: a layout tab's old title: loads as its name, with a warning",
+          "[config][layout][compat-0.9.0]")
+{
+    QTemporaryDir dir;
+    auto capture = core::log::ScopedCapture { "error" };
+    auto const config = loadFromYaml(dir, R"(
+layouts:
+    work:
+        tabs:
+            - title: "notes"
+              command: "nvim"
+)"sv);
+    CHECK(config.layouts.value().at("work").tabs.at(0).name == "notes");
+    INFO("captured error log:\n" << capture.text());
+    CHECK(capture.count("name:") == 1);
 }
 
 TEST_CASE("Config: a layout directory with non-ASCII characters loads losslessly", "[config][layout]")
@@ -660,7 +693,7 @@ TEST_CASE("Config: a layout directory with non-ASCII characters loads losslessly
 layouts:
     work:
         tabs:
-            - title: "editor"
+            - name: "editor"
               directory: "/tmp/naïve project"
               command: "nvim"
 )"sv);
@@ -715,7 +748,7 @@ TEST_CASE("Config: a layout tab with recursive splits parses", "[config][layout]
 layouts:
     dev:
         tabs:
-            - title: "servers"
+            - name: "servers"
               split:
                 orientation: vertical
                 panes:
@@ -984,6 +1017,40 @@ hosts:
     }
 }
 
+TEST_CASE("Config: resolveHost of a missing configuration knows no host, and creates no file",
+          "[config][hosts]")
+{
+    QTemporaryDir const dir;
+    auto const path = std::filesystem::path(dir.path().toStdU16String()) / "contour.yml";
+    auto const host = contour::config::resolveHost(path.string(), "home");
+    REQUIRE_FALSE(host.has_value());
+    CHECK(host.error().contains("no host named 'home'"));
+    CHECK_FALSE(std::filesystem::exists(path));
+
+    // An ad-hoc URL needs no configuration either way.
+    CHECK(contour::config::resolveHost(path.string(), "ssh://other").has_value());
+    CHECK_FALSE(std::filesystem::exists(path));
+}
+
+TEST_CASE("Config: resolveHost finds a host side file beside a missing configuration, and creates nothing",
+          "[config][hosts]")
+{
+    QTemporaryDir dir;
+    writeSideFile(dir, "hosts/box.yml", "url: ssh://me@box\n");
+    auto const path = std::filesystem::path(dir.path().toStdU16String()) / "contour.yml";
+    auto const host = contour::config::resolveHost(path.string(), "box");
+    REQUIRE(host.has_value());
+    CHECK(host->url.host == "box");
+    CHECK(host->url.user == "me");
+    CHECK_FALSE(std::filesystem::exists(path));
+
+    // A name no side file has lists the ones there are.
+    auto const unknown = contour::config::resolveHost(path.string(), "home");
+    REQUIRE_FALSE(unknown.has_value());
+    CHECK(unknown.error().contains("(saved hosts: box)"));
+    CHECK_FALSE(std::filesystem::exists(path));
+}
+
 TEST_CASE("Config: resolveHost says (none) when nothing is saved", "[config][hosts]")
 {
     QTemporaryDir dir;
@@ -1130,10 +1197,10 @@ TEST_CASE("Config: an invalid tab color is ignored instead of turning black", "[
 layouts:
     work:
         tabs:
-            - title: "named"
+            - name: "named"
               color: "green"
               command: "a"
-            - title: "hex"
+            - name: "hex"
               color: "#00ff00"
               command: "b"
 )"sv);

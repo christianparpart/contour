@@ -21,10 +21,10 @@ namespace
     using vthost::proto::SwitchDaemonKind;
 
     /// @return A local daemon's address, with @p workspace.
-    [[nodiscard]] session::SwitchTarget labelled(std::string label, session::WorkspaceTarget workspace = {})
+    [[nodiscard]] session::SwitchTarget namedDaemon(std::string name, session::WorkspaceTarget workspace = {})
     {
-        return session::SwitchTarget { .kind = SwitchDaemonKind::Label,
-                                       .daemon = std::move(label),
+        return session::SwitchTarget { .kind = SwitchDaemonKind::Name,
+                                       .daemon = std::move(name),
                                        .workspace = std::move(workspace) };
     }
 
@@ -202,7 +202,7 @@ void SwitcherController::open(SwitcherOpening opening)
     _selectionOrigin = SwitcherSelectionOrigin::Opening;
     _returns.clear();
     _pendingListings.clear();
-    _labelFailure.clear();
+    _nameFailure.clear();
     _rowMenu = {};
     dropStart();
 
@@ -298,19 +298,19 @@ void SwitcherController::mergeLocalDaemons(std::vector<cli::DiscoveredDaemon> co
     auto const keep = selectedIdentity();
     auto const own = _daemons[_windowDaemon].address;
     auto merged = std::vector<SwitcherDaemon> {};
-    // The window's own daemon first (an unnameable one, or its label), so its workspaces lead every tie;
-    // then every other label discovery found, in its order (`default` first); the saved hosts last.
+    // The window's own daemon first (an unnameable one, or its name), so its workspaces lead every tie;
+    // then every other name discovery found, in its order (`default` first); the saved hosts last.
     for (auto& daemon: _daemons)
         if (daemon.address.kind == SwitchDaemonKind::Same
-            || (isAt(daemon, own) && own.kind == SwitchDaemonKind::Label))
+            || (isAt(daemon, own) && own.kind == SwitchDaemonKind::Name))
         {
             auto taken = std::exchange(daemon, SwitcherDaemon {});
             merged.push_back(std::move(taken));
         }
     for (auto const& each: found)
     {
-        auto const address = labelled(each.label);
-        if (own.kind == SwitchDaemonKind::Label && own.daemon == each.label)
+        auto const address = namedDaemon(each.label);
+        if (own.kind == SwitchDaemonKind::Name && own.daemon == each.label)
             continue; // listed first already
         if (auto const existing =
                 std::ranges::find_if(_daemons, [&](auto const& known) { return isAt(known, address); });
@@ -329,7 +329,7 @@ void SwitcherController::mergeLocalDaemons(std::vector<cli::DiscoveredDaemon> co
                                               .workspaces = {} });
     }
     for (auto& daemon: _daemons)
-        if (daemon.address.kind == SwitchDaemonKind::Label && !daemon.address.daemon.empty())
+        if (daemon.address.kind == SwitchDaemonKind::Name && !daemon.address.daemon.empty())
             merged.push_back(std::move(daemon));
     for (auto& daemon: _daemons)
         if (daemon.address.kind == SwitchDaemonKind::Host)
@@ -341,7 +341,7 @@ void SwitcherController::mergeLocalDaemons(std::vector<cli::DiscoveredDaemon> co
     // Every local daemon is listed now, so typing finds their workspaces; a saved host waits to be drilled
     // into (connecting may ask for credentials, which no keystroke may trigger).
     for (auto const index: std::views::iota(std::size_t { 0 }, _daemons.size()))
-        if (index != _windowDaemon && _daemons[index].address.kind == SwitchDaemonKind::Label)
+        if (index != _windowDaemon && _daemons[index].address.kind == SwitchDaemonKind::Name)
             listDaemon(index);
     rebuild(keep);
 }
@@ -425,18 +425,18 @@ void SwitcherController::updatePresentation()
     auto const daemonName = [&](std::size_t index) {
         return index < _daemons.size() ? switcherDaemonName(_daemons[index]) : std::string {};
     };
-    auto const label =
+    auto const name =
         _level == SwitcherLevel::NewDaemon
-            ? switcherLabelState(_filterText, switcherRunningLabels(currentInputs), _services.style)
-            : SwitcherLabelState {};
-    if (std::exchange(_labelState, label) != label)
-        emit labelChanged();
+            ? switcherNameState(_filterText, switcherRunningNames(currentInputs), _services.style)
+            : SwitcherNameState {};
+    if (std::exchange(_nameState, name) != name)
+        emit nameChanged();
 
     auto const* const row = rowAt(_current);
     auto const subject = [&] {
         if (row == nullptr)
             return SwitcherHintSubject::None;
-        return row->kind == SwitcherRowKind::LabelAction ? _labelState.subject : switcherHintSubject(*row);
+        return row->kind == SwitcherRowKind::NameAction ? _nameState.subject : switcherHintSubject(*row);
     }();
     auto const matchesSomething = std::ranges::any_of(_rows, [](SwitcherRow const& each) {
         return each.kind == SwitcherRowKind::Workspace || each.kind == SwitcherRowKind::Daemon;
@@ -463,12 +463,12 @@ void SwitcherController::updatePresentation()
 
 void SwitcherController::replaceFilter(std::string text)
 {
-    // Another label than the one a start runs for: that start is no longer what was asked for.
+    // Another name than the one a start runs for: that start is no longer what was asked for.
     if (text != _filterText)
         dropStart();
     _filterText = std::move(text);
     _filter = QString::fromStdString(_filterText);
-    _labelFailure.clear();
+    _nameFailure.clear();
     emit filterChanged();
 }
 
@@ -536,8 +536,8 @@ void SwitcherController::activate(int row)
         case SwitcherRowKind::Daemon:
         case SwitcherRowKind::NewDaemon: drillIn(chosen); return;
         case SwitcherRowKind::NewWorkspace: createWorkspace(chosen, _opening.mode); return;
-        case SwitcherRowKind::LabelAction:
-            submitLabel(_filter, static_cast<int>(std::to_underlying(_opening.mode)));
+        case SwitcherRowKind::NameAction:
+            submitName(_filter, static_cast<int>(std::to_underlying(_opening.mode)));
             return;
         case SwitcherRowKind::Discovering:
         case SwitcherRowKind::Connecting:
@@ -561,8 +561,8 @@ void SwitcherController::activateInNewWindow(int row)
         case SwitcherRowKind::Workspace:
         case SwitcherRowKind::Daemon: finishWith(chosen.target, session::SwitchMode::Open); return;
         case SwitcherRowKind::NewWorkspace: createWorkspace(chosen, session::SwitchMode::Open); return;
-        case SwitcherRowKind::LabelAction:
-            submitLabel(_filter, static_cast<int>(std::to_underlying(session::SwitchMode::Open)));
+        case SwitcherRowKind::NameAction:
+            submitName(_filter, static_cast<int>(std::to_underlying(session::SwitchMode::Open)));
             return;
         case SwitcherRowKind::NewDaemon:
         case SwitcherRowKind::Discovering:
@@ -591,7 +591,7 @@ void SwitcherController::drillIn(SwitcherRow const& row)
         case SwitcherRowKind::NewWorkspace:
         case SwitcherRowKind::Discovering:
         case SwitcherRowKind::Connecting:
-        case SwitcherRowKind::LabelAction:
+        case SwitcherRowKind::NameAction:
         case SwitcherRowKind::Failure: break;
     }
     replaceFilter({});
@@ -764,25 +764,27 @@ void SwitcherController::triggerRowMenu(int /*row*/, int id)
     _services.runWorkspaceAction(_opening.window, workspaceId, action);
 }
 
-void SwitcherController::checkLabel(QString const& label)
+void SwitcherController::checkName(QString const& name)
 {
-    setFilter(label);
+    setFilter(name);
 }
 
-void SwitcherController::submitLabel(QString const& label, int mode)
+void SwitcherController::submitName(QString const& name, int mode)
 {
     if (_isBusy)
         return;
-    auto const text = label.toStdString();
+    auto const text = name.toStdString();
     auto const switchMode = std::cmp_equal(mode, std::to_underlying(session::SwitchMode::Open))
                                 ? session::SwitchMode::Open
                                 : session::SwitchMode::Switch;
-    switch (switcherLabelVerdict(text, switcherRunningLabels(inputs())))
+    switch (switcherNameVerdict(text, switcherRunningNames(inputs())))
     {
-        case LabelVerdict::Empty:
-        case LabelVerdict::Invalid: return; // the verdict line says why
-        case LabelVerdict::Running: finishWith(labelled(text, session::AnyWorkspace {}), switchMode); return;
-        case LabelVerdict::Available: break;
+        case NameVerdict::Empty:
+        case NameVerdict::Invalid: return; // the verdict line says why
+        case NameVerdict::Running:
+            finishWith(namedDaemon(text, session::AnyWorkspace {}), switchMode);
+            return;
+        case NameVerdict::Available: break;
     }
     if (!_services.startDaemon)
         return;
@@ -797,23 +799,23 @@ void SwitcherController::submitLabel(QString const& label, int mode)
 }
 
 void SwitcherController::finishStart(std::uint64_t start,
-                                     std::string const& label,
+                                     std::string const& name,
                                      session::SwitchMode mode,
                                      std::expected<cli::NamedDaemonStart, std::string> result)
 {
-    // Dropped (cancelled, dismissed, left, relabelled, or the popup opened again): nothing is waiting for
+    // Dropped (cancelled, dismissed, left, renamed, or the popup opened again): nothing is waiting for
     // this answer, and it must not switch.
     if (start != _starts)
         return;
     setBusy(false);
     if (!result)
     {
-        _labelFailure = std::format("Could not start daemon “{}”: {}.", label, result.error());
-        emit labelChanged();
+        _nameFailure = std::format("Could not start daemon “{}”: {}.", name, result.error());
+        emit nameChanged();
         return;
     }
     // Started, or found running meanwhile: either way it serves now.
-    finishWith(labelled(label, session::AnyWorkspace {}), mode);
+    finishWith(namedDaemon(name, session::AnyWorkspace {}), mode);
 }
 
 void SwitcherController::abandon()
@@ -846,7 +848,7 @@ QString SwitcherController::fieldNameOf(QString const& levelTitle) const
     {
         case SwitcherLevel::Top: return tr("Switch workspace or daemon");
         case SwitcherLevel::Daemon: return tr("Switch to a workspace of %1").arg(levelTitle);
-        case SwitcherLevel::NewDaemon: return tr("Label of the new daemon");
+        case SwitcherLevel::NewDaemon: return tr("Name of the new daemon");
     }
     return {};
 }
@@ -885,33 +887,33 @@ void SwitcherController::cancel()
     emit cancelled();
 }
 
-QString SwitcherController::labelCaption() const
+QString SwitcherController::nameCaption() const
 {
-    return tr("Label — names the daemon in the switcher, the sidebar and --label");
+    return tr("Name — names the daemon in the switcher, the sidebar and --daemon");
 }
 
-QString SwitcherController::labelCommandCaption() const
+QString SwitcherController::nameCommandCaption() const
 {
     return tr("Equivalent command");
 }
 
-int SwitcherController::labelVerdictGlyph() const noexcept
+int SwitcherController::nameVerdictGlyph() const noexcept
 {
-    if (!_labelFailure.empty())
+    if (!_nameFailure.empty())
         return static_cast<int>(std::to_underlying(TabBadgeKind::Error));
-    switch (_labelState.verdict)
+    switch (_nameState.verdict)
     {
-        case LabelVerdict::Empty: return static_cast<int>(std::to_underlying(TabBadgeKind::None));
-        case LabelVerdict::Available: return static_cast<int>(std::to_underlying(TabBadgeKind::Done));
-        case LabelVerdict::Running:
-        case LabelVerdict::Invalid: return static_cast<int>(std::to_underlying(TabBadgeKind::Error));
+        case NameVerdict::Empty: return static_cast<int>(std::to_underlying(TabBadgeKind::None));
+        case NameVerdict::Available: return static_cast<int>(std::to_underlying(TabBadgeKind::Done));
+        case NameVerdict::Running:
+        case NameVerdict::Invalid: return static_cast<int>(std::to_underlying(TabBadgeKind::Error));
     }
     return 0;
 }
 
-QString SwitcherController::labelMessage() const
+QString SwitcherController::nameMessage() const
 {
-    return QString::fromStdString(_labelFailure.empty() ? _labelState.message : _labelFailure);
+    return QString::fromStdString(_nameFailure.empty() ? _nameState.message : _nameFailure);
 }
 
 void SwitcherController::setBusy(bool busy)
@@ -933,7 +935,7 @@ QVariant SwitcherController::data(QModelIndex const& modelIndex, int role) const
     switch (static_cast<Roles>(role))
     {
         case Roles::TitleRole:
-            if (row->kind == SwitcherRowKind::LabelAction && _isBusy)
+            if (row->kind == SwitcherRowKind::NameAction && _isBusy)
                 return tr("Starting the daemon…");
             return QString::fromStdString(row->title);
         case Roles::TitleMatchesRole: return utf16Matches(*row);
@@ -942,7 +944,7 @@ QVariant SwitcherController::data(QModelIndex const& modelIndex, int role) const
         case Roles::GlyphRole: {
             // A row waiting for an answer turns the Working ring (still under Reduce Motion, as everywhere).
             auto const waiting = switcherRowKindRule(row->kind).awaits == AwaitsAnswer::Yes
-                                 || (row->kind == SwitcherRowKind::LabelAction && _isBusy);
+                                 || (row->kind == SwitcherRowKind::NameAction && _isBusy);
             return static_cast<int>(std::to_underlying(waiting ? TabBadgeKind::Working : row->status.glyph));
         }
         case Roles::DetailTextRole:

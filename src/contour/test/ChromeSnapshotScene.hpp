@@ -1519,7 +1519,7 @@ class ChromeSnapshotScene
         _switcher = std::make_unique<window::SwitcherController>(switcherServices(nullptr, workspaces));
         _switcher->open(window::SwitcherOpening {
             .window = vtworkspace::WorkspaceId { 1 },
-            .windowDaemon = session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Label,
+            .windowDaemon = session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Name,
                                                     .daemon = "default",
                                                     .workspace = {} },
             .mode = session::SwitchMode::Switch,
@@ -1671,7 +1671,7 @@ class ChromeSnapshotScene
             switcherServices(std::move(discovery), boardWindowWorkspaces()));
         _switcher->open(window::SwitcherOpening {
             .window = vtworkspace::WorkspaceId { 1 },
-            .windowDaemon = session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Label,
+            .windowDaemon = session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Name,
                                                     .daemon = "work",
                                                     .workspace = {} },
             .mode = session::SwitchMode::Switch,
@@ -1705,7 +1705,7 @@ class ChromeSnapshotScene
         {
             case ScriptAction::FilterSwitcher: _switcher->setFilter(QStringLiteral("api")); break;
             case ScriptAction::SwitcherNoMatch: _switcher->setFilter(QStringLiteral("zzz")); break;
-            case ScriptAction::NewDaemonSwitcher: _switcher->checkLabel(QStringLiteral("research")); break;
+            case ScriptAction::NewDaemonSwitcher: _switcher->checkName(QStringLiteral("research")); break;
             case ScriptAction::DrillInSwitcher:
                 _switcher->activate(rowTitled("home", window::SwitcherRowKind::Daemon));
                 break;
@@ -1886,7 +1886,7 @@ class ChromeSnapshotScene
         auto billing = directoryWorkspaceOf(1, "billing", { claude, build, notes, deploy });
         auto split = window::DirectoryTab {};
         split.id = 14;
-        split.label = "server";
+        split.name = "server";
         split.panes = { directoryPaneOf(14, "server"), directoryPaneOf(15, "logs") };
         billing.tabs.push_back(std::move(split));
         billing.git = window::DirectoryGit { .branch = "feat/billing", .ahead = 2 };
@@ -1907,7 +1907,7 @@ class ChromeSnapshotScene
         // The band names the shown workspace's tabs as the directory does, so the breadcrumb and the sidebar
         // agree on the tab's name.
         for (auto const& tab: listed.workspaces[static_cast<std::size_t>(shown - 1)].tabs)
-            _controller.shownWorkspaceTabTitles.push_back(QString::fromStdString(tab.label));
+            _controller.shownWorkspaceTabTitles.push_back(QString::fromStdString(tab.name));
         _controller.sidebarHost().displayed =
             window::TabRef { .workspace = shown, .tab = shown == 1 ? 10u : 20u };
         _controller.sidebarModel().refreshNow();

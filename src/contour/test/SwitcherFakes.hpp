@@ -58,10 +58,10 @@ template <typename Predicate>
 }
 
 /// @return A local daemon's address, with @p workspace.
-[[nodiscard]] inline session::SwitchTarget switcherLabelled(std::string name,
-                                                            session::WorkspaceTarget workspace = {})
+[[nodiscard]] inline session::SwitchTarget switcherNamed(std::string name,
+                                                         session::WorkspaceTarget workspace = {})
 {
-    return session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Label,
+    return session::SwitchTarget { .kind = vthost::proto::SwitchDaemonKind::Name,
                                    .daemon = std::move(name),
                                    .workspace = std::move(workspace) };
 }
@@ -143,7 +143,7 @@ class GatedDiscovery final: public cli::IDaemonDiscovery
 };
 
 /// A daemon start ("New Daemon…") that holds its worker until released, then succeeds: a spawn that takes its
-/// time, so the popup can be closed, left or relabelled while it runs.
+/// time, so the popup can be closed, left or renamed while it runs.
 class GatedStart
 {
   public:
@@ -218,11 +218,11 @@ struct SwitcherRequested
     session::SwitchMode mode = session::SwitchMode::Switch;
 };
 
-/// A labelled workspace the switcher asked to create.
+/// A named workspace the switcher asked to create.
 struct SwitcherCreated
 {
     session::SwitchTarget daemon;
-    std::string label;
+    std::string name;
     session::SwitchMode mode = session::SwitchMode::Switch;
 };
 
@@ -251,7 +251,7 @@ struct SwitcherWorld
     std::function<void()> onRan; ///< What running a sidebar menu row does besides being recorded.
     /// Each start's job instead of the real one's, when set: a test's GatedStart.
     std::function<std::function<std::expected<cli::NamedDaemonStart, std::string>()>()> startJob;
-    std::vector<std::string> startedLabels;
+    std::vector<std::string> startedNames;
     RecordingSpawner spawner;
     vthost::InstalledDaemonBinary binary { "contour" };
     vtpty::NoPlacement placement;
@@ -305,13 +305,13 @@ struct SwitcherWorld
             .request = [this](vtworkspace::WorkspaceId,
                               session::SwitchTarget target,
                               session::SwitchMode mode) { requested.push_back({ std::move(target), mode }); },
-            .startDaemon = [this](std::string const& label)
+            .startDaemon = [this](std::string const& name)
                 -> std::function<std::expected<cli::NamedDaemonStart, std::string>()> {
-                startedLabels.push_back(label);
+                startedNames.push_back(name);
                 if (startJob)
                     return startJob();
-                return [this, label] {
-                    return cli::startNamedDaemon("/run/contour/" + label,
+                return [this, name] {
+                    return cli::startNamedDaemon("/run/contour/" + name,
                                                  { .spawner = spawner,
                                                    .binary = binary,
                                                    .placement = placement,
@@ -322,8 +322,8 @@ struct SwitcherWorld
             .createWorkspace =
                 [this](vtworkspace::WorkspaceId,
                        session::SwitchTarget const& daemon,
-                       std::string label,
-                       session::SwitchMode mode) { created.push_back({ daemon, std::move(label), mode }); },
+                       std::string name,
+                       session::SwitchMode mode) { created.push_back({ daemon, std::move(name), mode }); },
             .now = [this] { return now; },
             .style = style,
             .workspaceMenu =

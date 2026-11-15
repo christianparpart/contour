@@ -1533,7 +1533,8 @@ void compareEntries(Config& config, auto const& output);
 ///        needs no configuration; an ad-hoc `tls://` URL is refused, as a TLS daemon needs a token
 ///        and only a saved host can name its `token_file`.
 /// @return The host, or a human-readable reason it could not be resolved: a malformed URL, or an
-///         unknown name with the saved ones listed.
+///         unknown name with the saved ones listed. A missing configuration file holds no inline
+///         hosts, and is neither created nor loaded; the hosts/ side files beside it are still read.
 [[nodiscard]] std::expected<HostEntry, std::string> resolveHost(std::string const& configPath,
                                                                 std::string_view nameOrUrl);
 

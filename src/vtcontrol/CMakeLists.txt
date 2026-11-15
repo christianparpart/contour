@@ -13,6 +13,8 @@ add_library(vtcontrol STATIC
     Events.cpp
     Events.hpp
     Json.cpp
+    LegacySpelling.cpp
+    LegacySpelling.hpp
     Json.hpp
     ObjectRef.cpp
     ObjectRef.hpp
@@ -25,6 +27,7 @@ add_library(vtcontrol STATIC
     Wit.hpp
     testing/FakeControlApi.hpp
     testing/JsonProbe.hpp
+    testing/LegacyShapes.hpp
     testing/SequentialUuidSource.hpp
 )
 target_link_libraries(vtcontrol PUBLIC
@@ -54,6 +57,7 @@ if(VTCONTROL_TESTING)
         Grants_test.cpp
         Events_test.cpp
         Json_test.cpp
+        LegacySpelling_test.cpp
         ObjectRef_test.cpp
         Target_test.cpp
         Uuid_test.cpp

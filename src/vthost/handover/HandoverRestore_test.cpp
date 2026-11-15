@@ -51,9 +51,12 @@
 
 #include <vthost/SessionHost.hpp>
 #include <vthost/WorkspaceGit.hpp>
+#include <vthost/handover/HandoverCodec.hpp>
 #include <vthost/handover/HandoverRestore.hpp>
+#include <vthost/testing/ControlHarness.hpp>
 #include <vthost/testing/FakeProfileCatalog.hpp>
 #include <vthost/testing/HandoverTesting.hpp>
+#include <vthost/testing/RecordedNameEncodings.hpp>
 #include <vthost/testing/TestHelpers.hpp>
 
 using namespace vthost;
@@ -510,6 +513,60 @@ TEST_CASE("a refused workspace tree still adopts every session, each in a tab of
     }
     host.writeInput(ids[1], "alive");
     CHECK(live->eventually([&] { return live->pageText(ids[1]).contains("alive"); }));
+}
+#endif
+
+#ifndef _WIN32
+TEST_CASE("a handed-over tab keeps its name over the runtime title an older daemon wrote",
+          "[vthost][handover][threading][compat-0.9.0]")
+{
+    using vthost::testing::registryNameOf;
+    using vthost::testing::renameByAddress;
+    // The recorded fixture: its tab is named "build" and carries the runtime title "edited {Cwd}".
+    auto const recorded = decodeHandover(vthost::testing::RecordedHandoverNames);
+    REQUIRE(recorded.has_value());
+    auto const& recordedTab = recorded->tree.workspaces.at(0).tabs.at(0);
+    REQUIRE(recordedTab.view.title == std::optional<std::string> { "edited {Cwd}" });
+    auto const recordedName = std::ranges::find(recorded->objects.names,
+                                                vtcontrol::ObjectKind::Tab,
+                                                [](NamedObject const& named) { return named.ref.kind; });
+    REQUIRE(recordedName != recorded->objects.names.end());
+    REQUIRE(recordedName->name == "build");
+
+    // Hands a live host over with its one tab named `name` and carrying the runtime title `title`, as the
+    // fixture's tab is.
+    auto const handOverNamed = [](std::string const& name, std::optional<std::string> const& title) {
+        auto image = handOver(oneSession());
+        auto& tab = image.tree.workspaces.at(0).tabs.at(0);
+        tab.view.title = title;
+        auto const bound = std::ranges::find(image.objects.tabs, tab.id.value, &BoundObject::id);
+        REQUIRE(bound != image.objects.tabs.end());
+        auto const ref = vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab, .uuid = bound->uuid };
+        std::erase_if(image.objects.names, [&](NamedObject const& named) { return named.ref == ref; });
+        if (!name.empty())
+            image.objects.names.push_back(NamedObject { .ref = ref, .name = name });
+        return takeOver(std::move(image));
+    };
+
+    SECTION("a name wins over the runtime title")
+    {
+        auto const live = handOverNamed(recordedName->name, recordedTab.view.title);
+        REQUIRE(live->host.handoverOutcome().has_value());
+        auto const& tab = *live->host.model().workspace(live->host.workspaceId())->tabAt(0);
+        CHECK(registryNameOf(live->host, tab) == "build");
+        CHECK(tab.name() == "build");
+    }
+
+    SECTION("a tab without a name is named by its runtime title, and addressed by it")
+    {
+        auto const live = handOverNamed({}, std::optional<std::string> { "mine" });
+        REQUIRE(live->host.handoverOutcome().has_value());
+        auto const& tab = *live->host.model().workspace(live->host.workspaceId())->tabAt(0);
+        CHECK(registryNameOf(live->host, tab) == "mine");
+        CHECK(tab.name() == "mine");
+        CHECK(renameByAddress(live->host, "tab:mine", "renamed"));
+        CHECK(registryNameOf(live->host, tab) == "renamed");
+    }
 }
 #endif
 

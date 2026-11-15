@@ -464,28 +464,35 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     [[nodiscard]] std::expected<vtworkspace::WorkspaceId, NewWorkspaceError> newWorkspaceFor(
         vtworkspace::WorkspaceId window, std::string label);
 
-    /// (In-process) Labels @p workspace, which the in-process directory of its window lists
-    /// (InProcessDirectory); an empty label removes it. Not for a daemon's workspace, whose label is its
+    /// (In-process) Names @p workspace, which the in-process directory of its window lists
+    /// (InProcessDirectory); an empty name removes it. Not for a daemon's workspace, whose name is its
     /// daemon's.
     /// @param workspace The workspace.
-    /// @param label Its label.
-    void setWorkspaceLabel(vtworkspace::WorkspaceId workspace, std::string label);
+    /// @param name Its name.
+    void setWorkspaceName(vtworkspace::WorkspaceId workspace, std::string name);
 
     /// Renames the workspace @p workspace that @p window lists: in its daemon for a window a daemon serves
     /// (the daemon's WorkspaceMeta then reaches every window), in this process otherwise. A workspace the
     /// window does not own is left alone.
     /// @param window The window the user acts in.
     /// @param workspace The workspace's id, as the window's directory lists it (DirectoryWorkspace::id).
-    /// @param label Its new label; empty clears it.
-    void renameWorkspace(window::WindowController& window, uint64_t workspace, std::string label);
+    /// @param name Its new name; empty clears it.
+    void renameWorkspace(window::WindowController& window, uint64_t workspace, std::string name);
 
-    /// Sets the title of the tab @p tab, whichever workspace of @p window's directory holds it, shown or not:
-    /// in its daemon for a window a daemon serves (named by a session it holds), in this process's model
-    /// otherwise. A tab the window does not list is left alone.
+    /// Names the tab @p tab, whichever workspace of @p window's directory holds it, shown or not: in its
+    /// daemon for a window a daemon serves (named by a session it holds), in this process's model otherwise.
+    /// A tab the window does not list is left alone.
     /// @param window The window the user acts in.
     /// @param tab The tab's id, as the window's directory lists it (DirectoryTab::id).
-    /// @param title Its new title; empty returns it to its automatic one.
-    void renameTab(window::WindowController& window, uint64_t tab, std::string title);
+    /// @param name Its new name; empty clears it, so its title names it again.
+    void renameTab(window::WindowController& window, uint64_t tab, std::string name);
+
+    /// Names the tab @p tab of this process's model, as the user renamed it: in the model, and, where its
+    /// window mirrors another multiplexer's windows (tmux), on that multiplexer too
+    /// (SessionFactory::requestRemoteWindowRename()).
+    /// @param tab The tab.
+    /// @param name Its new name; empty (or blank) clears it.
+    void nameTab(vtworkspace::TabId tab, std::string name);
 
     /// Moves the workspace @p workspace that @p window lists to place @p toPosition of its directory, where
     /// a daemon (or this process's model) orders it. The place is clamped.
@@ -544,8 +551,8 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     /// @param workspace The workspace's id, as the window's directory lists it.
     void confirmCloseWorkspace(window::WindowController& window, uint64_t workspace);
 
-    /// @return The labels of the in-process workspaces.
-    [[nodiscard]] WorkspaceLabels const& workspaceLabels() const noexcept { return _workspaceLabels; }
+    /// @return The names of the in-process workspaces.
+    [[nodiscard]] WorkspaceNames const& workspaceNames() const noexcept { return _workspaceNames; }
 
     /// Tells the windows bound to @p binding that what its directory lists changed
     /// (window::WindowController::workspaceDirectoryChanged), as a daemon's connection announces it. GUI
@@ -553,7 +560,7 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     /// @param binding The binding whose directory changed.
     void notifyWorkspaceDirectoryChanged(WindowBinding const& binding) const;
 
-    /// Asks for a label (the switcher popup's label prompt), starts a new local daemon under it, and opens a
+    /// Asks for a name (the switcher popup's name prompt), starts a new local daemon under it, and opens a
     /// new window on it, for the window hosting @p acting.
     /// @param acting The session that triggered the action.
     void newDaemon(TerminalSession const& acting);
@@ -715,7 +722,7 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     void moveTabToLeft(TerminalSession* session);
     void moveTabToRight(TerminalSession* session);
     /// Opens the inline title editor for the active tab of the window hosting @p acting (the
-    /// SetTabTitle keybinding), routed like the other tab ops via the acting session's window.
+    /// RenameTab keybinding), routed like the other tab ops via the acting session's window.
     /// @param acting The session that received the keybinding; its hosting window is the target.
     void beginTabTitleEdit(TerminalSession* acting);
     /// Runs a tab action against the tab hosting @p acting, through the hosting window's controller
@@ -1482,13 +1489,13 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
                         vtbackend::Progress progress,
                         std::chrono::steady_clock::time_point now);
 
-    /// Sets an explicit @p title on the tab hosting @p session, through the authoritative SessionModel
-    /// (which repaints the owning window's tab strip). Used by the tmux mirror to reflect a
-    /// `%window-renamed` onto the tab (a tmux window maps to a tab). No-op if no tab hosts @p session.
-    /// MUST be called on the GUI thread (it mutates the GUI-facing model).
-    /// @param session The session (by model id) whose hosting tab to title.
-    /// @param title The new tab title.
-    void setTabTitleForSession(vtworkspace::SessionId session, std::string title);
+    /// Names the tab hosting @p session, through the authoritative SessionModel (which repaints the owning
+    /// window's tab strip). Used by the tmux mirror to reflect a `%window-renamed` onto the tab (a tmux
+    /// window maps to a tab, and its name is the tab's). No-op if no tab hosts @p session. MUST be called on
+    /// the GUI thread (it mutates the GUI-facing model).
+    /// @param session The session (by model id) whose hosting tab to name.
+    /// @param name The tab's new name.
+    void setTabNameForSession(vtworkspace::SessionId session, std::string name);
 
     /// Assigns @p color to the tab hosting @p session (DECAC item 2 "window frame"), routing through
     /// the authoritative SessionModel so the existing tab-color pipeline repaints the tab strip. The
@@ -2547,7 +2554,7 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     // What an in-process window lists of its workspaces (InProcessDirectory): their labels, the status of
     // their panes' sessions and their git state, which one tracker looks up for every window. The directories
     // come last, so that they go before what they read.
-    WorkspaceLabels _workspaceLabels;
+    WorkspaceNames _workspaceNames;
     std::unique_ptr<window::PaneStatusLookup> _paneStatus;
     std::unique_ptr<vthost::WorkspaceGitTracker> _gitTracker; ///< Null where git is not tracked.
     std::unordered_map<window::WindowId, std::unique_ptr<InProcessDirectory>> _inProcessDirectories;

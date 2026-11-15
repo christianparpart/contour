@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <contour/cli/DaemonDiscovery.hpp>
+#include <contour/config/Config.hpp>
 
 #include <algorithm>
 #include <ranges>
@@ -83,7 +84,7 @@ std::vector<DiscoveredDaemon> filterDiscovered(
     // `default` first: it is the daemon a plain launch uses.
     std::ranges::sort(found, [](DiscoveredDaemon const& a, DiscoveredDaemon const& b) {
         auto const isDefault = [](DiscoveredDaemon const& daemon) {
-            return daemon.label == vthost::DefaultSocketLabel;
+            return daemon.label == vthost::DefaultDaemonName;
         };
         return std::pair { !isDefault(a), a.label } < std::pair { !isDefault(b), b.label };
     });
@@ -97,6 +98,23 @@ std::unique_ptr<IDaemonDiscovery> makeLocalDaemonDiscovery(std::filesystem::path
 {
     return std::make_unique<LocalDaemonDiscovery>(
         std::move(socketDirectory), prober, std::move(counter), std::move(lister));
+}
+
+vthost::client::LocalDaemons localDaemonsOf(core::Environment const& env,
+                                            core::platform::FileSystem const& fileSystem)
+{
+    return vthost::client::LocalDaemons { .contains = [&env, &fileSystem](std::string_view name) {
+        return vthost::validateDaemonName(name).has_value()
+               && fileSystem.exists(vthost::muxSocketPath(vthost::daemonNameFromOption(name), {}, env));
+    } };
+}
+
+vthost::client::SavedHosts savedHostsOf(std::string configPath)
+{
+    return vthost::client::SavedHosts { .contains = [configPath =
+                                                         std::move(configPath)](std::string_view name) {
+        return config::resolveHost(configPath, name).has_value();
+    } };
 }
 
 } // namespace contour::cli

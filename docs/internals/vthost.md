@@ -165,9 +165,10 @@ A peer of any of them gets only the readable refusal; no old codec is kept for t
 | `PanesReprojected` | 19 | `panes-reprojected` | `PanesReprojected`: a client re-sends every pane's size when asked. The daemon no longer offers it (it restores the survivors' pane sizes itself, see "One grid, several clients"); the client keeps offering and answering it for daemons built while it was sent |
 | `WorkspaceSwitch` | 24 | `workspace-switch` | `SwitchRequest` / `SwitchReply`: the daemon asks one window (the caller's, else the raise holder) to switch to another daemon or workspace, and the client answers with the outcome |
 | `DaemonFollow` | 28 | `daemon-follow` | `SelectWorkspace` / `ReportFocus` / `NotifyRole` / `PaneSummary`: a connection selects one workspace and is sent it in full, the others as summaries, and the daemon routes bells, clipboard writes and switch requests by the windows' focus (see [which workspace a client selects](#which-workspace-a-client-selects)) |
-| `WorkspaceMeta` | 29 | `workspace-meta` | `WorkspaceMeta`: each workspace's label, control id and git state, in full after the hello and for a workspace created since, and as a delta on each change (see [workspace metadata](#workspace-metadata)) |
+| `WorkspaceMeta` | 29 | `workspace-meta` | `WorkspaceMeta`: each workspace's name, control id and git state, in full after the hello and for a workspace created since, and as a delta on each change (see [workspace metadata](#workspace-metadata)) |
 | `ClientGoodbye` | 30 | `client-goodbye` | `Goodbye` (tag 60, client->server, no body): the client says its connection ends on purpose, its window closed for good, sent last before the orderly close. The daemon then frees the workspace the window showed for the very next attach at once; without it (an older daemon or client) the end is a drop, whose workspace a new window leaves alone for a reconnect grace |
 | `LaunchFirstTab` | 31 | `launch-first-tab` | `OpenFirstTab` (tag 61, client->server, body: the workspace id the client saw empty): a launch that named a workspace holding no tab (`contour --workspace N`) asks the daemon, once its layout shows the workspace empty, to open the first tab there (only if that workspace still exists, is still selected by the connection and still holds none), in the directory the hello stated; without it (an older daemon) the launch waits for a tab, as it did, and the hello is the same `Select` either way |
+| `Names` | 32 | `names` | The peer speaks the control API's `name` spelling: `name` keys, `object.rename`, `object.renamed`, `toName`. Without it the other end speaks the old one to it (`label` keys, `object.setLabel`, `workspace.rename`, `workspace.labelChanged`, `toLabel`) through vtcontrol's legacy spelling table (`LegacySpelling.hpp`); removed before 0.9.0 |
 
 A capability's ident travels as a varint and unknown idents survive decoding, so a newer peer's offer
 costs an older one nothing. A protocol version step is reserved for a change to an existing PDU's
@@ -260,16 +261,19 @@ tell the daemon is lost on the next attach, and never reaches another client. Tw
 back: `ResizeSplit` for a divider (below), and `EditTab` for how a tab is presented — its active
 pane, its zoom, its title, its colour, and which tab of the workspace is active.
 
-A tab's control-API label goes one way only: the daemon's object registry holds it, `WireTab.label` carries
-it in every `LayoutState`, and a label change re-pushes the tab's workspace. A client takes it into its
-model (`vtworkspace::Tab::label()`) and never reports it back; `vtworkspace::tabNameSourceOf` makes it name
-the tab over its title wherever a tab is named.
+A tab has one name, set from the GUI and the control API alike. The daemon's object registry holds it
+(and mirrors it into its model, so a tmux client or a status line reads it as `vtworkspace::Tab::name()`),
+`WireTab.name` carries it in every `LayoutState`, and a name change re-pushes the tab's workspace. A client
+takes it into its model, and reports a rename of its own as an `EditTab`; `vtworkspace::tabNameSourceOf`
+makes it name the tab over its title wherever a tab is named. `WireTab.title` is an older daemon's runtime
+title, which a new daemon writes empty.
 
 **`EditTab`** (tag 28, gated on `Capability::TabEdits`; without it the daemon answers
 `Unsupported`) names a session and a `TabEditKind`, and `vthost::applyTabEdit` applies it through
 one table row per kind: `ActivatePane` → `setActivePane`; `Zoom`/`Unzoom` → activate the pane, then
-`toggleActivePaneZoom` only when the zoom differs; `SetTitle`/`ClearTitle` →
-`setTabTitle`/`resetTabTitle`; `SetColor`/`ClearColor` → `setTabColor`/`resetTabColor` as
+`toggleActivePaneZoom` only when the zoom differs; `SetName`/`ClearName` → the tab's name in the
+registry (`RegistryTabNames`; an old window's "set title", the same kind and field, arrives as a rename);
+`SetColor`/`ClearColor` → `setTabColor`/`resetTabColor` as
 `TabColorSource::User`; `ActivateTab` → `activateTab`. Every row compares before it mutates, so a
 client re-asserting state the daemon already holds fires no model event and so costs no client a
 layout push; a change fans out as a fresh `LayoutState` to every client, the sender included. An
@@ -397,9 +401,9 @@ layout push would revert a local flip; against an older daemon it keeps the loca
 <a id="workspace-metadata"></a>
 **Workspace metadata.** `WorkspaceMeta` (tag 56, server->client, gated on `Capability::WorkspaceMeta`) carries
 what a window lists of a workspace besides its layout: its control id (the UUID of `workspace.list`, so a
-window resolves a switch naming one from its own directory, with no listing), its label and its git state.
+window resolves a switch naming one from its own directory, with no listing), its name and its git state.
 The daemon sends every field once per workspace, right after that workspace's first layout on the connection,
-and from then on a delta: absent optionals are unchanged, an empty label clears it, and a git state of kind
+and from then on a delta: absent optionals are unchanged, an empty name clears it, and a git state of kind
 `None` says the workspace is in no repository anymore. A workspace's removal is told by its layout emptying.
 
 The workspace order travels in the same PDU: `position`, the workspace's 0-based place in the daemon's model,
@@ -420,11 +424,11 @@ next snapshot, and every connection is pushed its layout emptied and the new pos
 the daemon's only workspace, kept empty as the one a creation naming no workspace, and an attach, land in. A
 client lists no workspace whose layout is empty. A handover drops the tabless workspaces an older release
 kept the same way.
-**`SetWorkspaceLabel`** (tag 58, same gate) sets a workspace's label through the object registry, so every
-window hears it as a `WorkspaceMeta` delta and every control subscriber as `workspace.labelChanged`. Neither
+**`SetWorkspaceName`** (tag 58, same gate) sets a workspace's name through the object registry, so every
+window hears it as a `WorkspaceMeta` delta and every control subscriber as `object.renamed`. Neither
 has a reply.
-Label changes come from the object registry's label observer (`ObjectRegistry::onLabelChanged`), which also
-publishes the control event `workspace.labelChanged`.
+Name changes come from the object registry's name observer (`ObjectRegistry::onNameChanged`), which also
+publishes the control event `object.renamed`, for workspaces, tabs and panes alike.
 
 <a id="workspace-follow-and-switch"></a>
 **Workspace selection and switch.** `SelectWorkspace` (client->server, gated on `Capability::DaemonFollow`) names
@@ -436,7 +440,7 @@ notification, which a connection that does not mirror the pane is sent in place 
 `SessionNotify`. The `LayoutBatchEnd` answering a `SelectWorkspace` names it as its `causeSerial`, so a client
 that asked for a workspace the daemon does not have learns so at once. `SwitchRequest` (tag 48, server->client, gated on
 `Capability::WorkspaceSwitch`) asks one window to switch to a `SwitchTargetWire`: a daemon (`Same`, a local
-`Label`, or a saved `Host`) and a workspace spec the client resolves against the target daemon, empty to let it
+daemon by `Name`, or a saved `Host`) and a workspace spec the client resolves against the target daemon, empty to let it
 decide; `workspace` names the workspace the window selects now. Appended after it, `answerWithinMs` says how
 long the daemon waits for the reply (`SwitchAnswerTimeout`, 30 s; `0`, as from a daemon that predates it, reads
 as that; the client takes at most 5 minutes of it). The client asks its user first (the `SwitchWindow` guarded
@@ -1481,7 +1485,7 @@ logged and leaves the running configuration in force, and is not retried until i
 
 ## Socket conventions
 
-`contour daemon`/`client` default to `$XDG_RUNTIME_DIR/contour/<label>`,
+`contour daemon`/`client` default to `$XDG_RUNTIME_DIR/contour/<name>`,
 overridable per flag and `$CONTOUR_MUX`. The socket directory hardening
 mirrors tmux exactly: 0700 directory, owner check, refuse **world**-rwx
 (group is permitted — tmux's `TMUX_SOCK_PERM == 7`).
@@ -1493,7 +1497,7 @@ it first with the default mode, after which the listener's owner-only check refu
 `vthost::daemonLogPath` derives `<socket>.log` beside the socket, as the default destination
 for a daemon with no console to write to (`--background`, and anything `contour daemon-service`
 installs). It sits with `nativeSocketPath`/`tmuxSocketPath` because it is the same kind of fact:
-one place per label, derived rather than remembered.
+one place per daemon name, derived rather than remembered.
 
 **A path an installed daemon is given must be absolute, and resolved at install time.** A
 registration outlives the shell that created it, and a service's `%TEMP%`/`%USERNAME%` need not
@@ -1618,7 +1622,7 @@ A daemon whose `DaemonConfig::persistence` names a file keeps its workspaces the
 capability is what turns `client::layoutSurvivesRestart` to `Restored`, and with it the drift
 confirmation's text. `runDaemon` wires it in this order:
 
-1. the control socket is bound first, so a second daemon on the same label fails before it touches
+1. the control socket is bound first, so a second daemon of the same name fails before it touches
    the file the serving one keeps writing;
 2. `prepareRestore` loads the file and moves it aside to `<file>.restored`, and the result becomes
    `SessionHostConfig::restore`, which the host realizes in its constructor instead of the startup
@@ -1649,7 +1653,7 @@ Tab      := blob{ Identity? Title:string? Color:u32(0xRRGGBB)? ActiveLeaf:varint
 Node     := blob{ Split:u8 ( Ratio:varint(millionths) Node Node | Leaf ) }
 Leaf     := Identity? Cwd:string(UTF-8)? Profile:string? Foreground:string? CommandLine:string?
             History:blob(encodePdu(Delta))?
-Identity := 16 raw bytes, Label:string?
+Identity := 16 raw bytes, Name:string?
 X?       := u8 0 (absent) | u8 1 then X
 ```
 
@@ -1756,7 +1760,7 @@ contour daemon …                            the keeper: single-threaded, reads
 
 **What it links, and what it holds.** `vthost_keeper` links core-cpp, `vthost_wire`, `vthost_image` and
 `vtpty`'s process utilities, never `vtbackend`, `vtparser`, `vtworkspace` or the rest of `vthost`; a CMake
-check and a `lint` test hold that. The keeper takes the label's lock (`<socket>.keeper.lock`), starts the
+check and a `lint` test hold that. The keeper takes the daemon name's lock (`<socket>.keeper.lock`), starts the
 daemon with a frozen command line — what the daemon needs travels in the versioned `Launch` record over
 the channel, never as arguments — and from then on holds a duplicate of every PTY master and every
 listener the daemon deposited, the **structure** (daemon instance, the `vtworkspace` tree and id counters,

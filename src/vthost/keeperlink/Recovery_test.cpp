@@ -340,7 +340,7 @@ TEST_CASE("a recovered pane's history is seeded from the snapshot pane of its UU
     auto restore = vthost::WorkspaceRestore {};
     restore.snapshot.workspaces.push_back(vthost::WorkspaceLayoutSnapshot {});
     auto& tab = restore.snapshot.workspaces.front().tabs.emplace_back();
-    tab.root.pane.identity = vthost::ObjectIdentityRecord { .uuid = uuid.bytes, .label = std::nullopt };
+    tab.root.pane.identity = vthost::ObjectIdentityRecord { .uuid = uuid.bytes, .name = std::nullopt };
     tab.root.pane.history = vthost::capturePaneHistory(source.terminal, 1000);
     auto const seed = keeperlink::snapshotSeederOf(std::move(restore));
 

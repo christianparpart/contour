@@ -189,7 +189,7 @@ struct UpgradeBench
             .argv = { "/state/bin/0.9.0-00000000/Contour.AppImage",
                       "daemon",
                       handover::handoverArgument(handover::handoverToken(vtpty::CrossingHandle { 7 })),
-                      "--label",
+                      "--name",
                       "x" },
             .installedExecutable = {},
             .sandbox = vtpty::SandboxState::Host,

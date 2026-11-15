@@ -104,13 +104,13 @@ class FakeLister final: public contour::remote::IWorkspaceLister
 
 [[nodiscard]] vtcontrol::WorkspaceInfo workspace(uint64_t native,
                                                  uint32_t position,
-                                                 std::string label,
+                                                 std::string name,
                                                  std::string visibility)
 {
     auto const clients = visibility == "shown" ? 1U : 0U;
     return vtcontrol::WorkspaceInfo {
         .id = std::format("workspace:00000000-0000-4000-8000-{:012}", native),
-        .label = std::move(label),
+        .name = std::move(name),
         .position = position,
         .native = std::to_string(native),
         .visibility = std::move(visibility),
@@ -131,7 +131,7 @@ struct DirectoryRig
     FakeLister* lister = nullptr;
     std::vector<LinkedDaemon> linked {
         LinkedDaemon { .link = DaemonLinkId { 1 },
-                       .address = { .kind = SwitchDaemonKind::Label, .name = "admin" },
+                       .address = { .kind = SwitchDaemonKind::Name, .name = "admin" },
                        .transport = nullptr,
                        .windows = { WindowOnDaemon { .window = WorkspaceId { 10 }, .workspace = 7 } } },
         LinkedDaemon { .link = DaemonLinkId { 2 },

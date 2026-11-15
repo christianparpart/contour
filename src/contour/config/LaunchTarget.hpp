@@ -22,7 +22,7 @@ namespace contour::config
 /// The kinds of place a window's sessions can live.
 enum class LaunchTargetKind : uint8_t
 {
-    LocalDaemon = 0, ///< This computer's daemon, whose sessions outlive the window (`daemon[:LABEL]`).
+    LocalDaemon = 0, ///< This computer's daemon, whose sessions outlive the window (`daemon[:NAME]`).
     InProcess,       ///< This window only: no daemon, its shells end when it closes (`local`).
     SavedHost,       ///< A host of `hosts:`, by its name.
     Address,         ///< A host typed as an `ssh://` or `tls://` URL, not saved.
@@ -32,18 +32,18 @@ enum class LaunchTargetKind : uint8_t
 struct LaunchTarget
 {
     LaunchTargetKind kind = LaunchTargetKind::LocalDaemon; ///< What kind of place it is.
-    /// The daemon's socket label (empty: the default one), the saved host's name, or the address in its
+    /// The daemon's name (empty: the default one), the saved host's name, or the address in its
     /// canonical spelling; empty for @ref LaunchTargetKind::InProcess.
     std::string name {};
 
     [[nodiscard]] bool operator==(LaunchTarget const&) const = default;
 };
 
-/// Whether a keyword may carry a `:LABEL`.
-enum class KeywordLabel : uint8_t
+/// Whether a keyword may carry a `:NAME`.
+enum class KeywordName : uint8_t
 {
     None = 0, ///< The keyword stands alone.
-    Optional, ///< `keyword` or `keyword:LABEL`.
+    Optional, ///< `keyword` or `keyword:NAME`.
 };
 
 /// One row of the keyword table: a word that names a kind of target by itself.
@@ -51,24 +51,24 @@ struct LaunchKeyword
 {
     std::string_view keyword; ///< The word, lower case.
     LaunchTargetKind kind;    ///< What it names.
-    KeywordLabel label;       ///< Whether `:LABEL` may follow.
+    KeywordName name;         ///< Whether `:NAME` may follow.
 };
 
 /// Every keyword a target may begin with; they are reserved, so a saved host named `local` is reached by
 /// the picker, not by this grammar. Adding a keyword is adding a row.
 inline constexpr auto LaunchKeywords = std::array {
-    LaunchKeyword { "daemon", LaunchTargetKind::LocalDaemon, KeywordLabel::Optional },
-    LaunchKeyword { "local", LaunchTargetKind::InProcess, KeywordLabel::None },
+    LaunchKeyword { "daemon", LaunchTargetKind::LocalDaemon, KeywordName::Optional },
+    LaunchKeyword { "local", LaunchTargetKind::InProcess, KeywordName::None },
 };
 
 /// Why a target text was refused.
 enum class LaunchTargetError : uint8_t
 {
-    Empty = 0,    ///< No text at all.
-    UnknownName,  ///< Neither a keyword, a URL, nor a saved host.
-    BadAddress,   ///< A `scheme://` text whose address does not parse.
-    LabelNotUsed, ///< A `:LABEL` after a keyword that takes none.
-    EmptyLabel,   ///< `daemon:` with nothing after the colon.
+    Empty = 0,   ///< No text at all.
+    UnknownName, ///< Neither a keyword, a URL, nor a saved host.
+    BadAddress,  ///< A `scheme://` text whose address does not parse.
+    NameNotUsed, ///< A `:NAME` after a keyword that takes none.
+    EmptyName,   ///< `daemon:` with nothing after the colon.
 };
 
 /// A refused target text and what to tell the user about it.
@@ -82,7 +82,7 @@ struct LaunchTargetFailure
 };
 
 /// Parses a target.
-/// @param text A keyword (`daemon`, `daemon:LABEL`, `local`), a saved host's name, or an `ssh://` / `tls://`
+/// @param text A keyword (`daemon`, `daemon:NAME`, `local`), a saved host's name, or an `ssh://` / `tls://`
 ///             URL.
 /// @param hosts The saved hosts, which a bare name is looked up in.
 /// @return The target, or why @p text names none.
@@ -98,7 +98,7 @@ struct LaunchTargetFailure
 enum class Hosting : uint8_t
 {
     InProcess = 0, ///< `contour terminal --daemon-mode in_process`.
-    LocalDaemon,   ///< `contour client [--label LABEL]`.
+    LocalDaemon,   ///< `contour client [--daemon name:NAME]`.
     RemoteHost,    ///< `contour client --host NAME|URL`.
 };
 
@@ -106,7 +106,7 @@ enum class Hosting : uint8_t
 struct AttachPlan
 {
     Hosting hosting = Hosting::InProcess; ///< Which attach path.
-    std::string label {};                 ///< The daemon's socket label, for Hosting::LocalDaemon.
+    std::string name {};                  ///< The daemon's name, for Hosting::LocalDaemon.
     std::string host {};                  ///< The `--host` value, for Hosting::RemoteHost.
 
     [[nodiscard]] bool operator==(AttachPlan const&) const = default;

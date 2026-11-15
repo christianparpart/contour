@@ -46,7 +46,7 @@ struct LayoutPane
 struct LayoutTab
 {
     /// Seeds the tab's name.
-    std::optional<std::string> title = {};
+    std::optional<std::string> name = {};
     /// Sets the tab's User color.
     std::optional<vtbackend::RGBColor> color = {};
     /// Default profile for this tab's panes; a pane's own @c profile still wins.
@@ -83,7 +83,7 @@ struct Layout
 ///         no backing session.
 using PaneSeeder = std::function<bool(LayoutPane const& leaf)>;
 
-/// Creates a tab in @p workspace from @p tab: seeds+creates the first pane, applies title/color, then
+/// Creates a tab in @p workspace from @p tab: seeds+creates the first pane, applies name/color, then
 /// builds the pane tree. @p seed is invoked immediately before each model allocation to stage that
 /// pane's backing session (it must make the model's allocator return the id it created). If a seed
 /// fails, realization stops: the first pane's failure yields no tab (nullptr); a later pane's failure
@@ -111,7 +111,7 @@ using LeafResolver = std::function<PaneLeafData(SessionId)>;
 /// unchanged via realizeLayoutTab.
 [[nodiscard]] LayoutPane serializePane(Pane const& pane, LeafResolver const& resolve);
 
-/// Serializes @p tab (title/color/pane tree) into a LayoutTab, for save-layout use.
+/// Serializes @p tab (name/color/pane tree) into a LayoutTab, for save-layout use.
 [[nodiscard]] LayoutTab serializeTab(Tab const& tab, LeafResolver const& resolve);
 
 } // namespace vtworkspace

@@ -29,7 +29,7 @@ constexpr auto Now = std::chrono::sys_days { std::chrono::year { 2026 } / std::c
 
 [[nodiscard]] SwitchTarget label(std::string name)
 {
-    return SwitchTarget { .kind = SwitchDaemonKind::Label, .daemon = std::move(name), .workspace = {} };
+    return SwitchTarget { .kind = SwitchDaemonKind::Name, .daemon = std::move(name), .workspace = {} };
 }
 
 [[nodiscard]] SwitcherStatus statusOf(Urgency urgency, std::string git, ReasonParts reason = {})
@@ -279,7 +279,7 @@ TEST_CASE("Escape on the New Daemon level clears the label first, then goes back
                                         .level = SwitcherLevel::NewDaemon,
                                         .origin = SwitcherOrigin::Centred,
                                         .scope = SwitcherScope::Everything,
-                                        .selected = SwitcherRowKind::LabelAction };
+                                        .selected = SwitcherRowKind::NameAction };
     auto const style = ShortcutStyle::MacGlyphs;
     CHECK(switcherEscapeCommand(context) == SwitcherCommand::ClearFilter);
     CHECK(switcherFooterHints(
@@ -348,7 +348,7 @@ TEST_CASE("a row's Shift+Return hint is there exactly when Shift+Return opens a 
                            == SwitcherCommand::ActivateInNewWindow;
         // The label action's hints are its verdict's: both verdicts that make a row offer Shift+Return.
         auto const subjects =
-            rule.kind == SwitcherRowKind::LabelAction
+            rule.kind == SwitcherRowKind::NameAction
                 ? std::vector { SwitcherHintSubject::CreateDaemon, SwitcherHintSubject::SwitchToRunning }
                 : std::vector { rule.hints };
         for (auto const subject: subjects)
@@ -375,7 +375,7 @@ TEST_CASE("the field's hint, the empty text and the level title follow the view"
                            "work")
           == "Filter workspaces on work…");
     CHECK(switcherHintText(SwitcherView { .level = SwitcherLevel::NewDaemon }, "work")
-          == "Label, such as work2");
+          == "Name, such as work2");
 
     CHECK(switcherEmptyText("zzz") == "No workspace matches “zzz”");
 
@@ -384,42 +384,42 @@ TEST_CASE("the field's hint, the empty text and the level title follow the view"
     CHECK(switcherLevelTitle(SwitcherView { .level = SwitcherLevel::NewDaemon }, "work") == "New Daemon");
 }
 
-TEST_CASE("switcherLabelState judges the label as it is typed", "[switcher]")
+TEST_CASE("switcherNameState judges the label as it is typed", "[switcher]")
 {
     auto const running = std::vector<std::string> { "work" };
     auto const style = ShortcutStyle::MacGlyphs;
 
-    CHECK(switcherLabelState("", running, style)
-          == SwitcherLabelState { .verdict = LabelVerdict::Empty,
-                                  .message = {},
-                                  .actionTitle = {},
-                                  .equivalentCommand = {},
-                                  .subject = SwitcherHintSubject::None });
+    CHECK(switcherNameState("", running, style)
+          == SwitcherNameState { .verdict = NameVerdict::Empty,
+                                 .message = {},
+                                 .actionTitle = {},
+                                 .equivalentCommand = {},
+                                 .subject = SwitcherHintSubject::None });
 
-    CHECK(switcherLabelState("research", running, style)
-          == SwitcherLabelState { .verdict = LabelVerdict::Available,
-                                  .message = "Available",
-                                  .actionTitle = "Start daemon “research” and switch this window to it",
-                                  .equivalentCommand = "contour daemon --label research",
-                                  .subject = SwitcherHintSubject::CreateDaemon });
+    CHECK(switcherNameState("research", running, style)
+          == SwitcherNameState { .verdict = NameVerdict::Available,
+                                 .message = "Available",
+                                 .actionTitle = "Start daemon “research” and switch this window to it",
+                                 .equivalentCommand = "contour daemon --name research",
+                                 .subject = SwitcherHintSubject::CreateDaemon });
 
-    CHECK(switcherLabelState("work", running, style)
-          == SwitcherLabelState { .verdict = LabelVerdict::Running,
-                                  .message =
-                                      "A daemon named “work” is already running — ↩ switches to it instead",
-                                  .actionTitle = "Switch this window to daemon “work”",
-                                  .equivalentCommand = {},
-                                  .subject = SwitcherHintSubject::SwitchToRunning });
-    CHECK(switcherLabelState("work", running, ShortcutStyle::Text).message
+    CHECK(switcherNameState("work", running, style)
+          == SwitcherNameState { .verdict = NameVerdict::Running,
+                                 .message =
+                                     "A daemon named “work” is already running — ↩ switches to it instead",
+                                 .actionTitle = "Switch this window to daemon “work”",
+                                 .equivalentCommand = {},
+                                 .subject = SwitcherHintSubject::SwitchToRunning });
+    CHECK(switcherNameState("work", running, ShortcutStyle::Text).message
           == std::format("A daemon named “work” is already running — {} switches to it instead",
                          key(vtbackend::Key::Enter, ShortcutStyle::Text)));
 
-    CHECK(switcherLabelState("a b", running, style)
-          == SwitcherLabelState { .verdict = LabelVerdict::Invalid,
-                                  .message = vthost::describe(vthost::SocketLabelError::InvalidCharacter),
-                                  .actionTitle = {},
-                                  .equivalentCommand = {},
-                                  .subject = SwitcherHintSubject::None });
+    CHECK(switcherNameState("a b", running, style)
+          == SwitcherNameState { .verdict = NameVerdict::Invalid,
+                                 .message = vthost::describe(vthost::DaemonNameError::InvalidCharacter),
+                                 .actionTitle = {},
+                                 .equivalentCommand = {},
+                                 .subject = SwitcherHintSubject::None });
 }
 
 TEST_CASE("a window without a daemon is offered no way to open a workspace in a new window", "[switcher]")

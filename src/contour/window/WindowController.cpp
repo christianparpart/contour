@@ -82,7 +82,6 @@
 #include <vtworkspace/PaneLayout.hpp>
 #include <vtworkspace/SessionModel.hpp>
 #include <vtworkspace/Tab.hpp>
-#include <vtworkspace/TabName.hpp>
 
 namespace contour::window
 {
@@ -136,7 +135,7 @@ class WindowController::SidebarHost final: public ISidebarHost
         _window.renameWorkspace(workspace, name);
     }
 
-    void renameTab(TabRef tab, std::string const& title) override { _window.renameTab(tab, title); }
+    void renameTab(TabRef tab, std::string const& name) override { _window.renameTab(tab, name); }
 
     void moveWorkspace(uint64_t workspace, std::size_t to) override
     {
@@ -873,8 +872,8 @@ command::DaemonRowsState WindowController::daemonRows() const
     state.switching = command::DaemonSwitching::Available;
 
     using Kind = vthost::proto::SwitchDaemonKind;
-    if (target->kind == Kind::Label)
-        state.current = actions::DaemonRef { actions::DaemonRefKind::Label, target->daemon };
+    if (target->kind == Kind::Name)
+        state.current = actions::DaemonRef { actions::DaemonRefKind::Name, target->daemon };
     else if (target->kind == Kind::Host)
         state.current = actions::DaemonRef { actions::DaemonRefKind::Host, target->daemon };
 
@@ -1021,7 +1020,7 @@ QHash<int, QByteArray> WindowController::roleNames() const
         { static_cast<int>(Roles::IsActiveRole), "isActive" },
         { static_cast<int>(Roles::PaneCountRole), "paneCount" },
         { static_cast<int>(Roles::SessionIdRole), "sessionId" },
-        { static_cast<int>(Roles::RawTitleRole), "rawTitle" },
+        { static_cast<int>(Roles::NameRole), "name" },
         { static_cast<int>(Roles::ZoomedRole), "zoomed" },
         { static_cast<int>(Roles::ProgressStateRole), "progressState" },
         { static_cast<int>(Roles::ProgressPercentageRole), "progressPercentage" },
@@ -1046,8 +1045,7 @@ QVariant WindowController::data(QModelIndex const& index, int role) const
         case Roles::DisplayRole:
         case Roles::SessionIdRole: return session != nullptr ? QVariant(session->id()) : QVariant {};
         case Roles::TitleRole: return resolvedTabLabel(tab, session, row);
-        case Roles::RawTitleRole:
-            return tab != nullptr ? QString::fromStdString(tab->runtimeTitle().value_or("")) : QString {};
+        case Roles::NameRole: return tab != nullptr ? QString::fromStdString(tab->name()) : QString {};
         case Roles::ColorRole: {
             // color() resolves across the tab's color sources, so ask once.
             auto const color = tab != nullptr ? tab->color() : std::nullopt;
@@ -1202,26 +1200,20 @@ QString WindowController::resolvedTabLabel(vtworkspace::Tab* tab,
     // title.
     auto const tabName = session != nullptr ? session->name().value_or(windowTitle) : windowTitle;
 
-    // Same precedence as vtworkspace::Tab::title() (vtworkspace::tabNameSourceOf), templated rather than
-    // resolved (the strip expands {index}/{title} placeholders, so it needs the raw template). The "is this
+    // Same precedence as vtworkspace::Tab::title(), templated rather than resolved (the strip expands
+    // {index}/{title} placeholders in the profile's tab label, so it needs the raw template). The "is this
     // tab named after one of its panes?" decision is Tab's — read it, do not restate it, or the strip and the
-    // status line end up disagreeing about what a zoomed tab is called. A control label is a name, not a
-    // template: it shows as it is, as a workspace's does.
-    auto const names = tab->nameCandidates();
+    // status line end up disagreeing about what a zoomed tab is called. A name is not a template: it shows as
+    // it is, as a workspace's does.
+    if (!tab->name().empty())
+        return QString::fromStdString(tab->name());
     auto templ = std::string_view {};
-    switch (vtworkspace::tabNameSourceOf(names))
-    {
-        case vtworkspace::TabNameSource::Label: return QString::fromStdString(tab->label());
-        case vtworkspace::TabNameSource::Title: templ = names.title; break;
-        case vtworkspace::TabNameSource::Panes:
-            if (tab->usesMultiplePanesLabel())
-                templ = vtworkspace::Tab::MultiplePanesLabel;
-            else if (session != nullptr)
-                templ = session->profile().tabLabel.value();
-            else
-                return QString::fromStdString(windowTitle);
-            break;
-    }
+    if (tab->usesMultiplePanesLabel())
+        templ = vtworkspace::Tab::MultiplePanesLabel;
+    else if (session != nullptr)
+        templ = session->profile().tabLabel.value();
+    else
+        return QString::fromStdString(windowTitle);
 
     auto expanded = expandTabLabel(
         templ, TabLabelContext { .position = row + 1, .windowTitle = windowTitle, .tabName = tabName });
@@ -1572,7 +1564,7 @@ QRectF WindowController::dropGhostRect(int zone, qreal width, qreal height, qrea
 void WindowController::runTabAction(int row, actions::Action const& action)
 {
     std::visit(core::Overloaded {
-                   [&](actions::SetTabTitle const&) { emit tabTitleEditRequested(row); },
+                   [&](actions::RenameTab const&) { emit tabTitleEditRequested(row); },
                    [&](actions::SetTabColor const& color) {
                        if (color.color.has_value())
                            setTabColor(row, platform::toQColor(*color.color));
@@ -1605,16 +1597,10 @@ void WindowController::showAbout()
     emit aboutRequested();
 }
 
-void WindowController::setTabTitle(int index, QString const& title)
+void WindowController::setTabName(int index, QString const& name)
 {
     if (auto* tab = tabAtRow(index); tab != nullptr)
-        _manager.model().setTabTitle(tab->id(), title.toStdString());
-}
-
-void WindowController::resetTabTitle(int index)
-{
-    if (auto* tab = tabAtRow(index); tab != nullptr)
-        _manager.model().resetTabTitle(tab->id());
+        _manager.nameTab(tab->id(), name.toStdString());
 }
 
 void WindowController::beginActiveTabTitleEdit()
@@ -3558,7 +3544,7 @@ void WindowController::moveWorkspaceBy(uint64_t workspace, int by)
         moveWorkspace(workspace, to);
 }
 
-void WindowController::renameTab(TabRef tab, std::string const& title)
+void WindowController::renameTab(TabRef tab, std::string const& name)
 {
     if (_directorySource == nullptr)
         return;
@@ -3570,12 +3556,12 @@ void WindowController::renameTab(TabRef tab, std::string const& title)
     auto const displayed = _sidebarHost->displayedTab(directory);
     if (displayed && displayed->workspace == tab.workspace)
     {
-        setTabTitle(static_cast<int>(std::distance(listed->workspace->tabs.data(), listed->tab)),
-                    QString::fromStdString(title));
+        setTabName(static_cast<int>(std::distance(listed->workspace->tabs.data(), listed->tab)),
+                   QString::fromStdString(name));
         return;
     }
-    // Another workspace's tab is titled where it lives: in the model, or in the daemon by a session it holds.
-    _manager.renameTab(*this, tab.tab, title);
+    // Another workspace's tab is named where it lives: in the model, or in the daemon by a session it holds.
+    _manager.renameTab(*this, tab.tab, name);
 }
 
 void WindowController::renameWorkspace(uint64_t workspace, std::string label)
@@ -3686,7 +3672,7 @@ void WindowController::runSidebarAction(SidebarRowKey const& row, actions::Actio
     static constexpr auto ByIdActions = std::array {
         ByIdAction { .matches = holds<actions::MarkSeen>, .run = MarkRowSeen },
         ByIdAction { .matches = holds<actions::RenameWorkspace>, .run = RenameRow },
-        ByIdAction { .matches = holds<actions::SetTabTitle>, .run = RenameRow },
+        ByIdAction { .matches = holds<actions::RenameTab>, .run = RenameRow },
         ByIdAction { .matches = holds<actions::MoveWorkspaceUp>, .run = MoveRowUp },
         ByIdAction { .matches = holds<actions::MoveWorkspaceDown>, .run = MoveRowDown },
         ByIdAction { .matches = holds<actions::MoveTabToWorkspace>, .run = MoveRowTab },

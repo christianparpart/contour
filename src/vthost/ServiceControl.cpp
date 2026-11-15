@@ -107,11 +107,11 @@ std::optional<ServiceStartMode> serviceStartModeFrom(std::string_view text)
     return std::nullopt;
 }
 
-std::string serviceNameForLabel(std::string_view label)
+std::string serviceNameFor(std::string_view name)
 {
-    if (label == DefaultSocketLabel)
+    if (name == DefaultDaemonName)
         return "contour-daemon";
-    return std::format("contour-daemon-{}", label);
+    return std::format("contour-daemon-{}", name);
 }
 
 std::vector<std::string> taskNamesFor(std::string_view name, std::string_view userKey)
@@ -159,11 +159,11 @@ std::filesystem::path programOfTaskAction(std::string_view raw, VariableExpander
     return core::pathFromTrustedUtf8(expand(text));
 }
 
-std::vector<std::string> registrationNamesForLabel(std::string_view label)
+std::vector<std::string> registrationNamesFor(std::string_view name)
 {
-    auto names = std::vector { serviceNameForLabel(label) };
-    // Before phase 2 the default label was registered as `contour-daemon-default`.
-    if (auto legacy = std::format("contour-daemon-{}", label); legacy != names.front())
+    auto names = std::vector { serviceNameFor(name) };
+    // Before phase 2 the default name was registered as `contour-daemon-default`.
+    if (auto legacy = std::format("contour-daemon-{}", name); legacy != names.front())
         names.push_back(std::move(legacy));
     return names;
 }

@@ -28,7 +28,7 @@
 using namespace contour;
 using contour::session::SwitchMode;
 using contour::session::SwitchTarget;
-using contour::test::switcherLabelled;
+using contour::test::switcherNamed;
 using contour::test::switcherWaitUntil;
 using contour::test::switcherWorkspaceRef;
 using contour::window::SwitcherRowKind;
@@ -100,7 +100,7 @@ struct Switcher
               window::SwitcherPrompt prompt = window::SwitcherPrompt::Browse) const
     {
         controller->open(window::SwitcherOpening { .window = ThisWindow,
-                                                   .windowDaemon = switcherLabelled("work"),
+                                                   .windowDaemon = switcherNamed("work"),
                                                    .mode = SwitchMode::Switch,
                                                    .prompt = prompt,
                                                    .pick = std::nullopt,
@@ -117,7 +117,7 @@ struct Switcher
         return switcherWaitUntil([this] {
             return !controller->isDiscovering()
                    && std::ranges::all_of(controller->daemons(), [&](window::SwitcherDaemon const& each) {
-                          return each.address.kind != SwitchDaemonKind::Label
+                          return each.address.kind != SwitchDaemonKind::Name
                                  || std::ranges::contains(world.heldBack, each.address.daemon)
                                  || each.listing == window::SwitcherListing::Listed
                                  || each.listing == window::SwitcherListing::Failed;
@@ -226,7 +226,7 @@ TEST_CASE("Switcher: a window reaching no other daemon lists its own workspaces 
 {
     auto s = Switcher {};
     s.controller->open(window::SwitcherOpening { .window = ThisWindow,
-                                                 .windowDaemon = switcherLabelled("work"),
+                                                 .windowDaemon = switcherNamed("work"),
                                                  .mode = SwitchMode::Switch,
                                                  .prompt = window::SwitcherPrompt::Browse,
                                                  .pick = std::nullopt,
@@ -245,7 +245,7 @@ TEST_CASE("Switcher: a window reaching no other daemon is offered no new window"
 {
     auto s = Switcher {};
     s.controller->open(window::SwitcherOpening { .window = ThisWindow,
-                                                 .windowDaemon = switcherLabelled("work"),
+                                                 .windowDaemon = switcherNamed("work"),
                                                  .mode = SwitchMode::Switch,
                                                  .prompt = window::SwitcherPrompt::Browse,
                                                  .pick = std::nullopt,
@@ -377,8 +377,8 @@ TEST_CASE("Switcher: New Workspace “q” creates a labelled workspace and swit
     {
         CHECK(s.press(Qt::Key_Return));
         REQUIRE(s.world.created.size() == 1);
-        CHECK(s.world.created[0].daemon == switcherLabelled("work"));
-        CHECK(s.world.created[0].label == "q");
+        CHECK(s.world.created[0].daemon == switcherNamed("work"));
+        CHECK(s.world.created[0].name == "q");
         CHECK(s.world.created[0].mode == SwitchMode::Switch);
         CHECK(finished.size() == 1);
         CHECK(s.world.requested.empty());
@@ -398,7 +398,7 @@ TEST_CASE("Switcher: New Workspace “q” creates a labelled workspace and swit
         plain.select("New Workspace", SwitcherRowKind::NewWorkspace);
         CHECK(plain.press(Qt::Key_Return));
         REQUIRE(plain.world.requested.size() == 1);
-        CHECK(plain.world.requested[0].target == switcherLabelled("work", session::NewWorkspace {}));
+        CHECK(plain.world.requested[0].target == switcherNamed("work", session::NewWorkspace {}));
     }
 }
 
@@ -412,18 +412,18 @@ TEST_CASE("Switcher: New Daemon starts the daemon and switches this window; Shif
     CHECK(s.controller->level() == static_cast<int>(window::SwitcherLevel::NewDaemon));
     CHECK(s.controller->levelTitle() == "New Daemon");
 
-    s.controller->checkLabel("research");
-    CHECK(s.controller->labelVerdict() == static_cast<int>(window::LabelVerdict::Available));
-    CHECK(s.controller->labelMessage() == "Available");
-    CHECK(s.controller->labelCommand() == "contour daemon --label research");
+    s.controller->checkName("research");
+    CHECK(s.controller->nameVerdict() == static_cast<int>(window::NameVerdict::Available));
+    CHECK(s.controller->nameMessage() == "Available");
+    CHECK(s.controller->nameCommand() == "contour daemon --name research");
     REQUIRE(s.controller->rows().size() == 1);
-    CHECK(s.selected().kind == SwitcherRowKind::LabelAction);
+    CHECK(s.selected().kind == SwitcherRowKind::NameAction);
 
     auto const shifted = GENERATE(false, true);
     CHECK(s.press(Qt::Key_Return, shifted ? Qt::ShiftModifier : Qt::NoModifier));
     REQUIRE(switcherWaitUntil([&] { return !s.world.requested.empty(); }));
-    CHECK(s.world.startedLabels == std::vector<std::string> { "research" });
-    CHECK(s.world.requested[0].target == switcherLabelled("research", session::AnyWorkspace {}));
+    CHECK(s.world.startedNames == std::vector<std::string> { "research" });
+    CHECK(s.world.requested[0].target == switcherNamed("research", session::AnyWorkspace {}));
     CHECK(s.world.requested[0].mode == (shifted ? SwitchMode::Open : SwitchMode::Switch));
 
     SECTION("a label already running switches to it, starting nothing")
@@ -432,13 +432,13 @@ TEST_CASE("Switcher: New Daemon starts the daemon and switches this window; Shif
         running.open(window::SwitcherOrigin::Centred,
                      window::SwitcherScope::Everything,
                      window::SwitcherPrompt::NewDaemon);
-        running.controller->checkLabel("home");
-        CHECK(running.controller->labelVerdict() == static_cast<int>(window::LabelVerdict::Running));
+        running.controller->checkName("home");
+        CHECK(running.controller->nameVerdict() == static_cast<int>(window::NameVerdict::Running));
         CHECK(running.controller->footerDescription() == "Switch this window to daemon “home”");
         CHECK(running.press(Qt::Key_Return));
-        CHECK(running.world.startedLabels.empty());
+        CHECK(running.world.startedNames.empty());
         REQUIRE(running.world.requested.size() == 1);
-        CHECK(running.world.requested[0].target == switcherLabelled("home", session::AnyWorkspace {}));
+        CHECK(running.world.requested[0].target == switcherNamed("home", session::AnyWorkspace {}));
     }
     SECTION("an invalid label offers nothing, and Escape clears it, then goes back")
     {
@@ -446,11 +446,11 @@ TEST_CASE("Switcher: New Daemon starts the daemon and switches this window; Shif
         invalid.open(window::SwitcherOrigin::Centred,
                      window::SwitcherScope::Everything,
                      window::SwitcherPrompt::NewDaemon);
-        invalid.controller->checkLabel("a b");
-        CHECK(invalid.controller->labelVerdict() == static_cast<int>(window::LabelVerdict::Invalid));
+        invalid.controller->checkName("a b");
+        CHECK(invalid.controller->nameVerdict() == static_cast<int>(window::NameVerdict::Invalid));
         CHECK(invalid.controller->rows().empty());
         CHECK(invalid.press(Qt::Key_Return));
-        CHECK(invalid.world.startedLabels.empty());
+        CHECK(invalid.world.startedNames.empty());
         CHECK(invalid.press(Qt::Key_Escape));
         CHECK(invalid.controller->filter().isEmpty());
         CHECK(invalid.controller->level() == static_cast<int>(window::SwitcherLevel::NewDaemon));
@@ -531,7 +531,7 @@ TEST_CASE("Switcher: the selection stays on New Daemon… while the looking row 
     services.discovery = discovery;
     s.controller = std::make_unique<window::SwitcherController>(std::move(services));
     s.controller->open(window::SwitcherOpening { .window = ThisWindow,
-                                                 .windowDaemon = switcherLabelled("work"),
+                                                 .windowDaemon = switcherNamed("work"),
                                                  .mode = SwitchMode::Switch,
                                                  .prompt = window::SwitcherPrompt::Browse,
                                                  .pick = std::nullopt,
@@ -629,7 +629,7 @@ TEST_CASE("Switcher: reopening it while it looks for daemons starts no second di
     services.discovery = discovery;
     auto switcher = std::make_unique<window::SwitcherController>(std::move(services));
     auto const opening = window::SwitcherOpening { .window = ThisWindow,
-                                                   .windowDaemon = switcherLabelled("default"),
+                                                   .windowDaemon = switcherNamed("default"),
                                                    .mode = SwitchMode::Switch,
                                                    .prompt = window::SwitcherPrompt::Browse,
                                                    .pick = std::nullopt };
@@ -666,7 +666,7 @@ TEST_CASE("Switcher: a discovery answering after the popup closed adds nothing",
     services.discovery = discovery;
     auto switcher = std::make_unique<window::SwitcherController>(std::move(services));
     auto const opening = window::SwitcherOpening { .window = ThisWindow,
-                                                   .windowDaemon = switcherLabelled("default"),
+                                                   .windowDaemon = switcherNamed("default"),
                                                    .mode = SwitchMode::Switch,
                                                    .prompt = window::SwitcherPrompt::Browse,
                                                    .pick = std::nullopt };
@@ -714,7 +714,7 @@ TEST_CASE("Switcher: the daemon drilled into stays it while a discovery reorders
     s.controller = std::make_unique<window::SwitcherController>(std::move(services));
     s.world.heldBack = { "ci-box" };
     s.controller->open(window::SwitcherOpening { .window = ThisWindow,
-                                                 .windowDaemon = switcherLabelled("work"),
+                                                 .windowDaemon = switcherNamed("work"),
                                                  .mode = SwitchMode::Switch,
                                                  .prompt = window::SwitcherPrompt::Browse,
                                                  .pick = std::nullopt,
@@ -753,8 +753,8 @@ TEST_CASE("Switcher: the level and discovery tell QML of their own changes", "[c
     s.select("New Daemon…", SwitcherRowKind::NewDaemon);
     CHECK(s.press(Qt::Key_Return));
     CHECK(levels.count() == 1);
-    CHECK(s.controller->isAskingLabel());
-    CHECK(s.controller->fieldName() == "Label of the new daemon");
+    CHECK(s.controller->isAskingName());
+    CHECK(s.controller->fieldName() == "Name of the new daemon");
 
     CHECK(s.press(Qt::Key_Escape));
     CHECK(levels.count() == 2);
@@ -816,7 +816,7 @@ TEST_CASE("Switcher: a start is dropped once its level is left or its label chan
     s.open(window::SwitcherOrigin::Centred,
            window::SwitcherScope::Everything,
            window::SwitcherPrompt::NewDaemon);
-    s.controller->checkLabel("research");
+    s.controller->checkName("research");
     CHECK(s.press(Qt::Key_Return));
     REQUIRE(start.awaitStarted());
     CHECK(s.controller->isBusy());
@@ -829,7 +829,7 @@ TEST_CASE("Switcher: a start is dropped once its level is left or its label chan
         CHECK(s.controller->level() == static_cast<int>(window::SwitcherLevel::Top));
     }
     else if (how == "relabelled")
-        s.controller->checkLabel("research2");
+        s.controller->checkName("research2");
     else
         s.controller->abandon();
     CHECK_FALSE(s.controller->isBusy());

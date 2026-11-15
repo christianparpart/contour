@@ -16,26 +16,26 @@
 namespace contour::session
 {
 
-/// The labels the user gave the workspaces of this process. A daemon's labels live in its object registry;
+/// The names the user gave the workspaces of this process. A daemon's names live in its object registry;
 /// an in-process workspace has none, so they are kept here.
-class WorkspaceLabels
+class WorkspaceNames
 {
   public:
-    /// Gives @p workspace the label @p label; an empty label removes it.
+    /// Gives @p workspace the name @p name; an empty name removes it.
     /// @param workspace The workspace.
-    /// @param label Its label.
-    void set(vtworkspace::WorkspaceId workspace, std::string label);
+    /// @param name Its name.
+    void set(vtworkspace::WorkspaceId workspace, std::string name);
 
     /// @param workspace The workspace.
-    /// @return Its label; empty when it has none.
-    [[nodiscard]] std::string labelOf(vtworkspace::WorkspaceId workspace) const;
+    /// @return Its name; empty when it has none.
+    [[nodiscard]] std::string nameOf(vtworkspace::WorkspaceId workspace) const;
 
-    /// Drops the label of @p workspace, which is gone.
+    /// Drops the name of @p workspace, which is gone.
     /// @param workspace The workspace.
     void forget(vtworkspace::WorkspaceId workspace);
 
   private:
-    std::map<uint64_t, std::string> _labels;
+    std::map<uint64_t, std::string> _names;
 };
 
 /// What InProcessDirectory asks of the window it lists the workspaces of. Implemented by the window's
@@ -60,7 +60,7 @@ class InProcessWindow
 };
 
 /// The WorkspaceDirectory of a window whose sessions run in this process: the workspaces it owns, in the
-/// model's order, with the labels of a WorkspaceLabels store, the program status of each pane's session
+/// model's order, with the names of a WorkspaceNames store, the program status of each pane's session
 /// and the git state a WorkspaceGitTracker knows.
 ///
 /// DirectoryWorkspace::id is the WorkspaceId's value, DirectoryPane::key the pane's session id, and
@@ -71,14 +71,14 @@ class InProcessDirectory final: public window::IWorkspaceDirectorySource
     /// @param model The workspaces, tabs and panes. Borrowed; it must outlive the directory.
     /// @param owner The window whose workspaces are listed. Borrowed; as @p model.
     /// @param status Where the status of a pane comes from, by its session id. Borrowed; as @p model.
-    /// @param labels The workspaces' labels. Borrowed; as @p model.
+    /// @param names The workspaces' names. Borrowed; as @p model.
     /// @param git What is known of each workspace's repository; null where git is not tracked (a test, a
     ///        build without it). Borrowed; as @p model.
     /// @param changed Told by notifyChanged(); may be empty.
     InProcessDirectory(vtworkspace::SessionModel const& model,
                        InProcessWindow& owner,
                        window::PaneStatusLookup const& status,
-                       WorkspaceLabels const& labels,
+                       WorkspaceNames const& names,
                        vthost::WorkspaceGitTracker const* git,
                        window::DirectoryChanged changed);
 
@@ -97,7 +97,7 @@ class InProcessDirectory final: public window::IWorkspaceDirectorySource
     vtworkspace::SessionModel const& _model;
     InProcessWindow& _owner;
     window::PaneStatusLookup const& _status;
-    WorkspaceLabels const& _labels;
+    WorkspaceNames const& _names;
     vthost::WorkspaceGitTracker const* _git;
     window::DirectoryChanged _changed;
 };

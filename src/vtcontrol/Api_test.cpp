@@ -12,7 +12,7 @@ TEST_CASE("API JSON keeps the member spelling", "[vtcontrol][api]")
         .pane = "pane:x", .direction = vtcontrol::SplitDirection::Below, .ratioPercent = 30 });
     CHECK(
         json
-        == R"({"pane":"pane:x","direction":"below","ratioPercent":30,"cwd":"","command":[],"label":"","focus":"take"})");
+        == R"({"pane":"pane:x","direction":"below","ratioPercent":30,"cwd":"","command":[],"name":"","focus":"take"})");
     CHECK_FALSE(vtcontrol::decodeJson<vtcontrol::SplitRequest>(R"({"direction":"left"})"));
     CHECK_FALSE(vtcontrol::decodeJson<vtcontrol::SplitRequest>(R"({"ratio":0.3})"));
 }

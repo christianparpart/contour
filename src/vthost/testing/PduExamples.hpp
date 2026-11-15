@@ -161,7 +161,7 @@ namespace vthost::testing
         { proto::PduType::StopDaemon, proto::DecodedPdu { proto::StopDaemon { .reason = 1 } } },
         { proto::PduType::EditTab,
           proto::DecodedPdu {
-              proto::EditTab { .session = 4, .kind = proto::TabEditKind::SetTitle, .title = "build" } } },
+              proto::EditTab { .session = 4, .kind = proto::TabEditKind::SetName, .name = "build" } } },
         { proto::PduType::Heartbeat, proto::DecodedPdu { proto::Heartbeat { .nonce = 7 } } },
         { proto::PduType::ControlRequest,
           proto::DecodedPdu { proto::ControlRequest {
@@ -250,7 +250,7 @@ namespace vthost::testing
           proto::DecodedPdu { proto::WorkspaceMeta {
               .workspace = 3,
               .controlId = { 0x5e, 0xc7, 0xe7, 0x00, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0x01 },
-              .label = "secret-label",
+              .name = "secret-label",
               .git = proto::WireGitInfo { .branch = "secret-branch",
                                           .kind = proto::GitHeadKindWire::Branch,
                                           .ahead = 1,
@@ -261,8 +261,8 @@ namespace vthost::testing
         { proto::PduType::CloseWorkspace, proto::DecodedPdu { proto::CloseWorkspace { .workspace = 3 } } },
         { proto::PduType::Goodbye, proto::DecodedPdu { proto::Goodbye {} } },
         { proto::PduType::OpenFirstTab, proto::DecodedPdu { proto::OpenFirstTab { .workspace = 4 } } },
-        { proto::PduType::SetWorkspaceLabel,
-          proto::DecodedPdu { proto::SetWorkspaceLabel { .workspace = 3, .label = "secret-label" } } },
+        { proto::PduType::SetWorkspaceName,
+          proto::DecodedPdu { proto::SetWorkspaceName { .workspace = 3, .name = "secret-label" } } },
     };
 }
 

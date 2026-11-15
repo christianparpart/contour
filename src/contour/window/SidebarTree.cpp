@@ -245,7 +245,7 @@ namespace
         row.depth = 1;
         row.position = position;
         auto const& fallbackTitle = tab.panes.empty() ? std::string {} : tab.panes.front().title;
-        row.title = rowTextOf(!tab.label.empty() ? tab.label : fallbackTitle);
+        row.title = rowTextOf(!tab.name.empty() ? tab.name : fallbackTitle);
         if (row.title.empty())
             row.title = "Terminal";
         row.selection = selection;

@@ -66,9 +66,9 @@ TEST_CASE("every daemon option round-trips through the options record", "[cli][d
     {
         options.socket = "/run/user/1000/contour/x.sock";
     }
-    SECTION("label")
+    SECTION("name")
     {
-        options.label = "work";
+        options.name = "work";
     }
     SECTION("config")
     {
@@ -169,7 +169,7 @@ TEST_CASE("every daemon option round-trips through the options record, all at on
 {
     auto const options = DaemonVerbOptions {
         .socket = "a",
-        .label = "b",
+        .name = "b",
         .config = "c",
         .profile = "d",
         .background = OptionFlag::Given,
@@ -257,10 +257,10 @@ TEST_CASE("an options record decodes across additions", "[cli][daemon]")
         auto fields = core::codec::Writer {};
         fields.varint((99U << 1U) | 0U); // an id this release does not know, a varint
         fields.varint(5);
-        fields.varint((2U << 1U) | 1U); // label, framed
+        fields.varint((2U << 1U) | 1U); // name, framed
         fields.string("kept");
         auto const decoded = givenIn(recordOf(1, std::move(fields).take()));
-        CHECK(decoded.label == "kept");
+        CHECK(decoded.name == "kept");
     }
 }
 
@@ -278,10 +278,10 @@ TEST_CASE("the socket path resolves from the configuration when no option names 
         CHECK(DaemonLaunch::resolve(options, "/tmp/contour-test/configured.sock").socketPath()
               == "/tmp/contour-test/option.sock");
     }
-    SECTION("--label alone names a path of its own")
+    SECTION("--name alone names a path of its own")
     {
         auto options = DaemonVerbOptions {};
-        options.label = "workbench";
+        options.name = "workbench";
         CHECK(DaemonLaunch::resolve(options, "").socketPath().filename() == "workbench");
     }
 }
@@ -290,7 +290,7 @@ TEST_CASE("the daemon's options are read from the parsed command line", "[cli][d
 {
     auto parameters = core::cli::FlagStore {};
     for (auto const* name: { "socket",
-                             "label",
+                             "name",
                              "config",
                              "profile",
                              "handover",
@@ -310,13 +310,13 @@ TEST_CASE("the daemon's options are read from the parsed command line", "[cli][d
         parameters.values[std::string { "contour.daemon." } + name] = std::string {};
     for (auto const* name: { "background", "stdio", "in-place", "exit-with-last-session" })
         parameters.values[std::string { "contour.daemon." } + name] = false;
-    parameters.values["contour.daemon.label"] = std::string { "lab" };
+    parameters.values["contour.daemon.name"] = std::string { "lab" };
     parameters.values["contour.daemon.lifecycle"] = std::string { "persistent" };
     parameters.values["contour.daemon.in-place"] = true;
 
     auto const options = contour::cli::readDaemonVerbOptions(parameters);
     auto expected = DaemonVerbOptions {};
-    expected.label = "lab";
+    expected.name = "lab";
     expected.inPlace = OptionFlag::Given;
     CHECK(options == expected);
 }
@@ -324,7 +324,7 @@ TEST_CASE("the daemon's options are read from the parsed command line", "[cli][d
 TEST_CASE("a relaunched daemon repeats no option meant for one process", "[cli][daemon]")
 {
     auto given = DaemonVerbOptions {};
-    given.label = "work";
+    given.name = "work";
     given.token = "secret";
     given.handover = "fd=9";
     given.background = OptionFlag::Given;

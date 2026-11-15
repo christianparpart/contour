@@ -54,7 +54,7 @@ namespace
         return std::string { line };
     }
 
-    /// @return What @p objects names @p uuid's object by: its UUID and label; nullopt for one it does not
+    /// @return What @p objects names @p uuid's object by: its UUID and name; nullopt for one it does not
     /// name.
     [[nodiscard]] std::optional<ObjectIdentityRecord> identityOf(ObjectRegistry const& objects,
                                                                  vtcontrol::ObjectKind kind,
@@ -63,9 +63,9 @@ namespace
         if (!uuid)
             return std::nullopt;
         auto record = ObjectIdentityRecord { .uuid = uuid->bytes };
-        if (auto const label = objects.labelOf(vtcontrol::ObjectRef { .kind = kind, .uuid = *uuid });
-            !label.empty())
-            record.label = std::string { label };
+        if (auto const name = objects.nameOf(vtcontrol::ObjectRef { .kind = kind, .uuid = *uuid });
+            !name.empty())
+            record.name = std::string { name };
         return record;
     }
 
@@ -209,7 +209,6 @@ WorkspaceSnapshot captureWorkspace(SessionHost& host,
             auto entry = TabSnapshot {};
             entry.identity =
                 identityOf(host.objects(), vtcontrol::ObjectKind::Tab, host.objects().uuidOf(tab->id()));
-            entry.title = tab->runtimeTitle();
             entry.color = tab->color(vtworkspace::TabColorSource::User);
             entry.root = tree.capture(*tab->rootPane());
             entry.activeLeaf = tree.activeLeaf();

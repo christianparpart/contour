@@ -1127,7 +1127,7 @@ TEST_CASE("Config: a value of the wrong shape costs only its own entry", "[confi
 layouts:
     work:
         tabs:
-            - title: "editor"
+            - name: "editor"
 input_mapping:
     - {{ mods: [Control], key: 'J', action: ScreenshotVT }}
 )",

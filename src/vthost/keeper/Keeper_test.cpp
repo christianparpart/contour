@@ -421,15 +421,15 @@ class FakeSocketFiles final: public SocketFiles
     }
 };
 
-class FakeLabelLock final: public LabelLock
+class FakeNameLock final: public NameLock
 {
   public:
-    explicit FakeLabelLock(std::function<void()> onRelease): _onRelease { std::move(onRelease) } {}
-    FakeLabelLock(FakeLabelLock const&) = delete;
-    FakeLabelLock& operator=(FakeLabelLock const&) = delete;
-    FakeLabelLock(FakeLabelLock&&) = delete;
-    FakeLabelLock& operator=(FakeLabelLock&&) = delete;
-    ~FakeLabelLock() override { _onRelease(); }
+    explicit FakeNameLock(std::function<void()> onRelease): _onRelease { std::move(onRelease) } {}
+    FakeNameLock(FakeNameLock const&) = delete;
+    FakeNameLock& operator=(FakeNameLock const&) = delete;
+    FakeNameLock(FakeNameLock&&) = delete;
+    FakeNameLock& operator=(FakeNameLock&&) = delete;
+    ~FakeNameLock() override { _onRelease(); }
 
   private:
     std::function<void()> _onRelease;
@@ -476,7 +476,7 @@ struct Harness
                                              .clock = clock,
                                              .images = images,
                                              .socketFiles = socketFiles },
-                               std::make_unique<FakeLabelLock>([this] { onLockReleased(); }),
+                               std::make_unique<FakeNameLock>([this] { onLockReleased(); }),
                                policy,
                                daemonImage(),
                                launchOptions() };
@@ -976,7 +976,7 @@ TEST_CASE("with restart_hung off, missed heartbeats do nothing", "[keeper]")
     h.run();
 }
 
-TEST_CASE("Shutdown releases the label lock before the shells are ended", "[keeper]")
+TEST_CASE("Shutdown releases the name lock before the shells are ended", "[keeper]")
 {
     auto h = Harness {};
     auto child = makePipe();
@@ -1463,7 +1463,7 @@ TEST_CASE("the stop bound defaults to a minute, below systemd's stop timeout", "
     CHECK(h.exitStatus == 0);
 }
 
-TEST_CASE("Shutdown is noted once the label and the listeners are let go", "[keeper]")
+TEST_CASE("Shutdown is noted once the name and the listeners are let go", "[keeper]")
 {
     auto h = Harness {};
     auto listener = makePipe();
@@ -1488,7 +1488,7 @@ TEST_CASE("Shutdown is noted once the label and the listeners are let go", "[kee
             REQUIRE(!sent.empty());
             CHECK(std::holds_alternative<ShutdownNoted>(sent.back().message));
             CHECK(lockReleased);
-            CHECK(lockReleasedBeforeNoted); // the daemon closes its listeners on the note: no label held then
+            CHECK(lockReleasedBeforeNoted); // the daemon closes its listeners on the note: no name held then
             CHECK(listener.writerClosed());
             // A daemon behind a keeper removes no socket file: the keeper does, before anyone may bind it
             // anew.

@@ -288,7 +288,7 @@ class WindowController:
         IsActiveRole = Qt::UserRole + 3,  //!< Whether this tab is the active tab of this window.
         PaneCountRole = Qt::UserRole + 4, //!< Number of panes in this tab.
         SessionIdRole = Qt::UserRole + 5, //!< The session id of the tab's active leaf.
-        RawTitleRole = Qt::UserRole + 6,  //!< Un-expanded runtime rename template (empty if never renamed).
+        NameRole = Qt::UserRole + 6,      //!< The tab's user-given name (empty if it has none).
         ZoomedRole = Qt::UserRole + 7, //!< Whether this tab's active pane is zoomed (see vtworkspace::Tab).
         //!< The active pane's OSC 9;4 progress state, as the vtbackend::ProgressState enumerator's
         //!< value (0 = inactive, i.e. nothing to paint). @see vtbackend::ProgressState.
@@ -568,10 +568,12 @@ class WindowController:
     /// @param inset  How far the ghost sits in from the pane's edges.
     /// @return The rectangle; a null one for a zone that is not a split.
     Q_INVOKABLE [[nodiscard]] QRectF dropGhostRect(int zone, qreal width, qreal height, qreal inset) const;
-    Q_INVOKABLE void setTabTitle(int index, QString const& title);
-    Q_INVOKABLE void resetTabTitle(int index);
+    /// Names the tab at @p index, as the tab strip's inline editor commits it.
+    /// @param index The tab's row.
+    /// @param name Its new name; empty (or blank) clears it, so its title names it again.
+    Q_INVOKABLE void setTabName(int index, QString const& name);
     /// Asks the active tab's QML delegate to open its inline title editor (the keyboard entry point
-    /// for the SetTabTitle action). No-op when this window has no active tab. Emits
+    /// for the RenameTab action). No-op when this window has no active tab. Emits
     /// tabTitleEditRequested() with the active tab's row so exactly that TabItem starts editing.
     Q_INVOKABLE void beginActiveTabTitleEdit();
     /// Asks the active tab's QML delegate to open its color picker (the keyboard entry point for the
@@ -1424,11 +1426,11 @@ class WindowController:
 
     /// @name The workspace operations, by the ids the window's directory lists (TerminalSessionManager's).
     /// @{
-    /// Sets the title tab @p tab shows: a tab of the shown workspace as the strip's inline rename does, any
+    /// Sets the name tab @p tab shows: a tab of the shown workspace as the strip's inline rename does, any
     /// other through TerminalSessionManager::renameTab().
     /// @param tab The tab, as the directory names it.
-    /// @param title Its title; empty clears the one the user set.
-    void renameTab(TabRef tab, std::string const& title);
+    /// @param name Its name; empty clears it.
+    void renameTab(TabRef tab, std::string const& name);
     /// Renames workspace @p workspace.
     /// @param workspace The workspace's id.
     /// @param label Its new label; empty clears it.

@@ -91,6 +91,8 @@ namespace
             vthost::proto::Capability::WorkspaceMeta,
             vthost::proto::Capability::ClientGoodbye,
             vthost::proto::Capability::LaunchFirstTab,
+            // compat(0.9.0): Names may stay; the legacy branches taken without it go.
+            vthost::proto::Capability::Names,
         });
         if (switchRequests == NativeController::SwitchRequests::Answered)
             offered.idents.push_back(std::to_underlying(vthost::proto::Capability::WorkspaceSwitch));
@@ -1224,11 +1226,11 @@ void NativeController::onWorkspaceMeta(vthost::proto::WorkspaceMeta const& meta)
 {
     auto const lock = std::lock_guard { _mutex };
     auto& stated = _workspaceMeta[meta.workspace];
-    // Field by field: an absent one is unchanged, an empty label clears it, and a git state of kind None says
+    // Field by field: an absent one is unchanged, an empty name clears it, and a git state of kind None says
     // the workspace is in no repository anymore.
     stated.controlId = meta.controlId;
-    if (meta.label)
-        stated.label = *meta.label;
+    if (meta.name)
+        stated.name = *meta.name;
     if (meta.git)
         stated.git = directoryGitOf(*meta.git);
     if (meta.position)
@@ -1538,28 +1540,30 @@ contour::session::RemoteRouting NativeController::requestRemoteMove(contour::ses
 }
 
 contour::session::RemoteRouting NativeController::requestRemoteRenameWorkspace(uint64_t workspace,
-                                                                               std::string_view label)
+                                                                               std::string_view name)
 {
     auto const agreed = negotiated();
     if (!agreed || !agreed->shared.contains(vthost::proto::Capability::WorkspaceMeta))
         return contour::session::RemoteRouting::Refused;
     // The client's send verbs must run on the reactor thread that owns it.
-    _reactor.post([this, workspace, label = std::string { label }]() mutable {
+    _reactor.post([this, workspace, name = std::string { name }]() mutable {
         if (_client != nullptr)
-            std::ignore = _client->setWorkspaceLabel(workspace, std::move(label));
+            std::ignore = _client->setWorkspaceName(workspace, std::move(name));
     });
     return contour::session::RemoteRouting::Routed;
 }
 
-contour::session::RemoteRouting NativeController::requestRemoteTabTitle(uint64_t session,
-                                                                        std::string_view title)
+contour::session::RemoteRouting NativeController::requestRemoteTabRename(uint64_t session,
+                                                                         std::string_view name)
 {
     if (!negotiated())
         return contour::session::RemoteRouting::Refused;
+    auto const kind =
+        name.empty() ? vthost::proto::TabEditKind::ClearName : vthost::proto::TabEditKind::SetName;
     auto edit = vthost::proto::EditTab {
         .session = session,
-        .kind = title.empty() ? vthost::proto::TabEditKind::ClearTitle : vthost::proto::TabEditKind::SetTitle,
-        .title = std::string { title },
+        .kind = kind,
+        .name = std::string { name },
         .color = 0,
     };
     _reactor.post([this, edit = std::move(edit)] {
@@ -1665,7 +1669,7 @@ void NativeController::reportTabPresentation(contour::session::LocalTabPresentat
         .activeSession = *active,
         .zoomedSession =
             presentation.zoomedPty != nullptr ? sessionForPty(presentation.zoomedPty).value_or(0) : 0,
-        .title = presentation.title,
+        .name = presentation.name,
         .color = presentation.color,
         .activity = presentation.activity,
     };

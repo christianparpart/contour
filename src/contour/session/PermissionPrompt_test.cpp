@@ -255,7 +255,7 @@ TEST_CASE("PermissionPrompt: a switch's prompt names the full target",
         std::string_view remember;
     };
     for (auto const& row: {
-             Row { { .kind = SwitchDaemonKind::Label,
+             Row { { .kind = SwitchDaemonKind::Name,
                      .daemon = "admin",
                      .workspace = contour::session::workspaceTargetOf("build") },
                    "It asks to show the workspace “build” of the daemon “admin” in this window, in place of "
@@ -301,7 +301,7 @@ TEST_CASE("PermissionPrompt: a switch's prompt names the full target",
     CHECK(adHoc.rememberText.empty());
 
     // What a program named is shown, never obeyed: no escape reaches the dialog.
-    auto const forged = switchWindowPrompt({ .kind = SwitchDaemonKind::Label,
+    auto const forged = switchWindowPrompt({ .kind = SwitchDaemonKind::Name,
                                              .daemon = "a\x1b[2Jb",
                                              .workspace = contour::session::workspaceTargetOf("w\nx") },
                                            {},

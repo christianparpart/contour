@@ -124,7 +124,7 @@ struct GuestCall
                                      .ratioPercent = 30,
                                      .cwd = "",
                                      .command = { "tail", "-f", "log" },
-                                     .label = "",
+                                     .name = "",
                                      .focus = vtcontrol::FocusPolicy::Keep };
 }
 
@@ -145,14 +145,14 @@ TEST_CASE("the control imports are the everywhere-verbs, named and shaped as the
 {
     auto const functions = controlHostFunctions();
     CHECK(functions.size() == ControlImportCount);
-    CHECK(ControlImportCount == 21);
+    CHECK(ControlImportCount == 20);
     CHECK(std::ranges::all_of(functions, [](wasm::HostFunction const& function) {
         return function.module == ControlImportModule;
     }));
     // A request's flat values, then the result's address.
     CHECK(functions[importIndexOf("pane-split")].parameterCount == 13);
     CHECK(functions[importIndexOf("daemon-info")].parameterCount == 1);
-    CHECK(functions[importIndexOf("object-set-label")].parameterCount == 5);
+    CHECK(functions[importIndexOf("object-rename")].parameterCount == 5);
     CHECK(functions[importIndexOf("workspace-list")].parameterCount == 3);
     for (auto const socketOnly: { "block-wait", "events-subscribe", "events-unsubscribe" })
         CHECK(std::ranges::find(functions, std::string_view { socketOnly }, &wasm::HostFunction::name)
@@ -284,7 +284,7 @@ TEST_CASE("running a command needs the manifest line 'control input' beside 'con
                                                       .placement = vtcontrol::WorkspacePlacement::Existing,
                                                       .cwd = "",
                                                       .command = { "make" },
-                                                      .label = "",
+                                                      .name = "",
                                                       .focus = vtcontrol::FocusPolicy::Keep } };
         REQUIRE(call.call("tab-create", services, write).has_value());
         CHECK(services.controlCalls.empty());
@@ -439,7 +439,7 @@ TEST_CASE("a guest calls a control verb through the runtime", "[vtextension][con
     REQUIRE(guest.services.controlCalls.size() == 1);
     CHECK(guest.services.controlCalls.front().method == "pane.split");
     CHECK(guest.services.controlCalls.front().params
-          == R"({"pane":"","direction":"right","cwd":"","command":[],"label":"","focus":"take"})");
+          == R"({"pane":"","direction":"right","cwd":"","command":[],"name":"","focus":"take"})");
 }
 
 TEST_CASE("a guest's control call is refused without the manifest line", "[vtextension][control]")

@@ -1142,7 +1142,7 @@ class ContourGuiApp:
         ClientEngine engine = ClientEngine::Native;
         std::string tmuxSocket;        ///< `--tmux-socket`.
         std::string socket;            ///< `--socket`; empty for `daemon.socket`.
-        std::string label;             ///< `--label`; empty when not given.
+        std::string name;              ///< A local daemon's name, from `--daemon`; empty when not given.
         std::string profile;           ///< `--profile`.
         std::string config;            ///< `--config`.
         std::string connectTcp;        ///< `--connect-tcp`; empty for the local socket.

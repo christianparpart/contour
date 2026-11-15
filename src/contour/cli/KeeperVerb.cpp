@@ -39,9 +39,9 @@ int runKeeperVerb(KeeperVerbInputs inputs, std::ostream& errors)
     if (!kept)
     {
         errors << std::format("contour daemon: {}\n", vthost::keeper::describe(kept.error()));
-        if (kept.error() == vthost::keeper::KeeperStartError::LabelHeld)
+        if (kept.error() == vthost::keeper::KeeperStartError::NameHeld)
             errors << "contour daemon: attach to it with 'contour client', or start a separate one with "
-                      "--label NAME\n";
+                      "--name NAME\n";
         return EXIT_FAILURE;
     }
     return *kept;

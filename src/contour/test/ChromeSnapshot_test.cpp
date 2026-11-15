@@ -610,8 +610,8 @@ void checkSwitcherScript(contour::test::snapshot::ChromeSnapshotScene const& sce
             CHECK(has("music"));
             break;
         case SnapshotScript::SwitcherNewDaemon:
-            CHECK(switcher->isAskingLabel());
-            CHECK(switcher->labelCommand() == "contour daemon --label research");
+            CHECK(switcher->isAskingName());
+            CHECK(switcher->nameCommand() == "contour daemon --name research");
             break;
         case SnapshotScript::SwitcherNoMatch:
             CHECK_FALSE(switcher->emptyText().isEmpty());

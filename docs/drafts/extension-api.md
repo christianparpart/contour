@@ -356,7 +356,7 @@ costs when nobody uses it, and which existing type it is built on. Signatures ar
 #### `contour:terminal/workspace`
 
 > **Shipped in part** as `terminal-extensions:control/control@0.1.0` (`wit/control/`): listing,
-> opening, splitting, closing and labelling workspaces, tabs and panes, under the `control read` and
+> opening, splitting, closing and naming workspaces, tabs and panes, under the `control read` and
 > `control write` manifest lines. Focus, move, resize, zoom, swap and layouts are not in it yet.
 
 **Permissions:** `workspace:read`, `workspace:write` · **Placement:** session · **Cost unused:** nil
@@ -369,7 +369,7 @@ This maps almost one-to-one onto `vtworkspace::SessionModel` (`src/vtworkspace/S
 which is already Qt-free and already has the whole verb set — `createTab`, `closeTab`, `activateTab`,
 `moveTab`, `moveTabToWorkspace`, `closePane`, `setActivePane`, `focusDirection`, `setPaneRatio`,
 `resizeActivePane`, `toggleActivePaneOrientation`, `swapActivePane`, `moveActivePane`,
-`toggleActivePaneZoom`, `setTabTitle`, `setTabColor`. The extension interface adds nothing but a
+`toggleActivePaneZoom`, `setTabName`, `setTabColor`. The extension interface adds nothing but a
 permission check and identity mapping.
 
 **Identity is by opaque id, not index.** `WorkspaceId`/`TabId`/`PaneId` are already stable; indices are

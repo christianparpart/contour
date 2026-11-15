@@ -362,9 +362,9 @@ namespace
     {
         return std::to_underlying(PduType::CloseWorkspace);
     }
-    [[nodiscard]] constexpr uint64_t tagOf(SetWorkspaceLabel const&) noexcept
+    [[nodiscard]] constexpr uint64_t tagOf(SetWorkspaceName const&) noexcept
     {
-        return std::to_underlying(PduType::SetWorkspaceLabel);
+        return std::to_underlying(PduType::SetWorkspaceName);
     }
 
     [[nodiscard]] constexpr uint64_t tagOf(AuthChallenge const&) noexcept
@@ -716,7 +716,7 @@ namespace
         for (auto const& block: pdu.commandBlocks)
             encodeCommandBlock(out, block);
         out.string(pdu.interruptedCommand);
-        out.string(pdu.tabName);
+        out.string(pdu.programTabTitle);
     }
 
     void encodeCell(Writer& out, WireCell const& cell)
@@ -838,8 +838,8 @@ namespace
         out.varint(pdu.retiredCommandBlocks.size());
         for (auto const id: pdu.retiredCommandBlocks)
             out.varint(id);
-        out.u8(pdu.tabNameChanged);
-        out.string(pdu.tabName);
+        out.u8(pdu.programTabTitleChanged);
+        out.string(pdu.programTabTitle);
         out.varint(pdu.softGlyphCells.size());
         for (auto const& entry: pdu.softGlyphCells)
         {
@@ -983,7 +983,7 @@ namespace
     {
         out.varint(pdu.session);
         out.u8(std::to_underlying(pdu.kind));
-        out.string(pdu.title);
+        out.string(pdu.name);
         out.u32(pdu.color);
     }
 
@@ -1173,7 +1173,7 @@ namespace
     /// The presence bits of a WorkspaceMeta's optionals, in the order its fields follow the mask.
     enum WorkspaceMetaPresence : uint8_t
     {
-        MetaHasLabel = 0b01,
+        MetaHasName = 0b01,
         MetaHasGit = 0b10,
         MetaHasPosition = 0b100,
     };
@@ -1190,12 +1190,12 @@ namespace
         out.varint(pdu.workspace);
         out.bytes(std::as_bytes(std::span { pdu.controlId }));
         auto mask = uint8_t { 0 };
-        mask |= pdu.label ? MetaHasLabel : 0;
+        mask |= pdu.name ? MetaHasName : 0;
         mask |= pdu.git ? MetaHasGit : 0;
         mask |= pdu.position ? MetaHasPosition : 0;
         out.u8(mask);
-        if (pdu.label)
-            out.string(*pdu.label);
+        if (pdu.name)
+            out.string(*pdu.name);
         if (pdu.git)
         {
             // A growing record: a blob, so a field appended to it later stays inside it.
@@ -1227,10 +1227,10 @@ namespace
         out.varint(pdu.workspace);
     }
 
-    void encodeBody(Writer& out, SetWorkspaceLabel const& pdu)
+    void encodeBody(Writer& out, SetWorkspaceName const& pdu)
     {
         out.varint(pdu.workspace);
-        out.string(pdu.label);
+        out.string(pdu.name);
     }
 
     void encodeBody(Writer& out, SwitchRequest const& pdu)
@@ -1337,7 +1337,7 @@ namespace
             out.varint(tab.activePane);
             out.varint(tab.zoomedPane);
             out.string(tab.title);
-            out.string(tab.label);
+            out.string(tab.name);
             out.u8(tab.hasColor);
             out.u32(tab.color);
             encodePane(out, tab.root);
@@ -1824,7 +1824,7 @@ namespace
         // Appended by a later version; an older sender's body ends before it.
         if (in.remaining() != 0 && !assign(in.string(), pdu.interruptedCommand, error))
             return std::unexpected(error);
-        if (in.remaining() != 0 && !assign(in.string(), pdu.tabName, error))
+        if (in.remaining() != 0 && !assign(in.string(), pdu.programTabTitle, error))
             return std::unexpected(error);
         return pdu;
     }
@@ -1960,7 +1960,8 @@ namespace
             return std::unexpected(decoded.error());
         // Appended by a later version; an older sender's body ends before them, which reads as unchanged.
         if (in.remaining() != 0
-            && (!assign(in.u8(), pdu.tabNameChanged, error) || !assign(in.string(), pdu.tabName, error)))
+            && (!assign(in.u8(), pdu.programTabTitleChanged, error)
+                || !assign(in.string(), pdu.programTabTitle, error)))
             return std::unexpected(error);
         if (in.remaining() != 0)
         {
@@ -2207,7 +2208,7 @@ namespace
         auto error = DecodeError {};
         auto kind = uint8_t {};
         if (!assign(in.varint(), pdu.session, error) || !assign(in.u8(), kind, error)
-            || !assign(in.string(), pdu.title, error) || !assign(in.u32(), pdu.color, error))
+            || !assign(in.string(), pdu.name, error) || !assign(in.u32(), pdu.color, error))
             return std::unexpected(error);
         // Carried, not judged: the host refuses a kind it does not know.
         pdu.kind = static_cast<TabEditKind>(kind);
@@ -2549,7 +2550,7 @@ namespace
             return std::unexpected(controlId.error());
         std::ranges::transform(
             *controlId, pdu.controlId.begin(), [](std::byte b) { return std::to_integer<uint8_t>(b); });
-        if (!assign(in.u8(), mask, error) || !decodeOptionalString(in, mask, MetaHasLabel, pdu.label, error))
+        if (!assign(in.u8(), mask, error) || !decodeOptionalString(in, mask, MetaHasName, pdu.name, error))
             return std::unexpected(error);
         if ((mask & MetaHasGit) != 0)
         {
@@ -2586,11 +2587,11 @@ namespace
         return pdu;
     }
 
-    DecodeResult decodeSetWorkspaceLabel(Reader& in)
+    DecodeResult decodeSetWorkspaceName(Reader& in)
     {
-        auto pdu = SetWorkspaceLabel {};
+        auto pdu = SetWorkspaceName {};
         auto error = DecodeError {};
-        if (!assign(in.varint(), pdu.workspace, error) || !assign(in.string(), pdu.label, error))
+        if (!assign(in.varint(), pdu.workspace, error) || !assign(in.string(), pdu.name, error))
             return std::unexpected(error);
         return pdu;
     }
@@ -2777,7 +2778,7 @@ namespace
             auto tab = WireTab {};
             if (!assign(in.varint(), tab.tabId, error) || !assign(in.varint(), tab.activePane, error)
                 || !assign(in.varint(), tab.zoomedPane, error) || !assign(in.string(), tab.title, error)
-                || !assign(in.string(), tab.label, error) || !assign(in.u8(), tab.hasColor, error)
+                || !assign(in.string(), tab.name, error) || !assign(in.u8(), tab.hasColor, error)
                 || !assign(in.u32(), tab.color, error))
                 return std::unexpected(error);
             auto root = decodePane(in, /*depth=*/256);
@@ -2858,7 +2859,7 @@ namespace
         DecodeRow { PduType::AuthChallenge, decodeAuthChallenge },
         DecodeRow { PduType::WorkspaceMeta, decodeWorkspaceMeta },
         DecodeRow { PduType::MoveWorkspace, decodeMoveWorkspace },
-        DecodeRow { PduType::SetWorkspaceLabel, decodeSetWorkspaceLabel },
+        DecodeRow { PduType::SetWorkspaceName, decodeSetWorkspaceName },
         DecodeRow { PduType::CloseWorkspace, decodeCloseWorkspace },
         DecodeRow { PduType::Goodbye, decodeGoodbye },
         DecodeRow { PduType::OpenFirstTab, decodeOpenFirstTab },

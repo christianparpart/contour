@@ -289,7 +289,7 @@ struct PaneInfo
     using ApiRecordTag = void;
 
     std::string id {};     ///< `pane:<uuid>`.
-    std::string label {};  ///< The label, or empty.
+    std::string name {};   ///< The name the user gave it, or empty.
     std::string title {};  ///< The window title the shell set.
     std::string cwd {};    ///< The shell's working directory, or empty when unknown.
     bool isActive = false; ///< Whether it is its tab's active pane.
@@ -306,7 +306,7 @@ struct TabInfo
     using ApiRecordTag = void;
 
     std::string id {};              ///< `tab:<uuid>`.
-    std::string label {};           ///< The label, or empty.
+    std::string name {};            ///< The name the user gave it, or empty.
     std::string title {};           ///< The tab's title.
     uint32_t position = 0;          ///< 1-based position within the workspace.
     bool isActive = false;          ///< Whether it is its workspace's active tab.
@@ -330,7 +330,7 @@ struct WorkspaceInfo
     using ApiRecordTag = void;
 
     std::string id {};     ///< `workspace:<uuid>`.
-    std::string label {};  ///< The label, or empty.
+    std::string name {};   ///< The name the user gave it, or empty.
     uint32_t position = 0; ///< 1-based position among the daemon's workspaces.
     /// The daemon's native protocol id, which a window follows it by, in decimal: the extension vocabulary
     /// has no 64-bit integers.
@@ -418,7 +418,7 @@ struct CreateTabRequest
     WorkspacePlacement placement = WorkspacePlacement::Existing; ///< Existing workspace or a new one.
     std::string cwd {}; ///< Working directory; empty for the calling pane's, else the default.
     std::vector<std::string> command {};   ///< Program and arguments; empty for the shell.
-    std::string label {};                  ///< Label for the new tab.
+    std::string name {};                   ///< Name for the new tab.
     FocusPolicy focus = FocusPolicy::Take; ///< Whether the new tab takes the focus.
 };
 
@@ -442,7 +442,7 @@ struct SplitRequest
     std::optional<uint8_t> ratioPercent {};           ///< Share of the old pane the new one gets, in percent.
     std::string cwd {};                               ///< Working directory; empty for the split pane's.
     std::vector<std::string> command {};              ///< Program and arguments; empty for the shell.
-    std::string label {};                             ///< Label for the new pane.
+    std::string name {};                              ///< Name for the new pane.
     FocusPolicy focus = FocusPolicy::Take;            ///< Whether the new pane takes the focus.
 };
 
@@ -518,7 +518,7 @@ struct CreateWorkspaceRequest
 
     std::string
         cwd {}; ///< Where the first pane starts, and what the default name comes from; empty for the default.
-    std::string label {}; ///< The workspace's label; empty names it after its folder.
+    std::string name {}; ///< The workspace's name; empty names it after its folder.
 };
 
 /// `workspace.create` reply.
@@ -529,15 +529,6 @@ struct CreateWorkspaceReply
     std::string workspace {}; ///< The new workspace's id.
     std::string tab {};       ///< Its first tab.
     std::string pane {};      ///< Its first pane.
-};
-
-/// `workspace.rename` request.
-struct RenameWorkspaceRequest
-{
-    using ApiRecordTag = void;
-
-    std::string workspace {}; ///< The workspace to rename.
-    std::string label {};     ///< The new label; empty clears it.
 };
 
 /// `workspace.close` request.
@@ -618,7 +609,7 @@ struct SwitchWorkspaceRequest
     /// The workspace whose selecting window switches (the one focused last, when several select it). Absent:
     /// the caller's pane's workspace, and with no caller pane the window that raises for the daemon.
     std::optional<std::string> workspace {};
-    std::string toLabel {};     ///< A local daemon, by label.
+    std::string toName {};      ///< A local daemon, by name.
     std::string toHost {};      ///< A saved host or `ssh://` URL.
     std::string toWorkspace {}; ///< A workspace spec the window resolves against the target daemon.
 };
@@ -634,13 +625,13 @@ struct SwitchWorkspaceReply
     std::string detail {}; ///< A sentence for the user; empty on success.
 };
 
-/// `label.set` request.
-struct SetLabelRequest
+/// `object.rename` request.
+struct ObjectRenameRequest
 {
     using ApiRecordTag = void;
 
     std::string object {}; ///< `<kind>:<target>`, e.g. `pane:logs`.
-    std::string label {};  ///< The new label; empty clears it.
+    std::string name {};   ///< The new name; empty clears it.
 };
 
 /// `pane.reportStatus` request: an integration (a coding agent's hook, say) states what a pane's program is

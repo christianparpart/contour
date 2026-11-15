@@ -20,9 +20,9 @@ TEST_CASE("locationChip.daemonName", "[LocationChip]")
     auto const target = [](SwitchDaemonKind kind, std::string daemon) {
         return SwitchTarget { .kind = kind, .daemon = std::move(daemon) };
     };
-    CHECK(locationDaemonName(target(SwitchDaemonKind::Label, "default"), "") == "local");
-    CHECK(locationDaemonName(target(SwitchDaemonKind::Label, "work"), "") == "work");
-    CHECK(locationDaemonName(target(SwitchDaemonKind::Label, "local"), "") == "local");
+    CHECK(locationDaemonName(target(SwitchDaemonKind::Name, "default"), "") == "local");
+    CHECK(locationDaemonName(target(SwitchDaemonKind::Name, "work"), "") == "work");
+    CHECK(locationDaemonName(target(SwitchDaemonKind::Name, "local"), "") == "local");
     CHECK(locationDaemonName(target(SwitchDaemonKind::Same, ""), "") == "daemon");
     CHECK(locationDaemonName(target(SwitchDaemonKind::Host, "starfive"), "starfive") == "starfive");
     CHECK(locationDaemonName(target(SwitchDaemonKind::Host, "sf"), "me@starfive") == "me@starfive");

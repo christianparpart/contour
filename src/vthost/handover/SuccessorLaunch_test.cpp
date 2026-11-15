@@ -479,7 +479,7 @@ TEST_CASE("a successor says nothing of an image it cannot take over", "[vthost][
     {
         auto image = HandoverImage {};
         auto session = HandoverSession {};
-        session.label = "lost";
+        session.name = "lost";
         image.sessions.push_back(std::move(session));
         handles = predecessor.handlesFor(image);
         why = "cannot adopt the session \"lost\"";
@@ -488,7 +488,7 @@ TEST_CASE("a successor says nothing of an image it cannot take over", "[vthost][
     {
         auto image = HandoverImage {};
         auto session = HandoverSession {};
-        session.label = "foreign";
+        session.name = "foreign";
         session.pty.conpty = vtpty::InheritedConPty { .outputReader = vtpty::CrossingHandle { 4 },
                                                       .inputWriter = vtpty::CrossingHandle { 8 },
                                                       .signal = vtpty::CrossingHandle { 12 },

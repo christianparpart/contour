@@ -2,8 +2,8 @@
 #pragma once
 
 /// @file
-/// The control CLI: `contour ls | new | split | send | pane capture | close | label | api ...`. Every verb is
-/// one row of `controlVerbs()`; the command list, the dispatch, the help and the agent skill all read that
+/// The control CLI: `contour ls | new | split | send | pane capture | close | rename | api ...`. Every verb
+/// is one row of `controlVerbs()`; the command list, the dispatch, the help and the agent skill all read that
 /// table, so a verb is a row, not an edit in four places. A verb turns its flags into the JSON of one
 /// catalog method, calls it through a `ControlChannel`, and prints the reply for people or, with `--json`,
 /// as received.
@@ -145,6 +145,11 @@ struct ControlIo
     std::shared_ptr<vthost::IPinPrompt> pinPrompt {};
     /// Makes what signs a `HOST:PORT` daemon's key proof; empty for no key.
     vthost::client::ClientKeySourceProvider keySourceProvider {};
+    /// The local daemons a bare `--daemon` word may name (vthost::client::resolveDaemonWord()); empty for
+    /// none.
+    vthost::client::LocalDaemons localDaemons {};
+    /// The saved hosts a bare `--daemon` word may name; empty for none.
+    vthost::client::SavedHosts savedHosts {};
 };
 
 /// The daemon's end of a control verb: where its calls go. The real one dials a transport; tests answer.

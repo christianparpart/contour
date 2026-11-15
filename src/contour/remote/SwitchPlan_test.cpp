@@ -34,7 +34,7 @@ constexpr auto OtherWindow = vtworkspace::WorkspaceId { 7 };
 /// @return A workspace row of native id @p id at @p position, whose uuid ends in @p id.
 [[nodiscard]] WorkspaceRow row(uint64_t id,
                                uint32_t position,
-                               std::string const& label = {},
+                               std::string const& name = {},
                                std::optional<vtworkspace::WorkspaceId> shownHere = std::nullopt)
 {
     auto uuid = vtcontrol::Uuid {};
@@ -42,9 +42,9 @@ constexpr auto OtherWindow = vtworkspace::WorkspaceId { 7 };
     return WorkspaceRow {
         .id = id,
         .ref = vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace, .uuid = uuid },
-        .label = label,
+        .name = name,
         .position = position,
-        .name = label,
+        .displayName = name,
         .visibility = vthost::WorkspaceVisibility::Hidden,
         .tabs = 1,
         .shownByWindowHere = shownHere,
@@ -58,7 +58,7 @@ constexpr auto OtherWindow = vtworkspace::WorkspaceId { 7 };
     return workspace;
 }
 
-/// A daemon of three workspaces: 11 labelled "ops", 12 shown by another window here, 13 unlabelled.
+/// A daemon of three workspaces: 11 named "ops", 12 shown by another window here, 13 unnamed.
 [[nodiscard]] std::vector<WorkspaceRow> threeWorkspaces()
 {
     return { row(11, 1, "ops"), row(12, 2, "build", OtherWindow), row(13, 3) };
@@ -99,7 +99,7 @@ struct PlanCase
 TEST_CASE("planSwitch resolves every target as the spec says", "[switch][plan]")
 {
     auto const cases = std::to_array<PlanCase>({
-        { "a named workspace is that one, by label",
+        { "a named workspace is that one, by name",
           "ops",
           threeWorkspaces(),
           std::nullopt,
@@ -202,11 +202,11 @@ TEST_CASE("planSwitch says why a target names no workspace", "[switch][plan]")
     CHECK(std::get<SwitchUnresolved>(decision).reason.contains("nosuch"));
 }
 
-TEST_CASE("workspaceDisplayName: label, else active tab title, else workspace N", "[switch][plan]")
+TEST_CASE("workspaceDisplayName: name, else active tab title, else workspace N", "[switch][plan]")
 {
     struct NameCase
     {
-        std::string_view label;
+        std::string_view name;
         std::string_view title;
         uint32_t position;
         std::string_view expected;
@@ -217,10 +217,10 @@ TEST_CASE("workspaceDisplayName: label, else active tab title, else workspace N"
         { "", "", 3, "workspace 3" },
         { "ops", "", 4, "ops" },
     });
-    for (auto const& [label, title, position, expected]: cases)
+    for (auto const& [name, title, position, expected]: cases)
     {
         INFO(expected);
-        CHECK(contour::remote::workspaceDisplayName(label, title, position) == expected);
+        CHECK(contour::remote::workspaceDisplayName(name, title, position) == expected);
     }
 }
 
@@ -275,21 +275,21 @@ TEST_CASE("workspaceRowsOf counts each workspace's tabs", "[switch][plan]")
     CHECK(rows[0].visibility == vthost::WorkspaceVisibility::Hidden);
 }
 
-TEST_CASE("workspaceRowsOf names an unlabelled workspace by its active tab's label, else its title",
+TEST_CASE("workspaceRowsOf names an unnamed workspace by its active tab's name, else its title",
           "[switch][plan]")
 {
     auto info = vtcontrol::WorkspaceInfo {};
     info.id = "workspace:00000000-0000-0000-0000-000000000001";
     info.position = 1;
     info.native = "9";
-    info.tabs = { vtcontrol::TabInfo { .label = "build", .title = "zsh", .isActive = true } };
+    info.tabs = { vtcontrol::TabInfo { .name = "build", .title = "zsh", .isActive = true } };
     auto const none = [](uint64_t) {
         return std::optional<vtworkspace::WorkspaceId> {};
     };
 
-    CHECK(contour::remote::workspaceRowsOf(std::vector { info }, none).at(0).name == "build");
-    info.tabs.front().label.clear();
-    CHECK(contour::remote::workspaceRowsOf(std::vector { info }, none).at(0).name == "zsh");
+    CHECK(contour::remote::workspaceRowsOf(std::vector { info }, none).at(0).displayName == "build");
+    info.tabs.front().name.clear();
+    CHECK(contour::remote::workspaceRowsOf(std::vector { info }, none).at(0).displayName == "zsh");
 }
 
 // A daemon no client attached to yet lists its own workspace, holding no tab: a window switched to it was
@@ -324,8 +324,8 @@ TEST_CASE("workspaceRowsOf leaves out a workspace holding no tab", "[switch][pla
 }
 
 // Review (PR 3, item 13): the switching actions sent a position as text, and the daemon's vocabulary matches
-// a label first: a workspace labelled "2" won over the second workspace.
-TEST_CASE("planSwitch takes a position or a control id for that alone, never for a label", "[switch][plan]")
+// a name first: a workspace named "2" won over the second workspace.
+TEST_CASE("planSwitch takes a position or a control id for that alone, never for a name", "[switch][plan]")
 {
     auto const rows = std::vector { row(11, 1, "2"), row(12, 2, "build"), row(13, 3) };
     auto const at = [](contour::session::WorkspaceTarget workspace) {
@@ -337,7 +337,7 @@ TEST_CASE("planSwitch takes a position or a control id for that alone, never for
     CHECK(
         sameDecision(planSwitch(at(contour::session::WorkspaceAt { 2 }), rows, std::nullopt, SameDaemon::No),
                      SwitchTo { .workspace = 12 }));
-    // Typed, "2" is what the control verbs make of it: the label.
+    // Typed, "2" is what the control verbs make of it: the name.
     CHECK(sameDecision(planSwitch(naming("2"), rows, std::nullopt, SameDaemon::No),
                        SwitchTo { .workspace = 11 }));
     CHECK(sameDecision(planSwitch(at(rows[2].ref), rows, std::nullopt, SameDaemon::No),
@@ -351,7 +351,7 @@ TEST_CASE("a same-daemon switch naming a control id resolves from the directory 
 {
     auto const tabbed = [](uint64_t id, std::array<uint8_t, 16> controlId) {
         return contour::window::DirectoryWorkspace { .id = id,
-                                                     .label = {},
+                                                     .name = {},
                                                      .tabs = { contour::window::DirectoryTab {} },
                                                      .controlId = controlId,
                                                      .git = {} };
@@ -419,7 +419,7 @@ TEST_CASE("a switch naming a control id the directory does not carry goes to the
         auto const directory = contour::window::WorkspaceDirectory {
             .workspaces = { contour::window::DirectoryWorkspace {
                 .id = 1,
-                .label = {},
+                .name = {},
                 .tabs = { contour::window::DirectoryTab {} },
                 .controlId = known,
                 .git = {} } },
@@ -468,7 +468,7 @@ TEST_CASE(
     using vthost::proto::SwitchDaemonKind;
     auto const dir = std::filesystem::path { "/run/user/1000/contour" };
     auto const labelled = [](std::string name) {
-        return DaemonAddress { .kind = SwitchDaemonKind::Label, .name = std::move(name) };
+        return DaemonAddress { .kind = SwitchDaemonKind::Name, .name = std::move(name) };
     };
 
     SECTION("--socket outside the label directory is no label's daemon")
@@ -569,10 +569,10 @@ TEST_CASE("switcherWorkspacesOf makes a workspace's name fit for a row", "[switc
                                             row(12, 2, std::string(500, 'x')) };
     auto const listed = contour::remote::switcherWorkspacesOf(rows, vtworkspace::WorkspaceId { 3 });
     REQUIRE(listed.size() == 2);
-    CHECK(listed[0].name == contour::window::rowTextOf(rows[0].name));
-    CHECK(listed[0].name != rows[0].name);
-    CHECK(listed[1].name == contour::window::rowTextOf(rows[1].name));
-    CHECK(listed[1].name.size() < rows[1].name.size());
+    CHECK(listed[0].name == contour::window::rowTextOf(rows[0].displayName));
+    CHECK(listed[0].name != rows[0].displayName);
+    CHECK(listed[1].name == contour::window::rowTextOf(rows[1].displayName));
+    CHECK(listed[1].name.size() < rows[1].displayName.size());
 }
 
 TEST_CASE("an in-process window's rows name each workspace it owns and resolve a choice among them",
@@ -581,12 +581,12 @@ TEST_CASE("an in-process window's rows name each workspace it owns and resolve a
     using contour::remote::SwitchNoop;
     using contour::remote::SwitchTo;
     auto const tabOf = [](uint64_t id) {
-        return contour::window::DirectoryTab { .id = id, .title = {}, .label = "sh", .panes = {} };
+        return contour::window::DirectoryTab { .id = id, .title = {}, .name = "sh", .panes = {} };
     };
     auto const directory = contour::window::WorkspaceDirectory {
-        .workspaces = { contour::window::DirectoryWorkspace { .id = 4, .label = "one", .tabs = { tabOf(1) } },
+        .workspaces = { contour::window::DirectoryWorkspace { .id = 4, .name = "one", .tabs = { tabOf(1) } },
                         contour::window::DirectoryWorkspace {
-                            .id = 9, .label = "two", .tabs = { tabOf(1), tabOf(2) } } },
+                            .id = 9, .name = "two", .tabs = { tabOf(1), tabOf(2) } } },
         .selected = std::nullopt,
     };
     auto const window = vtworkspace::WorkspaceId { 4 };

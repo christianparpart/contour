@@ -60,7 +60,7 @@ DaemonVerbOptions readDaemonVerbOptions(core::cli::FlagStore const& parameters)
 {
     return DaemonVerbOptions {
         .socket = textOf(parameters, "socket"),
-        .label = textOf(parameters, "label"),
+        .name = textOf(parameters, "name"),
         .config = textOf(parameters, "config"),
         .profile = textOf(parameters, "profile"),
         .background = flagOf(parameters, "background"),
@@ -86,7 +86,7 @@ DaemonVerbOptions readDaemonVerbOptions(core::cli::FlagStore const& parameters)
 
 DaemonLaunch DaemonLaunch::resolve(DaemonVerbOptions given, std::string const& configuredSocket)
 {
-    auto socketPath = vthost::muxSocketPath(vthost::socketLabelOf(given.label),
+    auto socketPath = vthost::muxSocketPath(vthost::daemonNameFromOption(given.name),
                                             resolveSocketOption(given.socket, configuredSocket));
     return DaemonLaunch { std::move(given), std::move(socketPath) };
 }

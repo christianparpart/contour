@@ -77,8 +77,8 @@ bench-latency e2e contour PATH-TO-contour cold record latency-e2e.tsv
 
 `e2e` writes a configuration with one profile (`bench`: the echo child as shell, 120x40, a steady
 cursor), starts `contour daemon` on a socket of its own, and alternates `contour terminal` and
-`contour client` launches, each with `--latency-probe`. Every client launch uses a unique `--label`, so
-no registered service of yours answers for it. With `cold`, the benchmark stops its daemon itself
+`contour client` launches, each with `--latency-probe`. Every client launch names the daemon by its socket
+path alone (`--daemon=PATH`), so no registered service of yours answers for it. With `cold`, the benchmark stops its daemon itself
 before each cold launch (the daemon's 10 s idle grace would otherwise make it warm).
 
 On Linux the GUI needs a compositor that delivers frame callbacks. The CI-grade choice is a headless

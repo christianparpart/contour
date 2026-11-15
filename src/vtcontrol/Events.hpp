@@ -48,12 +48,13 @@ struct CwdChangedEvent
     std::string cwd {}; ///< The new working directory.
 };
 
-/// A workspace's label changed; the workspace is the event's origin.
-struct WorkspaceLabelChangedEvent
+/// A workspace, tab or pane was renamed; the object is also the event's origin.
+struct ObjectRenamedEvent
 {
     using ApiRecordTag = void;
 
-    std::string label {}; ///< The new label; empty when it was cleared.
+    std::string object {}; ///< The renamed object's id, `<kind>:<uuid>`.
+    std::string name {};   ///< Its new name; empty when it was cleared.
 };
 
 /// A pane's program-status records changed.
@@ -118,7 +119,7 @@ using EventPayload = std::variant<BlockFinishedEvent,
                                   BellEvent,
                                   TitleChangedEvent,
                                   CwdChangedEvent,
-                                  WorkspaceLabelChangedEvent,
+                                  ObjectRenamedEvent,
                                   ProgramStatusChangedEvent,
                                   PaneCreatedEvent,
                                   PaneClosedEvent,
@@ -175,8 +176,8 @@ inline constexpr auto EventCatalog = std::tuple {
     EventRow<BellEvent> { "pane.bell", "A pane rang the bell.", Permission::Read },
     EventRow<TitleChangedEvent> { "pane.titleChanged", "A pane's title changed.", Permission::Read },
     EventRow<CwdChangedEvent> { "pane.cwdChanged", "A pane's working directory changed.", Permission::Read },
-    EventRow<WorkspaceLabelChangedEvent> {
-        "workspace.labelChanged", "A workspace's label changed.", Permission::Read },
+    EventRow<ObjectRenamedEvent> {
+        "object.renamed", "A workspace, tab or pane was renamed.", Permission::Read },
     // Screen, not Read: a record names the program and says what it is doing (the file it edits, the
     // question it waits on), which is what `block.finished`'s command line is kept behind `screen` for.
     EventRow<ProgramStatusChangedEvent> {

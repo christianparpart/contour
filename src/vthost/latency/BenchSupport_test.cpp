@@ -9,8 +9,10 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <vthost/latency/BenchSupport.hpp>
+#include <vthost/latency/E2eBench.hpp>
 #include <vthost/latency/EchoProtocol.hpp>
 
 using namespace vthost::latency;
@@ -139,3 +141,39 @@ TEST_CASE("a benchmark child that fills its terminal is not left blocked on it",
     CHECK((*process)->waitFor(10s).has_value());
 }
 #endif
+
+TEST_CASE("a client launch names the benchmark's daemon by its socket path alone", "[vthost][latency]")
+{
+    // `contour client` has no --name and takes no --socket beside --daemon; a path names no registered
+    // service, so none of the user's answers for the launch.
+    auto const argv = guiLaunchArguments(GuiLaunch { .mode = LaunchMode::Daemon,
+                                                     .socket = "/tmp/bench/daemon",
+                                                     .config = "/tmp/bench/bench.yml",
+                                                     .reportFile = "/tmp/bench/probe-1.txt",
+                                                     .keys = 50,
+                                                     .pacing = FramePacing::Unpaced });
+    CHECK(argv
+          == std::vector<std::string> { "client",
+                                        "--daemon=/tmp/bench/daemon",
+                                        "--config=/tmp/bench/bench.yml",
+                                        "--profile=bench",
+                                        "--latency-probe=/tmp/bench/probe-1.txt",
+                                        "--latency-probe-keys=50" });
+}
+
+TEST_CASE("an in-process launch names no daemon", "[vthost][latency]")
+{
+    auto const argv = guiLaunchArguments(GuiLaunch { .mode = LaunchMode::InProcess,
+                                                     .socket = "/tmp/bench/daemon",
+                                                     .config = "/tmp/bench/bench.yml",
+                                                     .reportFile = "/tmp/bench/probe-2.txt",
+                                                     .keys = 5,
+                                                     .pacing = FramePacing::VSync });
+    CHECK(argv
+          == std::vector<std::string> { "terminal",
+                                        "--config=/tmp/bench/bench.yml",
+                                        "--profile=bench",
+                                        "--latency-probe=/tmp/bench/probe-2.txt",
+                                        "--latency-probe-keys=5",
+                                        "--latency-probe-vsync" });
+}

@@ -375,7 +375,7 @@ namespace
             // remedy here, the two halves of the story are two processes apart.
             if (listener.error().code == core::net::NetErrorCode::AddressInUse)
                 errorLog()("a daemon is already serving this socket; attach to it with "
-                           "'contour client', or start a separate one with --label NAME");
+                           "'contour client', or start a separate one with --name NAME");
             return std::unexpected(EXIT_FAILURE);
         }
         daemonLog()("bound {}", path);
@@ -1283,7 +1283,10 @@ namespace
                                                        proto::Capability::DaemonFollow,
                                                        proto::Capability::WorkspaceMeta,
                                                        proto::Capability::ClientGoodbye,
-                                                       proto::Capability::LaunchFirstTab });
+                                                       proto::Capability::LaunchFirstTab,
+                                                       // compat(0.9.0): Names may stay; the legacy
+                                                       // branches taken without it go.
+                                                       proto::Capability::Names });
         // Only a daemon with profiles resolves a name; one without keeps honouring a client's settings.
         if (config.profiles)
             capabilities.idents.push_back(std::to_underlying(proto::Capability::ProfileByName));

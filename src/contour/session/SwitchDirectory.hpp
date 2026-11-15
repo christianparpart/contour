@@ -29,7 +29,7 @@ enum class WorkspaceRole : uint8_t
 struct KnownWorkspace
 {
     uint32_t position = 0; ///< 1-based position among the daemon's workspaces: a valid spec.
-    std::string name;      ///< Label, else the active tab's title, else "workspace N".
+    std::string name;      ///< Its name, else the active tab's title, else "workspace N".
     WorkspaceRole role = WorkspaceRole::Other; ///< Whether the asking window shows it.
 };
 

@@ -565,7 +565,7 @@ TEST_CASE("DaemonLink: a new workspace starts in the folder of the window's acti
     auto const label = daemon.onDaemon([&daemon] {
         auto const made = daemon.host->model().workspaceAt(1)->id();
         auto const uuid = daemon.host->objects().uuidOf(made);
-        return std::string { daemon.host->objects().labelOf(
+        return std::string { daemon.host->objects().nameOf(
             vtcontrol::ObjectRef { vtcontrol::ObjectKind::Workspace, uuid.value() }) };
     });
     CHECK(label == "repo");
@@ -733,19 +733,19 @@ TEST_CASE("DaemonLink: the chrome says which daemon a window is on, and the defa
     SECTION("a non-default local label")
     {
         auto rig =
-            LinkRig { daemon.endpoint(), {}, {}, {}, { .kind = SwitchDaemonKind::Label, .name = "admin" } };
+            LinkRig { daemon.endpoint(), {}, {}, {}, { .kind = SwitchDaemonKind::Name, .name = "admin" } };
         CHECK(rig.link->chromeLabel().empty()); // not until the attach settled
         REQUIRE(pollUntilAttached(*rig.link, 10s).has_value());
         CHECK(rig.link->chromeLabel() == "admin");
         CHECK(rig.link->hostLabel().empty()); // still not a remote host: sessions keep running locally
         CHECK(rig.link->daemonTarget()
-              == SwitchTarget { .kind = SwitchDaemonKind::Label, .daemon = "admin", .workspace = {} });
+              == SwitchTarget { .kind = SwitchDaemonKind::Name, .daemon = "admin", .workspace = {} });
     }
 
     SECTION("the default local label")
     {
         auto rig =
-            LinkRig { daemon.endpoint(), {}, {}, {}, { .kind = SwitchDaemonKind::Label, .name = "default" } };
+            LinkRig { daemon.endpoint(), {}, {}, {}, { .kind = SwitchDaemonKind::Name, .name = "default" } };
         REQUIRE(pollUntilAttached(*rig.link, 10s).has_value());
         CHECK(rig.link->chromeLabel().empty());
         CHECK(rig.link->daemonTarget()->daemon == "default");
@@ -1092,7 +1092,7 @@ TEST_CASE("DaemonLink: adopting a window of another daemon marks that daemon's p
     auto oldBinding = contour::test::DaemonNamedBinding {
         old,
         contour::session::SwitchTarget {
-            .kind = vthost::proto::SwitchDaemonKind::Label, .daemon = "elsewhere", .workspace = {} }
+            .kind = vthost::proto::SwitchDaemonKind::Name, .daemon = "elsewhere", .workspace = {} }
     };
     manager.bindWindow(window.id, oldBinding);
     REQUIRE(pollUntilAttached(*rig.link, 10s).has_value());
@@ -1358,17 +1358,17 @@ TEST_CASE("ContourGuiApp: a switch to a label no daemon could have is refused be
     for (auto const* const label: { "../../etc/x", "a/b", ".hidden", "", "admin-native" })
     {
         auto const config = app.app().linkConfigFor(
-            contour::remote::DaemonAddress { .kind = SwitchDaemonKind::Label, .name = label },
+            contour::remote::DaemonAddress { .kind = SwitchDaemonKind::Name, .name = label },
             vtworkspace::WorkspaceId { 1 });
         CHECK_FALSE(config.has_value());
         if (!config)
             CHECK(config.error().contains("names no daemon"));
     }
-    CHECK(app.app()
-              .linkConfigFor(
-                  contour::remote::DaemonAddress { .kind = SwitchDaemonKind::Label, .name = "admin" },
-                  vtworkspace::WorkspaceId { 1 })
-              .has_value());
+    CHECK(
+        app.app()
+            .linkConfigFor(contour::remote::DaemonAddress { .kind = SwitchDaemonKind::Name, .name = "admin" },
+                           vtworkspace::WorkspaceId { 1 })
+            .has_value());
 }
 
 // Review (PR 2, item 9): "New Terminal" from the menu bar while the link boots -- its first layout pending,
@@ -2399,7 +2399,7 @@ TEST_CASE("DaemonLink: only the daemon this client launched on offers a restart 
                              {},
                              {},
                              { .kind = vthost::proto::AttachIntentKind::Default, .workspace = 0 },
-                             { .kind = vthost::proto::SwitchDaemonKind::Label, .name = "admin" });
+                             { .kind = vthost::proto::SwitchDaemonKind::Name, .name = "admin" });
     config.locality = contour::window::DaemonLocality::Local;
     config.clientRelease = "0.0.1"; // drifted from any daemon this suite runs
     config.upkeep = upkeep;
@@ -2935,11 +2935,11 @@ TEST_CASE(
     CHECK(daemon.onDaemon([&daemon] { return daemon.live.size(); }) == 0);
     app.startupLister().answer(std::vector {
         vtcontrol::WorkspaceInfo { .id = "workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789aa",
-                                   .label = {},
+                                   .name = {},
                                    .position = 1,
                                    .native = std::to_string(ids[0]) },
         vtcontrol::WorkspaceInfo { .id = "workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab",
-                                   .label = "work",
+                                   .name = "work",
                                    .position = 2,
                                    .native = std::to_string(ids[1]) },
     });

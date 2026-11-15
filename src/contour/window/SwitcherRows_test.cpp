@@ -55,7 +55,7 @@ namespace
 
 [[nodiscard]] SwitchTarget label(std::string name, contour::session::WorkspaceTarget workspace = {})
 {
-    return SwitchTarget { .kind = SwitchDaemonKind::Label,
+    return SwitchTarget { .kind = SwitchDaemonKind::Name,
                           .daemon = std::move(name),
                           .workspace = std::move(workspace) };
 }
@@ -341,7 +341,7 @@ TEST_CASE("switcherDaemonName names a daemon as the location chip does, by the w
           == "studio");
     // A label target with no host label keeps its label.
     CHECK(switcherDaemonName(label("work"), {}) == contour::window::locationDaemonName(label("work"), {}));
-    // Every place the popup names a daemon reads the daemon's own label: the group title, the status.
+    // Every place the popup names a daemon reads the daemon's own name: the group title, the status.
     auto const daemon = SwitcherDaemon { .address = host("ci-box"), .hostLabel = "studio" };
     CHECK(switcherDaemonName(daemon) == "studio");
 }
@@ -381,7 +381,7 @@ TEST_CASE("the new daemon level offers one action for a label it can act on", "[
 
     auto const fresh = rowsFor("research");
     REQUIRE(fresh.size() == 1);
-    CHECK(fresh[0].kind == LabelAction);
+    CHECK(fresh[0].kind == NameAction);
     CHECK(fresh[0].title == "Start daemon “research” and switch this window to it");
     CHECK(fresh[0].target == label("research", contour::session::AnyWorkspace {}));
 

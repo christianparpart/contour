@@ -17,7 +17,6 @@
 #include <vtworkspace/Arrangement.hpp>
 #include <vtworkspace/Pane.hpp>
 #include <vtworkspace/Primitives.hpp>
-#include <vtworkspace/TabName.hpp>
 #include <vtworkspace/WorkspaceState.hpp>
 
 namespace vtworkspace
@@ -44,11 +43,11 @@ inline constexpr size_t TabColorSourceCount = std::to_underlying(TabColorSource:
 ///
 /// The tab owns the root Pane, tracks which leaf is active (with an MRU list for focus
 /// navigation), whether that active leaf is **zoomed**, and — importantly — owns the authoritative
-/// **runtime title** and **runtime color**.
+/// **name** and **runtime color**.
 /// These live here, in Qt-free vtworkspace, deliberately *below* the GUI: the Contour GUI and any future
 /// network-connected client are pure views of this state. They read title()/color() and request
-/// mutations (setRuntimeTitle/setColor); they never hold their own authoritative copy. That is what
-/// lets every client agree on the same title and color.
+/// mutations (setName/setColor); they never hold their own authoritative copy. That is what
+/// lets every client agree on the same name and color.
 ///
 /// The color is stored per @ref TabColorSource rather than as a single slot, so that a color the user
 /// picked and a color an application assigned coexist and neither destroys the other.
@@ -60,7 +59,7 @@ class Tab
     using SessionTitleResolver = std::function<std::string(SessionId)>;
 
     /// The label used for a tab whose active pane is part of a multi-pane split and which has no
-    /// runtime title override. Mirrors Windows Terminal's "MultiplePanes".
+    /// name. Mirrors Windows Terminal's "MultiplePanes".
     static constexpr std::string_view MultiplePanesLabel = "Multiple panes";
 
     /// Constructs a tab with a single leaf pane.
@@ -73,7 +72,8 @@ class Tab
     /// Restores a tab from a snapshot: its whole tree, with the ids it had.
     /// @param id   The tab's id.
     /// @param root The tree; every node is as the snapshot had it.
-    /// @param view Active pane, zoom, recency, title and colours. @p view.activePane must be a leaf of
+    /// @param view Active pane, zoom, recency and colours; its title is not the tab's (TabViewState::title).
+    ///        @p view.activePane must be a leaf of
     ///        @p root; recency is completed with any leaf it omits and stripped of ids that are none.
     Tab(TabId id, std::unique_ptr<Pane> root, TabViewState const& view);
 
@@ -275,31 +275,22 @@ class Tab
     /// is how the tab strip and the status line came to disagree about what a zoomed tab is called.
     [[nodiscard]] bool usesMultiplePanesLabel() const noexcept { return hasMultiplePanes() && !_zoomed; }
 
-    /// The resolved title, in precedence order (tabNameSourceOf()):
-    ///   1. the control-API label, if set;
-    ///   2. the runtime title override (rename), if set;
-    ///   3. "Multiple panes" if usesMultiplePanesLabel();
-    ///   4. the active leaf session's own title, via @p resolver.
+    /// What names the tab on screen, in precedence order:
+    ///   1. the user-given name, if set;
+    ///   2. programTitle().
     [[nodiscard]] std::string title(SessionTitleResolver const& resolver) const;
 
-    /// @return The tab's control-API label, which names it over everything else; empty when it has none.
-    [[nodiscard]] std::string const& label() const noexcept { return _label; }
+    /// The tab's title as its programs make it, never the user's name: "Multiple panes" if
+    /// usesMultiplePanesLabel(), else the active leaf session's own title, via @p resolver. What the control
+    /// API states as a tab's title, beside its name.
+    [[nodiscard]] std::string programTitle(SessionTitleResolver const& resolver) const;
 
-    /// @return What names the tab besides its panes, for tabNameSourceOf(); valid while the tab is unchanged.
-    [[nodiscard]] TabNameCandidates nameCandidates() const noexcept
-    {
-        return { .label = _label,
-                 .title = _runtimeTitle ? std::string_view { *_runtimeTitle } : std::string_view {} };
-    }
+    /// @return The tab's user-given name, which names it over everything else; empty when it has none.
+    [[nodiscard]] std::string const& name() const noexcept { return _name; }
 
-    /// Sets the tab's control-API label; an empty one clears it.
-    /// @param label The label, as the daemon holds it.
-    void setLabel(std::string label) { _label = std::move(label); }
-
-    [[nodiscard]] std::optional<std::string> const& runtimeTitle() const noexcept { return _runtimeTitle; }
-
-    /// Sets (or, with nullopt, clears) the runtime title override.
-    void setRuntimeTitle(std::optional<std::string> title) { _runtimeTitle = std::move(title); }
+    /// Sets the tab's user-given name; an empty one clears it.
+    /// @param name The name.
+    void setName(std::string name) { _name = std::move(name); }
 
     // }}}
     // {{{ Color
@@ -345,9 +336,9 @@ class Tab
     Pane* _activeLeaf;
     bool _zoomed = false;     //!< Whether _activeLeaf alone fills the tab area (see the Zoom block).
     std::vector<PaneId> _mru; //!< Most-recently-used leaf ids, front = most recent.
-    std::optional<std::string> _runtimeTitle;
-    /// Not part of the view state: a daemon holds it in its object registry and states it with every layout.
-    std::string _label;
+    /// Not part of the view state: a daemon holds it in its object registry, mirrors it here, and states it
+    /// with every layout.
+    std::string _name;
     std::array<std::optional<vtbackend::RGBColor>, TabColorSourceCount> _colors {};
 
     void touchMru(PaneId id);

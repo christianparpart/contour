@@ -117,10 +117,10 @@ namespace
         return { .id = std::format("{}", direction), .title = std::format(" {}", direction) };
     }
 
-    /// A daemon reference is part of the identity, with its kind: a label and a host may share a name.
+    /// A daemon reference is part of the identity, with its kind: a local daemon and a host may share a name.
     [[nodiscard]] CommandArguments daemonArguments(actions::DaemonRef const& daemon)
     {
-        auto const kind = daemon.kind == actions::DaemonRefKind::Host ? "host" : "label";
+        auto const kind = daemon.kind == actions::DaemonRefKind::Host ? "host" : "name";
         return { .id = std::format("{}:{}", kind, daemon.name), .title = std::format(": {}", daemon.name) };
     }
 } // namespace

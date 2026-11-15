@@ -58,7 +58,7 @@ class TabListModel: public QAbstractListModel, public ModelEvents
         IsActiveRole = Qt::UserRole + 3,
         PaneCountRole = Qt::UserRole + 4,
         SessionIdRole = Qt::UserRole + 5,
-        RawTitleRole = Qt::UserRole + 6,
+        NameRole = Qt::UserRole + 6,
         BadgeRole = Qt::UserRole + 10,
         BadgeTextRole = Qt::UserRole + 11,
     };
@@ -77,8 +77,8 @@ class TabListModel: public QAbstractListModel, public ModelEvents
                   == static_cast<int>(contour::window::WindowController::Roles::PaneCountRole));
     static_assert(static_cast<int>(Roles::SessionIdRole)
                   == static_cast<int>(contour::window::WindowController::Roles::SessionIdRole));
-    static_assert(static_cast<int>(Roles::RawTitleRole)
-                  == static_cast<int>(contour::window::WindowController::Roles::RawTitleRole));
+    static_assert(static_cast<int>(Roles::NameRole)
+                  == static_cast<int>(contour::window::WindowController::Roles::NameRole));
     static_assert(static_cast<int>(Roles::BadgeRole)
                   == static_cast<int>(contour::window::WindowController::Roles::BadgeRole));
     static_assert(static_cast<int>(Roles::BadgeTextRole)
@@ -141,8 +141,7 @@ class TabListModel: public QAbstractListModel, public ModelEvents
                 return tab != nullptr ? QVariant(static_cast<qulonglong>(tab->activePane()->session().value))
                                       : QVariant {};
             case Roles::TitleRole: return resolvedTabLabel(tab, row);
-            case Roles::RawTitleRole:
-                return tab != nullptr ? QString::fromStdString(tab->runtimeTitle().value_or("")) : QString {};
+            case Roles::NameRole: return tab != nullptr ? QString::fromStdString(tab->name()) : QString {};
             case Roles::ColorRole:
                 if (tab != nullptr && tab->color().has_value())
                 {
@@ -176,7 +175,7 @@ class TabListModel: public QAbstractListModel, public ModelEvents
                  { static_cast<int>(Roles::IsActiveRole), "isActive" },
                  { static_cast<int>(Roles::PaneCountRole), "paneCount" },
                  { static_cast<int>(Roles::SessionIdRole), "sessionId" },
-                 { static_cast<int>(Roles::RawTitleRole), "rawTitle" },
+                 { static_cast<int>(Roles::NameRole), "name" },
                  { static_cast<int>(Roles::BadgeRole), "badge" },
                  { static_cast<int>(Roles::BadgeTextRole), "badgeText" } };
     }
@@ -264,7 +263,7 @@ class TabListModel: public QAbstractListModel, public ModelEvents
     int statusLineUpdateCount = 0;
     void tabTitleChanged(TabId tab) override
     {
-        notifyRow(tab, { Roles::TitleRole, Roles::RawTitleRole });
+        notifyRow(tab, { Roles::TitleRole, Roles::NameRole });
         ++statusLineUpdateCount; // mirror: manager calls updateStatusLine() here too
     }
     void tabColorChanged(TabId tab) override
@@ -297,19 +296,19 @@ class TabListModel: public QAbstractListModel, public ModelEvents
             emit dataChanged(index(0), index(rows - 1), { static_cast<int>(Roles::TitleRole) });
     }
 
-    // Mirror of WindowController::resolvedTabLabel: pick a template by precedence (rename >
-    // multi-pane sentinel > profile template), then expand it once with the tab's 1-based position.
-    // The stand-in has no OSC 30 source, so {TabName} resolves to the title, as it does for a tab whose
-    // application never named it.
+    // Mirror of WindowController::resolvedTabLabel: a name shows as it is; otherwise pick a template by
+    // precedence (multi-pane sentinel > profile template), then expand it once with the tab's 1-based
+    // position. The stand-in has no OSC 30 source, so {TabName} resolves to the title, as it does for a tab
+    // whose application never named it.
     [[nodiscard]] QString resolvedTabLabel(Tab* tab, int row) const
     {
         if (tab == nullptr)
             return {};
         auto const windowTitle = _model.sessionTitleResolver()(tab->activePane()->session());
+        if (!tab->name().empty())
+            return QString::fromStdString(tab->name());
         auto templ = std::string_view {};
-        if (auto const& renamed = tab->runtimeTitle(); renamed.has_value())
-            templ = *renamed;
-        else if (tab->hasMultiplePanes())
+        if (tab->hasMultiplePanes())
             templ = Tab::MultiplePanesLabel;
         else
             templ = _tabLabelTemplate;
@@ -672,45 +671,37 @@ TEST_CASE("TabListModel: a positional template prefixes the 1-based tab position
     CHECK(roleAt(m, 1, TabListModel::Roles::TitleRole).toString() == "2: bash");
 }
 
-TEST_CASE("TabListModel: a user rename overrides the profile template", "[contour][gui][model][tablabel]")
+TEST_CASE("TabListModel: a name overrides the profile template", "[contour][gui][model][tablabel][name]")
 {
-    // A rename replaces the profile's tab-label template for that one tab. A plain rename (no
-    // placeholders) therefore shows verbatim, without the position prefix the profile template adds.
+    // A name replaces the profile's tab-label template for that one tab, and shows verbatim, without the
+    // position prefix the profile template adds.
     TabListModel m;
     QAbstractItemModelTester const tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
     m.setTabLabelTemplate("{TabPosition}: {WindowTitle}");
 
     auto* a = m.model().createTab(m.window().id());
     m.setSessionTitle(a->activePane()->session(), "vim");
-    m.model().setTabTitle(a->id(), "deploy");
+    m.model().setTabName(a->id(), "deploy");
 
     CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "deploy");
 
-    // Clearing the rename restores the profile-templated label.
-    m.model().resetTabTitle(a->id());
+    // Clearing the name restores the profile-templated label.
+    m.model().setTabName(a->id(), {});
     CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "1: vim");
 }
 
-TEST_CASE("TabListModel: a rename containing placeholders is itself expanded",
-          "[contour][gui][model][tablabel]")
+TEST_CASE("TabListModel: a name is literal text, its placeholders unexpanded",
+          "[contour][gui][model][tablabel][name]")
 {
-    // The rename acts as the template for its tab: a rename of "{WindowTitle}" tracks the live title,
-    // and a rename combining placeholders and literals expands all of them. This is the fix for the
-    // reported "{WindowTitle} printed literally when set as the tab name" behavior.
     TabListModel m;
     QAbstractItemModelTester const tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
-    m.setTabLabelTemplate("plain"); // profile template differs, to prove the rename drives expansion
+    m.setTabLabelTemplate("{WindowTitle}");
 
     auto* a = m.model().createTab(m.window().id());
-    auto* b = m.model().createTab(m.window().id());
     m.setSessionTitle(a->activePane()->session(), "vim");
-    m.setSessionTitle(b->activePane()->session(), "bash");
 
-    m.model().setTabTitle(a->id(), "{WindowTitle}");
-    CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "vim");
-
-    m.model().setTabTitle(b->id(), "[{TabPosition}] {WindowTitle}");
-    CHECK(roleAt(m, 1, TabListModel::Roles::TitleRole).toString() == "[2] bash");
+    m.model().setTabName(a->id(), "[{TabPosition}] {WindowTitle}");
+    CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "[{TabPosition}] {WindowTitle}");
 }
 
 TEST_CASE("TabListModel: a split tab shows the multi-pane sentinel, not the template",
@@ -771,51 +762,35 @@ TEST_CASE("TabListModel: closing a tab renumbers positional labels and re-emits 
     CHECK(renumbered);
 }
 
-// {{{ Setting tab titles: raw template vs. expanded label (RawTitleRole)
-//
-// These cover the rename round-trip and the displayed-vs-edited split. Note on scope: the headless
-// stand-in sources {WindowTitle} from its seeded sessionTitleResolver (it has no real Terminal), so
-// the production "raw window-title source" fix (TerminalSession::resolvedWindowTitle) is validated by
-// the expandTabLabel unit tests + manual checks; here we exercise that a rename is stored verbatim,
-// exposed un-expanded via RawTitleRole for the editor, and expanded for the displayed TitleRole.
+// {{{ Naming tabs: the name the editor reads (NameRole) and the label the strip shows
 
-TEST_CASE("TabListModel: setting a tab title exposes the raw template and the expanded label separately",
-          "[contour][gui][model][tablabel]")
-{
-    // The reported bug: setting "a: {WindowTitle}" must show "a: <title>" on the tab, while the rename
-    // editor (RawTitleRole) must still show the un-expanded "a: {WindowTitle}" so editing keeps it.
-    TabListModel m;
-    QAbstractItemModelTester const tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
-    m.setTabLabelTemplate("{TabPosition}: {WindowTitle}");
-
-    auto* a = m.model().createTab(m.window().id());
-    m.setSessionTitle(a->activePane()->session(), "vim");
-
-    m.model().setTabTitle(a->id(), "a: {WindowTitle}");
-
-    CHECK(roleAt(m, 0, TabListModel::Roles::RawTitleRole).toString() == "a: {WindowTitle}"); // editor
-    CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "a: vim");              // displayed
-}
-
-TEST_CASE("TabListModel: a plain rename round-trips verbatim in both roles",
-          "[contour][gui][model][tablabel]")
+TEST_CASE(
+    "TabListModel: renaming a tab sets the name the strip shows, and an empty one shows its title again",
+    "[contour][gui][model][tablabel][name]")
 {
     TabListModel m;
     QAbstractItemModelTester const tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
-    m.setTabLabelTemplate("{TabPosition}: {WindowTitle}");
+    m.setTabLabelTemplate("{WindowTitle}");
 
     auto* a = m.model().createTab(m.window().id());
     m.setSessionTitle(a->activePane()->session(), "vim");
-    m.model().setTabTitle(a->id(), "deploy");
+    REQUIRE(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "vim");
 
-    CHECK(roleAt(m, 0, TabListModel::Roles::RawTitleRole).toString() == "deploy");
+    m.model().setTabName(a->id(), "deploy");
+    CHECK(a->name() == "deploy");
+    CHECK(roleAt(m, 0, TabListModel::Roles::NameRole).toString() == "deploy");
     CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "deploy");
+
+    m.model().setTabName(a->id(), {});
+    CHECK(a->name().empty());
+    CHECK(roleAt(m, 0, TabListModel::Roles::NameRole).toString().isEmpty());
+    CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "vim");
 }
 
-TEST_CASE("TabListModel: a never-renamed tab has an empty raw title", "[contour][gui][model][tablabel]")
+TEST_CASE("TabListModel: a never-named tab has an empty name", "[contour][gui][model][tablabel][name]")
 {
-    // The editor pre-fill: a tab that was never renamed opens the rename field blank, so accepting an
-    // empty edit does not freeze the displayed expansion as a literal name.
+    // The editor pre-fill: a tab that was never named opens the rename field blank, so accepting an empty
+    // edit does not freeze the displayed label as a literal name.
     TabListModel m;
     QAbstractItemModelTester const tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
     m.setTabLabelTemplate("{WindowTitle}");
@@ -823,46 +798,29 @@ TEST_CASE("TabListModel: a never-renamed tab has an empty raw title", "[contour]
     auto* a = m.model().createTab(m.window().id());
     m.setSessionTitle(a->activePane()->session(), "vim");
 
-    CHECK(roleAt(m, 0, TabListModel::Roles::RawTitleRole).toString().isEmpty());
+    CHECK(roleAt(m, 0, TabListModel::Roles::NameRole).toString().isEmpty());
     CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "vim"); // label still resolves
 }
 
-TEST_CASE("TabListModel: resetting a tab title clears the raw role and restores the template",
-          "[contour][gui][model][tablabel]")
+TEST_CASE("TabListModel: setting and clearing a name emits dataChanged covering NameRole",
+          "[contour][gui][model][tablabel][name]")
 {
-    TabListModel m;
-    QAbstractItemModelTester const tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
-    m.setTabLabelTemplate("{TabPosition}: {WindowTitle}");
-
-    auto* a = m.model().createTab(m.window().id());
-    m.setSessionTitle(a->activePane()->session(), "vim");
-    m.model().setTabTitle(a->id(), "renamed");
-    REQUIRE(roleAt(m, 0, TabListModel::Roles::RawTitleRole).toString() == "renamed");
-
-    m.model().resetTabTitle(a->id());
-    CHECK(roleAt(m, 0, TabListModel::Roles::RawTitleRole).toString().isEmpty());
-    CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "1: vim");
-}
-
-TEST_CASE("TabListModel: setting and clearing a title emits dataChanged covering RawTitleRole",
-          "[contour][gui][model][tablabel]")
-{
-    // The editor binds to RawTitleRole, so a rename/reset must invalidate that role or a re-opened
-    // editor would show a stale template.
+    // The editor binds to NameRole, so a rename must invalidate that role or a re-opened editor would show
+    // a stale name.
     TabListModel m;
     QAbstractItemModelTester const tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
 
     auto* a = m.model().createTab(m.window().id());
     m.setSessionTitle(a->activePane()->session(), "vim");
 
-    auto const rawRole = static_cast<int>(TabListModel::Roles::RawTitleRole);
-    auto coversRawTitleForRow0 = [&](QSignalSpy const& spy) {
+    auto const nameRole = static_cast<int>(TabListModel::Roles::NameRole);
+    auto coversNameForRow0 = [&](QSignalSpy const& spy) {
         return std::ranges::any_of(spy, [&](QList<QVariant> const& args) {
             auto const top = args.at(0).value<QModelIndex>().row();
             auto const bottom = args.at(1).value<QModelIndex>().row();
             auto const roles = args.at(2).value<QList<int>>();
             auto const spansRow0 = top <= 0 && bottom >= 0;
-            auto const hasRole = roles.isEmpty() || roles.contains(rawRole);
+            auto const hasRole = roles.isEmpty() || roles.contains(nameRole);
             return spansRow0 && hasRole;
         });
     };
@@ -870,36 +828,32 @@ TEST_CASE("TabListModel: setting and clearing a title emits dataChanged covering
     {
         QSignalSpy const spy(&m, &QAbstractItemModel::dataChanged);
         REQUIRE(spy.isValid());
-        m.model().setTabTitle(a->id(), "x");
-        CHECK(coversRawTitleForRow0(spy));
+        m.model().setTabName(a->id(), "x");
+        CHECK(coversNameForRow0(spy));
     }
     {
         QSignalSpy const spy(&m, &QAbstractItemModel::dataChanged);
         REQUIRE(spy.isValid());
-        m.model().resetTabTitle(a->id());
-        CHECK(coversRawTitleForRow0(spy));
+        m.model().setTabName(a->id(), {});
+        CHECK(coversNameForRow0(spy));
     }
 }
 
-TEST_CASE("TabListModel: a templated rename's raw role survives a positional renumber",
-          "[contour][gui][model][tablabel]")
+TEST_CASE("TabListModel: a name survives a positional renumber", "[contour][gui][model][tablabel][name]")
 {
-    // Proves the displayed/edit split holds across structural change: closing a sibling renumbers the
-    // displayed {TabPosition} but must NOT rewrite the stored rename template the editor reads.
     TabListModel m;
     QAbstractItemModelTester const tester(&m, QAbstractItemModelTester::FailureReportingMode::Fatal);
-    m.setTabLabelTemplate("plain");
+    m.setTabLabelTemplate("{TabPosition}: {WindowTitle}");
 
     auto* a = m.model().createTab(m.window().id());
     auto* b = m.model().createTab(m.window().id());
     m.setSessionTitle(b->activePane()->session(), "bash");
-    m.model().setTabTitle(b->id(), "{TabPosition}: {WindowTitle}");
-    REQUIRE(roleAt(m, 1, TabListModel::Roles::TitleRole).toString() == "2: bash");
+    m.model().setTabName(b->id(), "deploy");
 
     m.model().closeTab(m.window().id(), a->id()); // b moves from row 1 to row 0
 
-    CHECK(roleAt(m, 0, TabListModel::Roles::RawTitleRole).toString() == "{TabPosition}: {WindowTitle}");
-    CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "1: bash"); // renumbered
+    CHECK(roleAt(m, 0, TabListModel::Roles::NameRole).toString() == "deploy");
+    CHECK(roleAt(m, 0, TabListModel::Roles::TitleRole).toString() == "deploy");
 }
 
 TEST_CASE("TabListModel: a tab rename republishes the indicator status line",
@@ -916,7 +870,7 @@ TEST_CASE("TabListModel: a tab rename republishes the indicator status line",
     SECTION("a rename refreshes the status line, like a color change does")
     {
         auto const before = m.statusLineUpdateCount;
-        m.model().setTabTitle(a->id(), "deploy");
+        m.model().setTabName(a->id(), "deploy");
         CHECK(m.statusLineUpdateCount == before + 1);
     }
 
@@ -927,11 +881,11 @@ TEST_CASE("TabListModel: a tab rename republishes the indicator status line",
         CHECK(m.statusLineUpdateCount == before + 1);
     }
 
-    SECTION("resetting a rename also refreshes the status line")
+    SECTION("clearing a name also refreshes the status line")
     {
-        m.model().setTabTitle(a->id(), "deploy");
+        m.model().setTabName(a->id(), "deploy");
         auto const before = m.statusLineUpdateCount;
-        m.model().resetTabTitle(a->id());
+        m.model().setTabName(a->id(), {});
         CHECK(m.statusLineUpdateCount == before + 1);
     }
 }

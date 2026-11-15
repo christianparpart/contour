@@ -274,8 +274,8 @@ TEST_CASE("a daemon that shuts down tells its keeper first", "[keeper][daemon][a
             told = *shutdown;
     }
     CHECK(told->cause == std::to_underlying(vthost::ShutdownCause::Signal));
-    // Review Focus 2: the daemon's listeners stay until the keeper took note, by when it let go of the label,
-    // so that nothing still holds the label once the socket stops answering.
+    // Review Focus 2: the daemon's listeners stay until the keeper took note, by when it let go of the name,
+    // so that nothing still holds the name once the socket stops answering.
     std::this_thread::sleep_for(200ms);
     CHECK(fs::exists(vthost::nativeSocketPath(d.config.socketPath)));
     d.send(keeper::ShutdownNoted {});
@@ -306,7 +306,7 @@ TEST_CASE("contour daemon serves through a keeper and the daemon is its child", 
     CHECK(f.launches() == std::vector { daemon });
 }
 
-TEST_CASE("a second keeper on a held label fails without starting a daemon", "[keeper][daemon][afunix]")
+TEST_CASE("a second keeper on a held name fails without starting a daemon", "[keeper][daemon][afunix]")
 {
     auto f = KeeperFixture {};
     struct stat before {};
@@ -314,7 +314,7 @@ TEST_CASE("a second keeper on a held label fails without starting a daemon", "[k
 
     auto const second = f.runSecondKeeper(10s);
     REQUIRE(second.has_value());
-    CHECK(*second == vthost::testing::HarnessKeeperStartFailureStatus); // refused at the label lock
+    CHECK(*second == vthost::testing::HarnessKeeperStartFailureStatus); // refused at the name lock
 
     struct stat after {};
     REQUIRE(::stat(f.socketPath().c_str(), &after) == 0);
