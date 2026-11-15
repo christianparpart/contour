@@ -1695,6 +1695,16 @@ class ContourGuiApp:
     /// Writes the probe report and ends the event loop with the probe's exit code.
     void finishLatencyProbe();
 
+    /// Writes the probe report: where the probe got to and what it measured.
+    /// @return The process exit code that outcome asks for, or EXIT_FAILURE where the report cannot be
+    /// written.
+    [[nodiscard]] int writeLatencyProbeReport();
+
+    /// Ends a probe the app quit before it finished (its window closed, its session ended): reports what the
+    /// probe got to, where it got as far as starting, and fails the run.
+    /// @return EXIT_FAILURE.
+    [[nodiscard]] int endUnfinishedLatencyProbe();
+
 #ifdef CONTOUR_WITH_GPU_SELECTION
     /// Moves @p window to the automatically chosen GPU, after the configured one failed to render on it.
     /// @param window The window that never showed a frame.
