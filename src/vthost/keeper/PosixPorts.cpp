@@ -108,7 +108,8 @@ namespace
         // Not /dev/fd: without fdescfs mounted, FreeBSD's lists 0, 1 and 2 whatever is open, and the budget
         // would never move. The kernel counts them instead.
     #ifdef KERN_PROC_NFDS
-        auto name = std::array { CTL_KERN, KERN_PROC, KERN_PROC_NFDS };
+        // The last level must be 0, the calling process: the only one the kernel answers for.
+        auto name = std::array { CTL_KERN, KERN_PROC, KERN_PROC_NFDS, 0 };
         auto count = 0;
         auto size = sizeof(count);
         if (::sysctl(name.data(), static_cast<u_int>(name.size()), &count, &size, nullptr, 0) == 0
@@ -166,7 +167,9 @@ namespace
         [[nodiscard]] std::size_t available() const override
         {
             auto const open = countOpenDescriptors(_current);
-            return _current > open ? static_cast<std::size_t>(_current - open) : 0;
+            // As an unsigned count: rlim_t is signed on FreeBSD, unsigned on Linux and macOS.
+            auto const limit = static_cast<std::size_t>(_current);
+            return limit > open ? limit - open : 0;
         }
 
         /// @return The limit this process started with, which every child but the daemon is given back.
