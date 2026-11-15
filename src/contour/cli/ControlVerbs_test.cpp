@@ -384,10 +384,10 @@ TEST_CASE("ls prints a readable tree", "[contour][cli][control]")
 {
     auto run = Run {};
     auto channel = ScriptedChannel {
-        R"({"workspaces":[{"id":"workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab","label":"",)"
+        R"({"workspaces":[{"id":"workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab","name":"",)"
         R"("position":1,"tabs":[{"id":"tab:018f3c4e-9a1b-7c2d-8e3f-0123456789ac",)"
-        R"("label":"build","title":"zsh","position":1,"isActive":true,"panes":[)"
-        R"({"id":"pane:018f3c4e-9a1b-7c2d-8e3f-0123456789ad","label":"","title":"zsh",)"
+        R"("name":"build","title":"zsh","position":1,"isActive":true,"panes":[)"
+        R"({"id":"pane:018f3c4e-9a1b-7c2d-8e3f-0123456789ad","name":"","title":"zsh",)"
         R"("cwd":"/home/me","isActive":true,"size":{"columns":80,"lines":24},)"
         R"("programStatus":[],"futureKey":1}]}]}]})"s
     };
@@ -778,14 +778,14 @@ TEST_CASE("the workspace and tab verbs build their requests", "[contour][cli][co
     auto const rows = std::vector<Row> {
         { "workspace.new",
           { "workspace", "new", "--cwd", "/tmp", "--name", "ops" },
-          vtcontrol::encodeJson(vtcontrol::CreateWorkspaceRequest { .cwd = "/tmp", .label = "ops" }) },
+          vtcontrol::encodeJson(vtcontrol::CreateWorkspaceRequest { .cwd = "/tmp", .name = "ops" }) },
         { "workspace.new",
           { "workspace", "new" },
           vtcontrol::encodeJson(vtcontrol::CreateWorkspaceRequest {}) },
         { "workspace.rename",
           { "workspace", "rename", "build", "release" },
           vtcontrol::encodeJson(
-              vtcontrol::RenameWorkspaceRequest { .workspace = "build", .label = "release" }) },
+              vtcontrol::ObjectRenameRequest { .object = "workspace:build", .name = "release" }) },
         { "workspace.rename", { "workspace", "rename", "build" }, std::nullopt },
         { "workspace.move",
           { "workspace", "move", "--to", "2", "build" },
@@ -977,7 +977,7 @@ TEST_CASE("switch builds workspace.switch from its destination flags", "[contour
         return verbNamed("switch").buildParams(parseFlags(args));
     };
     CHECK(build({ "switch", "--to-label", "admin" })
-          == vtcontrol::encodeJson(vtcontrol::SwitchWorkspaceRequest { .toLabel = "admin" }));
+          == vtcontrol::encodeJson(vtcontrol::SwitchWorkspaceRequest { .toName = "admin" }));
     CHECK(build({ "switch", "--workspace", "w1", "--to-host", "box", "--to-workspace", "build" })
           == vtcontrol::encodeJson(vtcontrol::SwitchWorkspaceRequest {
               .workspace = std::string { "w1" }, .toHost = "box", .toWorkspace = "build" }));
@@ -1077,13 +1077,13 @@ TEST_CASE("--label picks the daemon and --name names what a creating verb makes"
     auto const rows = std::array {
         Row { .path = "workspace.new",
               .args = { "workspace", "new", "--label", "work", "--name", "ops" },
-              .params = vtcontrol::encodeJson(vtcontrol::CreateWorkspaceRequest { .label = "ops" }) },
+              .params = vtcontrol::encodeJson(vtcontrol::CreateWorkspaceRequest { .name = "ops" }) },
         Row { .path = "new",
               .args = { "new", "--label", "work", "--name", "logs" },
-              .params = vtcontrol::encodeJson(vtcontrol::CreateTabRequest { .label = "logs" }) },
+              .params = vtcontrol::encodeJson(vtcontrol::CreateTabRequest { .name = "logs" }) },
         Row { .path = "split",
               .args = { "split", "--label", "work", "--name", "tail" },
-              .params = vtcontrol::encodeJson(vtcontrol::SplitRequest { .label = "tail" }) },
+              .params = vtcontrol::encodeJson(vtcontrol::SplitRequest { .name = "tail" }) },
     };
     for (auto const& row: rows)
     {

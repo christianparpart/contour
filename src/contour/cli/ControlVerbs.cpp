@@ -183,20 +183,20 @@ namespace
             out << std::format("workspace {}  {}{}\n",
                                workspace.position,
                                shortId(workspace.id),
-                               workspace.label.empty() ? ""s : "  " + workspace.label);
+                               workspace.name.empty() ? ""s : "  " + workspace.name);
             for (auto const& tab: workspace.tabs)
             {
                 out << std::format("  {} tab {}  {}  {}\n",
                                    tab.isActive ? '*' : ' ',
                                    tab.position,
                                    shortId(tab.id),
-                                   tab.label.empty() ? tab.title : tab.label);
+                                   tab.name.empty() ? tab.title : tab.name);
                 for (auto const& pane: tab.panes)
                 {
                     out << std::format("    {} pane  {}  {}  {}x{}",
                                        pane.isActive ? '*' : ' ',
                                        shortId(pane.id),
-                                       pane.label.empty() ? pane.title : pane.label,
+                                       pane.name.empty() ? pane.title : pane.name,
                                        pane.size.columns,
                                        pane.size.lines);
                     if (!pane.cwd.empty())
@@ -341,8 +341,8 @@ namespace
                     return event.title;
                 else if constexpr (std::same_as<Event, vtcontrol::CwdChangedEvent>)
                     return event.cwd;
-                else if constexpr (std::same_as<Event, vtcontrol::WorkspaceLabelChangedEvent>)
-                    return event.label;
+                else if constexpr (std::same_as<Event, vtcontrol::ObjectRenamedEvent>)
+                    return event.name;
                 else if constexpr (std::same_as<Event, vtcontrol::ProgramStatusChangedEvent>)
                     return std::format(
                         "{} record(s), {}", event.records.size(), vtcontrol::nameOf(event.reason));
@@ -398,7 +398,7 @@ namespace
                                                   : vtcontrol::WorkspacePlacement::Existing,
             .cwd = f.text("cwd"),
             .command = toStrings(f.words()),
-            .label = f.text("name"),
+            .name = f.text("name"),
             .focus = f.isSet("no-focus") ? vtcontrol::FocusPolicy::Keep : vtcontrol::FocusPolicy::Take });
     }
 
@@ -430,7 +430,7 @@ namespace
             .ratioPercent = *ratio,
             .cwd = f.text("cwd"),
             .command = toStrings(f.words()),
-            .label = f.text("name"),
+            .name = f.text("name"),
             .focus = f.isSet("no-focus") ? vtcontrol::FocusPolicy::Keep : vtcontrol::FocusPolicy::Take });
     }
 
@@ -480,15 +480,15 @@ namespace
         auto const& words = VerbFlags { flags, "label" }.words();
         if (words.size() != 2)
             return std::unexpected("label takes an OBJECT and a LABEL (an empty one clears it)"s);
-        return vtcontrol::encodeJson(vtcontrol::SetLabelRequest { .object = std::string { words[0] },
-                                                                  .label = std::string { words[1] } });
+        return vtcontrol::encodeJson(vtcontrol::ObjectRenameRequest { .object = std::string { words[0] },
+                                                                      .name = std::string { words[1] } });
     }
 
     [[nodiscard]] Params buildWorkspaceNew(CLI::FlagStore const& flags)
     {
         auto const f = VerbFlags { flags, "workspace.new" };
         return vtcontrol::encodeJson(
-            vtcontrol::CreateWorkspaceRequest { .cwd = f.text("cwd"), .label = f.text("name") });
+            vtcontrol::CreateWorkspaceRequest { .cwd = f.text("cwd"), .name = f.text("name") });
     }
 
     [[nodiscard]] Params buildWorkspaceRename(CLI::FlagStore const& flags)
@@ -497,8 +497,10 @@ namespace
         if (words.size() != 2)
             return std::unexpected(
                 "workspace rename takes a WORKSPACE and a LABEL (an empty one clears it)"s);
-        return vtcontrol::encodeJson(vtcontrol::RenameWorkspaceRequest {
-            .workspace = std::string { words[0] }, .label = std::string { words[1] } });
+        // object.rename of `workspace:<spec>`, which resolves the spec as a workspace spec, a full id
+        // included.
+        return vtcontrol::encodeJson(vtcontrol::ObjectRenameRequest {
+            .object = std::format("workspace:{}", words[0]), .name = std::string { words[1] } });
     }
 
     /// @param verb The verb whose `--to` is read, for the message.
@@ -637,7 +639,7 @@ namespace
         auto const& workspace = f.text("workspace");
         return vtcontrol::encodeJson(vtcontrol::SwitchWorkspaceRequest {
             .workspace = workspace.empty() ? std::nullopt : std::optional { workspace },
-            .toLabel = toLabel,
+            .toName = toLabel,
             .toHost = toHost,
             .toWorkspace = toWorkspace });
     }
@@ -883,7 +885,7 @@ namespace
             },
             ControlVerb {
                 .path = "label",
-                .method = "object.setLabel",
+                .method = "object.rename",
                 .usage = "label OBJECT LABEL",
                 .summary = "Labels a workspace, tab or pane to address it by; an empty label clears it.",
                 .options = [] { return withConnectionOptions({}); },
@@ -914,7 +916,7 @@ namespace
             },
             ControlVerb {
                 .path = "workspace.rename",
-                .method = "workspace.rename",
+                .method = "object.rename",
                 .usage = "workspace rename WORKSPACE LABEL",
                 .summary = "Renames a workspace; an empty label clears it.",
                 .options = [] { return withConnectionOptions({}); },

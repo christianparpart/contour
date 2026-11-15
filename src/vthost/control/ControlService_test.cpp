@@ -344,7 +344,7 @@ TEST_CASE("block.list and block.read report a finished command", "[vthost][contr
     CHECK(stale.error().code == ControlErrorCode::NotFound);
 }
 
-TEST_CASE("object.setLabel makes a pane addressable by label", "[vthost][control]")
+TEST_CASE("object.rename makes a pane addressable by name", "[vthost][control]")
 {
     auto h = ControlHarness {};
     std::ignore = h.openTab();
@@ -352,7 +352,7 @@ TEST_CASE("object.setLabel makes a pane addressable by label", "[vthost][control
     h.terminal(logs).writeToScreen("tail -f");
 
     auto const set = callSync<vtcontrol::EmptyReply>(
-        h.service, h.context, vtcontrol::SetLabelRequest { .object = h.paneId(logs), .label = "logs" });
+        h.service, h.context, vtcontrol::ObjectRenameRequest { .object = h.paneId(logs), .name = "logs" });
     REQUIRE(set.has_value());
 
     auto const capture = callSync<vtcontrol::CaptureReply>(
@@ -361,25 +361,25 @@ TEST_CASE("object.setLabel makes a pane addressable by label", "[vthost][control
     CHECK(capture->pane == h.paneId(logs));
     CHECK(capture->text == "tail -f");
 
-    // The label is the spec of `<kind>:<spec>` too, and an empty label clears it.
+    // The name is the spec of `<kind>:<spec>` too, and an empty name clears it.
     REQUIRE(callSync<vtcontrol::EmptyReply>(
-                h.service, h.context, vtcontrol::SetLabelRequest { .object = "pane:logs", .label = "" })
+                h.service, h.context, vtcontrol::ObjectRenameRequest { .object = "pane:logs", .name = "" })
                 .has_value());
     auto const cleared = callSync<vtcontrol::CaptureReply>(
         h.service, h.context, vtcontrol::CaptureRequest { .pane = "logs", .scrollback = 0 });
     CHECK_FALSE(cleared.has_value());
 
     auto const bad = callSync<vtcontrol::EmptyReply>(
-        h.service, h.context, vtcontrol::SetLabelRequest { .object = "frame:1", .label = "x" });
+        h.service, h.context, vtcontrol::ObjectRenameRequest { .object = "frame:1", .name = "x" });
     REQUIRE_FALSE(bad.has_value());
     CHECK(bad.error().code == ControlErrorCode::BadRequest);
 
     REQUIRE(callSync<vtcontrol::EmptyReply>(
-                h.service, h.context, vtcontrol::SetLabelRequest { .object = "tab:2", .label = "build" })
+                h.service, h.context, vtcontrol::ObjectRenameRequest { .object = "tab:2", .name = "build" })
                 .has_value());
     auto const list = callSync<vtcontrol::ListReply>(h.service, h.context, vtcontrol::ListRequest {});
     REQUIRE(list.has_value());
-    CHECK(list->workspaces[0].tabs[1].label == "build");
+    CHECK(list->workspaces[0].tabs[1].name == "build");
 }
 
 TEST_CASE("workspace.list states a named tab's program title, not its name", "[vthost][control][name]")
@@ -390,11 +390,11 @@ TEST_CASE("workspace.list states a named tab's program title, not its name", "[v
     h.drain();
 
     REQUIRE(callSync<vtcontrol::EmptyReply>(
-                h.service, h.context, vtcontrol::SetLabelRequest { .object = "tab:1", .label = "build" })
+                h.service, h.context, vtcontrol::ObjectRenameRequest { .object = "tab:1", .name = "build" })
                 .has_value());
     auto const list = callSync<vtcontrol::ListReply>(h.service, h.context, vtcontrol::ListRequest {});
     REQUIRE(list.has_value());
-    CHECK(list->workspaces[0].tabs[0].label == "build");
+    CHECK(list->workspaces[0].tabs[0].name == "build");
     CHECK(list->workspaces[0].tabs[0].title == "vim");
 }
 
@@ -411,11 +411,12 @@ TEST_CASE("a control call from a pane moved into a new workspace resolves its ta
     h.context.callerPane = h.paneId(dragged);
 
     REQUIRE(callSync<vtcontrol::EmptyReply>(
-                h.service, h.context, vtcontrol::SetLabelRequest { .object = "tab:", .label = "moved" })
+                h.service, h.context, vtcontrol::ObjectRenameRequest { .object = "tab:", .name = "moved" })
                 .has_value());
-    REQUIRE(callSync<vtcontrol::EmptyReply>(
-                h.service, h.context, vtcontrol::SetLabelRequest { .object = "workspace:", .label = "away" })
-                .has_value());
+    REQUIRE(
+        callSync<vtcontrol::EmptyReply>(
+            h.service, h.context, vtcontrol::ObjectRenameRequest { .object = "workspace:", .name = "away" })
+            .has_value());
     CHECK(h.host.terminal(first) != nullptr);
 }
 
@@ -427,7 +428,7 @@ TEST_CASE("tab.create returns ids that workspace.list then shows", "[vthost][con
     auto const created = callSync<vtcontrol::CreateTabReply>(
         h.service,
         h.context,
-        vtcontrol::CreateTabRequest { .label = "build", .focus = vtcontrol::FocusPolicy::Keep });
+        vtcontrol::CreateTabRequest { .name = "build", .focus = vtcontrol::FocusPolicy::Keep });
     REQUIRE(created.has_value());
 
     auto const list = callSync<vtcontrol::ListReply>(h.service, h.context, vtcontrol::ListRequest {});
@@ -437,7 +438,7 @@ TEST_CASE("tab.create returns ids that workspace.list then shows", "[vthost][con
     REQUIRE(list->workspaces[0].tabs.size() == 2);
     auto const& tab = list->workspaces[0].tabs[1];
     CHECK(tab.id == created->tab);
-    CHECK(tab.label == "build");
+    CHECK(tab.name == "build");
     REQUIRE(tab.panes.size() == 1);
     CHECK(tab.panes[0].id == created->pane);
     // Keep left the first tab the active one.
@@ -494,7 +495,7 @@ TEST_CASE("pane.split below 30 gives the new pane 30 percent and focus", "[vthos
         vtcontrol::SplitRequest { .pane = h.paneId(anchor),
                                   .direction = vtcontrol::SplitDirection::Below,
                                   .ratioPercent = 30,
-                                  .label = "tail" });
+                                  .name = "tail" });
     REQUIRE(split.has_value());
     auto const* tab = h.host.model().workspace(h.host.workspaceId())->activeTab();
     REQUIRE(tab->paneCount() == 2);
@@ -504,10 +505,10 @@ TEST_CASE("pane.split below 30 gives the new pane 30 percent and focus", "[vthos
     CHECK(h.paneId(tab->activePane()->session()) == split->pane);
     CHECK(h.paneId(root->second()->session()) == split->pane);
 
-    auto const byLabel = callSync<vtcontrol::CaptureReply>(
+    auto const byName = callSync<vtcontrol::CaptureReply>(
         h.service, h.context, vtcontrol::CaptureRequest { .pane = "tail", .scrollback = 0 });
-    REQUIRE(byLabel.has_value());
-    CHECK(byLabel->pane == split->pane);
+    REQUIRE(byName.has_value());
+    CHECK(byName->pane == split->pane);
 }
 
 TEST_CASE("pane.split with focus keep leaves the anchor active", "[vthost][control][write]")
@@ -907,7 +908,7 @@ TEST_CASE("the layout and the working directory are events", "[vthost][control][
         }
 }
 
-TEST_CASE("object.setLabel on a workspace publishes workspace.labelChanged", "[vthost][control][events]")
+TEST_CASE("object.rename on a workspace publishes object.renamed", "[vthost][control][events]")
 {
     auto h = ControlHarness {};
     std::ignore = h.openTab();
@@ -916,19 +917,20 @@ TEST_CASE("object.setLabel on a workspace publishes workspace.labelChanged", "[v
         .kind = vtcontrol::ObjectKind::Workspace, .uuid = *h.host.objects().uuidOf(h.host.workspaceId()) });
 
     REQUIRE(callSync<vtcontrol::EmptyReply>(
-                h.service, h.context, vtcontrol::SetLabelRequest { .object = workspace, .label = "ops" })
+                h.service, h.context, vtcontrol::ObjectRenameRequest { .object = workspace, .name = "ops" })
                 .has_value());
     REQUIRE(callSync<vtcontrol::EmptyReply>(
-                h.service, h.context, vtcontrol::SetLabelRequest { .object = workspace, .label = "" })
+                h.service, h.context, vtcontrol::ObjectRenameRequest { .object = workspace, .name = "" })
                 .has_value());
     h.drain();
 
-    auto const changes = delivered<vtcontrol::WorkspaceLabelChangedEvent>(h.context.sink);
+    auto const changes = delivered<vtcontrol::ObjectRenamedEvent>(h.context.sink);
     REQUIRE(changes.size() == 2);
-    CHECK(changes[0].label == "ops");
-    CHECK(changes[1].label.empty());
+    CHECK(changes[0].object == workspace);
+    CHECK(changes[0].name == "ops");
+    CHECK(changes[1].name.empty());
     for (auto const& delivery: h.context.sink.deliveries)
-        if (std::holds_alternative<vtcontrol::WorkspaceLabelChangedEvent>(delivery.event.payload))
+        if (std::holds_alternative<vtcontrol::ObjectRenamedEvent>(delivery.event.payload))
             CHECK(delivery.event.origin.workspace == workspace);
 }
 
@@ -957,13 +959,13 @@ namespace
 }
 } // namespace
 
-TEST_CASE("workspace.create opens a workspace with a tab, labelled as asked", "[vthost][control][write]")
+TEST_CASE("workspace.create opens a workspace with a tab, named as asked", "[vthost][control][write]")
 {
     auto h = ControlHarness {};
     std::ignore = h.openTab();
 
     auto const created = callSync<vtcontrol::CreateWorkspaceReply>(
-        h.service, h.context, vtcontrol::CreateWorkspaceRequest { .label = "ops" });
+        h.service, h.context, vtcontrol::CreateWorkspaceRequest { .name = "ops" });
     REQUIRE(created.has_value());
     REQUIRE(h.host.model().workspaceCount() == 2);
     auto const* workspace = h.host.model().workspaceAt(1);
@@ -978,33 +980,57 @@ TEST_CASE("workspace.create opens a workspace with a tab, labelled as asked", "[
           == "ops");
 }
 
-TEST_CASE("workspace.rename sets the label and publishes workspace.labelChanged",
+TEST_CASE("object.renamed is published for a workspace, a tab and a pane rename",
           "[vthost][control][write][events]")
 {
     auto h = ControlHarness {};
-    std::ignore = h.openTab();
+    auto const session = h.openTab();
     std::ignore = subscribe(h);
     auto const workspace = workspaceIdOf(h, h.host.workspaceId());
+    auto const tab = tabIdOf(h, h.host.model().workspace(h.host.workspaceId())->activeTab()->id());
+    auto const pane = h.paneId(session);
 
-    REQUIRE(callSync<vtcontrol::EmptyReply>(
-                h.service,
-                h.context,
-                vtcontrol::RenameWorkspaceRequest { .workspace = workspace, .label = "release" })
-                .has_value());
+    for (auto const& [object, name]:
+         { std::pair { workspace, "release" }, std::pair { tab, "build" }, std::pair { pane, "logs" } })
+        REQUIRE(callSync<vtcontrol::EmptyReply>(
+                    h.service, h.context, vtcontrol::ObjectRenameRequest { .object = object, .name = name })
+                    .has_value());
     h.drain();
 
-    auto const changes = delivered<vtcontrol::WorkspaceLabelChangedEvent>(h.context.sink);
-    REQUIRE(changes.size() == 1);
-    CHECK(changes[0].label == "release");
-    // Addressed by it from then on.
+    auto const changes = delivered<vtcontrol::ObjectRenamedEvent>(h.context.sink);
+    REQUIRE(changes.size() == 3);
+    CHECK(changes[0].object == workspace);
+    CHECK(changes[0].name == "release");
+    CHECK(changes[1].object == tab);
+    CHECK(changes[1].name == "build");
+    CHECK(changes[2].object == pane);
+    CHECK(changes[2].name == "logs");
+    // Each is its own event's origin, beside what holds it.
+    auto origins = std::vector<vtcontrol::EventOrigin> {};
+    for (auto const& delivery: h.context.sink.deliveries)
+        if (std::holds_alternative<vtcontrol::ObjectRenamedEvent>(delivery.event.payload))
+            origins.push_back(delivery.event.origin);
+    REQUIRE(origins.size() == 3);
+    CHECK(origins[0].workspace == workspace);
+    CHECK(origins[0].tab.empty());
+    CHECK(origins[1].workspace == workspace);
+    CHECK(origins[1].tab == tab);
+    CHECK(origins[1].pane.empty());
+    CHECK(origins[2].tab == tab);
+    CHECK(origins[2].pane == pane);
+    // Addressed by its name from then on.
     CHECK(callSync<vtcontrol::EmptyReply>(
-              h.service, h.context, vtcontrol::RenameWorkspaceRequest { .workspace = "release", .label = "" })
+              h.service,
+              h.context,
+              vtcontrol::ObjectRenameRequest { .object = "workspace:release", .name = "" })
               .has_value());
 
     SECTION("a workspace nobody has is not found")
     {
         auto const missing = callSync<vtcontrol::EmptyReply>(
-            h.service, h.context, vtcontrol::RenameWorkspaceRequest { .workspace = "nowhere", .label = "x" });
+            h.service,
+            h.context,
+            vtcontrol::ObjectRenameRequest { .object = "workspace:nowhere", .name = "x" });
         REQUIRE_FALSE(missing.has_value());
         CHECK(missing.error().code == ControlErrorCode::NotFound);
     }
@@ -2017,7 +2043,7 @@ TEST_CASE("workspace.switch asks one window and relays its answer", "[vthost][co
     h.host.noteClientAttached(&window);
     auto answer = SwitchAnswer {};
 
-    callSwitch(h, { .toLabel = "admin", .toWorkspace = "build" }, answer);
+    callSwitch(h, { .toName = "admin", .toWorkspace = "build" }, answer);
     REQUIRE(window.asked.size() == 1);
     CHECK(window.asked.front().target.kind == vthost::proto::SwitchDaemonKind::Name);
     CHECK(window.asked.front().target.daemon == "admin");
@@ -2069,7 +2095,7 @@ TEST_CASE("workspace.switch fails for a window that did not offer the capability
     h.host.noteClientAttached(&window);
     auto answer = SwitchAnswer {};
 
-    callSwitch(h, { .toLabel = "admin" }, answer);
+    callSwitch(h, { .toName = "admin" }, answer);
 
     REQUIRE(answer.has_value());
     REQUIRE(answer->has_value());
@@ -2088,7 +2114,7 @@ TEST_CASE("workspace.switch errors: no window, both targets, an unknown workspac
 
     SECTION("no window is attached")
     {
-        callSwitch(h, { .toLabel = "admin" }, answer);
+        callSwitch(h, { .toName = "admin" }, answer);
         REQUIRE(answer.has_value());
         REQUIRE_FALSE(answer->has_value());
         CHECK((*answer).error().code == ControlErrorCode::NotFound);
@@ -2096,14 +2122,14 @@ TEST_CASE("workspace.switch errors: no window, both targets, an unknown workspac
     }
     SECTION("a label and a host together are a bad request")
     {
-        callSwitch(h, { .toLabel = "admin", .toHost = "box" }, answer);
+        callSwitch(h, { .toName = "admin", .toHost = "box" }, answer);
         REQUIRE(answer.has_value());
         REQUIRE_FALSE(answer->has_value());
         CHECK((*answer).error().code == ControlErrorCode::BadRequest);
     }
     SECTION("an unknown workspace is not found")
     {
-        callSwitch(h, { .workspace = "nope", .toLabel = "admin" }, answer);
+        callSwitch(h, { .workspace = "nope", .toName = "admin" }, answer);
         REQUIRE(answer.has_value());
         REQUIRE_FALSE(answer->has_value());
         CHECK((*answer).error().code == ControlErrorCode::NotFound);
@@ -2124,7 +2150,7 @@ TEST_CASE("switch without a workspace asks the raise holder", "[vthost][control]
     h.host.noteFocus(first, vthost::proto::WindowFocus::Focused);
     auto answer = SwitchAnswer {};
 
-    callSwitch(h, { .toLabel = "admin" }, answer);
+    callSwitch(h, { .toName = "admin" }, answer);
 
     CHECK(first.asked.size() == 1);
     CHECK(second.asked.empty());
@@ -2151,7 +2177,7 @@ TEST_CASE("switch from a pane asks the window selecting the caller's workspace",
     h.context.callerPane = h.paneId(session);
     auto answer = SwitchAnswer {};
 
-    callSwitch(h, { .toLabel = "admin" }, answer);
+    callSwitch(h, { .toName = "admin" }, answer);
 
     CHECK(selectsCallers.asked.size() == 1);
     CHECK(selectsOther.asked.empty());
@@ -2174,7 +2200,7 @@ TEST_CASE("switch naming a workspace nobody selects is NotFound", "[vthost][cont
                { .workspace = vtcontrol::toString(vtcontrol::ObjectRef {
                      .kind = vtcontrol::ObjectKind::Workspace,
                      .uuid = h.host.objects().uuidOf(other->id()).value_or(vtcontrol::Uuid {}) }),
-                 .toLabel = "admin" },
+                 .toName = "admin" },
                answer);
 
     REQUIRE(answer.has_value());
@@ -2204,7 +2230,7 @@ TEST_CASE("switch naming a workspace two windows select asks the one focused las
         vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace,
                                .uuid = h.host.objects().uuidOf(workspace).value_or(vtcontrol::Uuid {}) });
 
-    callSwitch(h, { .workspace = named, .toLabel = "admin" }, answer);
+    callSwitch(h, { .workspace = named, .toName = "admin" }, answer);
 
     CHECK(first.asked.size() == 1);
     CHECK(second.asked.empty());
@@ -2225,7 +2251,7 @@ TEST_CASE("switch from a pane whose workspace nobody selects asks the raise hold
     h.context.callerPane = h.paneId(session);
     auto answer = SwitchAnswer {};
 
-    callSwitch(h, { .toLabel = "admin" }, answer);
+    callSwitch(h, { .toName = "admin" }, answer);
 
     CHECK(window.asked.size() == 1);
     CHECK(window.asked.front().workspace == other->id().value);
@@ -2240,7 +2266,7 @@ TEST_CASE("workspace.switch drops the answer of a connection that closed", "[vth
     window.shown = h.host.workspaceId();
     h.host.noteClientAttached(&window);
     auto answer = SwitchAnswer {};
-    callSwitch(h, { .toLabel = "admin" }, answer);
+    callSwitch(h, { .toName = "admin" }, answer);
     REQUIRE(window.asked.size() == 1);
 
     h.service.sinkClosed(h.context.events());

@@ -27,6 +27,7 @@
 #include <vector>
 
 #include <vtcontrol/ControlError.hpp>
+#include <vtcontrol/LegacySpelling.hpp>
 #include <vthost/KnownDaemons.hpp>
 #include <vthost/Transport.hpp>
 #include <vthost/client/KeySource.hpp>
@@ -97,6 +98,12 @@ class ControlClient
     /// Ends the connection: a pending call() or nextEvent() completes ControlFailure::Disconnected.
     void close() noexcept;
 
+    /// compat(0.9.0): how the daemon spells the control API, as the handshake found it. call() and
+    /// nextEvent() speak the new spelling either way: they rewrite to and from the old one for a daemon
+    /// without Capability::Names.
+    /// @return Spelling::Names before the handshake.
+    [[nodiscard]] vtcontrol::Spelling spelling() const noexcept { return _spelling; }
+
     /// @return How long handshake() has spent signing the daemon's challenges, the one being signed
     ///         included, on the loop's clock: the time a passphrase or an agent's confirmation takes, which
     ///         is the user's and not the daemon's, so a deadline on the call leaves it out.
@@ -105,6 +112,10 @@ class ControlClient
   private:
     /// @return The next frame off the connection, or why there is none.
     [[nodiscard]] core::async::Task<std::expected<proto::DecodedFrame, ControlClientError>> readFrame();
+
+    /// Keeps @p event for nextEvent(), in the new spelling whichever the daemon speaks.
+    /// @param event A ControlEvent's JSON as the daemon sent it.
+    void keepEvent(std::string event);
 
     /// Queues @p pdu under the next serial.
     /// @return The serial, or why the queue refused it.
@@ -125,6 +136,8 @@ class ControlClient
     /// beside a busy subscription holds every event it read until nextEvent() takes them. A caller that
     /// subscribes and also makes long calls on one connection takes events between the calls.
     std::deque<std::string> _events {};
+    /// compat(0.9.0): the daemon's spelling of the control API. @see spelling()
+    vtcontrol::Spelling _spelling = vtcontrol::Spelling::Names;
 };
 
 /// Resolves a saved host's name to its transport; phase 5's saved hosts, which `vthost` cannot read.

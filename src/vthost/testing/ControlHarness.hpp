@@ -148,7 +148,7 @@ struct ControlHarness
     auto context = vtcontrol::testing::FakeCallContext {};
     auto reply = std::optional<std::expected<vtcontrol::EmptyReply, vtcontrol::ControlError>> {};
     service.handle(context,
-                   vtcontrol::SetLabelRequest { .object = address, .label = name },
+                   vtcontrol::ObjectRenameRequest { .object = address, .name = name },
                    [&](std::expected<vtcontrol::EmptyReply, vtcontrol::ControlError> answer) {
                        reply = std::move(answer);
                    });

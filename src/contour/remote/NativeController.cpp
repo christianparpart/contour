@@ -91,6 +91,7 @@ namespace
             vthost::proto::Capability::WorkspaceMeta,
             vthost::proto::Capability::ClientGoodbye,
             vthost::proto::Capability::LaunchFirstTab,
+            vthost::proto::Capability::Names,
         });
         if (switchRequests == NativeController::SwitchRequests::Answered)
             offered.idents.push_back(std::to_underlying(vthost::proto::Capability::WorkspaceSwitch));
@@ -1224,7 +1225,7 @@ void NativeController::onWorkspaceMeta(vthost::proto::WorkspaceMeta const& meta)
 {
     auto const lock = std::lock_guard { _mutex };
     auto& stated = _workspaceMeta[meta.workspace];
-    // Field by field: an absent one is unchanged, an empty label clears it, and a git state of kind None says
+    // Field by field: an absent one is unchanged, an empty name clears it, and a git state of kind None says
     // the workspace is in no repository anymore.
     stated.controlId = meta.controlId;
     if (meta.name)
@@ -1538,15 +1539,15 @@ contour::session::RemoteRouting NativeController::requestRemoteMove(contour::ses
 }
 
 contour::session::RemoteRouting NativeController::requestRemoteRenameWorkspace(uint64_t workspace,
-                                                                               std::string_view label)
+                                                                               std::string_view name)
 {
     auto const agreed = negotiated();
     if (!agreed || !agreed->shared.contains(vthost::proto::Capability::WorkspaceMeta))
         return contour::session::RemoteRouting::Refused;
     // The client's send verbs must run on the reactor thread that owns it.
-    _reactor.post([this, workspace, label = std::string { label }]() mutable {
+    _reactor.post([this, workspace, name = std::string { name }]() mutable {
         if (_client != nullptr)
-            std::ignore = _client->setWorkspaceName(workspace, std::move(label));
+            std::ignore = _client->setWorkspaceName(workspace, std::move(name));
     });
     return contour::session::RemoteRouting::Routed;
 }

@@ -40,20 +40,22 @@ TEST_CASE("events without a payload body decode", "[vtcontrol][events]")
     CHECK(std::get<vtcontrol::EventsDroppedEvent>(dropped->payload).count == 9);
 }
 
-TEST_CASE("workspace.labelChanged carries the workspace as its origin and the label as its payload",
+TEST_CASE("object.renamed carries the object in its origin and its payload, and the name",
           "[vtcontrol][events]")
 {
     auto const json = vtcontrol::encodeEvent(
-        vtcontrol::Event { .origin = { .workspace = "workspace:w" },
-                           .payload = vtcontrol::WorkspaceLabelChangedEvent { .label = "ops" } });
+        vtcontrol::Event { .origin = { .workspace = "workspace:w", .tab = "tab:t" },
+                           .payload = vtcontrol::ObjectRenamedEvent { .object = "tab:t", .name = "ops" } });
     CHECK(
         json
-        == R"({"type":"workspace.labelChanged","workspace":"workspace:w","tab":"","pane":"","payload":{"label":"ops"}})");
+        == R"({"type":"object.renamed","workspace":"workspace:w","tab":"tab:t","pane":"","payload":{"object":"tab:t","name":"ops"}})");
     auto const back = vtcontrol::decodeEvent(json);
     REQUIRE(back);
-    CHECK(back->origin.workspace == "workspace:w");
-    CHECK(std::get<vtcontrol::WorkspaceLabelChangedEvent>(back->payload).label == "ops");
-    CHECK(vtcontrol::eventPermission("workspace.labelChanged") == vtcontrol::Permission::Read);
+    CHECK(back->origin.tab == "tab:t");
+    CHECK(std::get<vtcontrol::ObjectRenamedEvent>(back->payload).object == "tab:t");
+    CHECK(std::get<vtcontrol::ObjectRenamedEvent>(back->payload).name == "ops");
+    CHECK(vtcontrol::eventPermission("object.renamed") == vtcontrol::Permission::Read);
+    CHECK_FALSE(vtcontrol::eventPermission("workspace.labelChanged").has_value());
 }
 
 TEST_CASE("a malformed event envelope is a bad request", "[vtcontrol][events]")

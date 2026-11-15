@@ -68,7 +68,7 @@ template <typename T>
                                      .ratioPercent = 30,
                                      .cwd = "/tmp",
                                      .command = { "a", "b" },
-                                     .label = "tail",
+                                     .name = "tail",
                                      .focus = vtcontrol::FocusPolicy::Keep };
 }
 
@@ -77,7 +77,7 @@ template <typename T>
     auto const pane = [](std::string id, bool isActive) {
         return vtcontrol::PaneInfo {
             .id = std::move(id),
-            .label = "",
+            .name = "",
             .title = "zsh",
             .cwd = "/home/me",
             .isActive = isActive,
@@ -93,7 +93,7 @@ template <typename T>
     };
     auto const tab = [&](std::string const& id, uint32_t position) {
         return vtcontrol::TabInfo { .id = id,
-                                    .label = "build",
+                                    .name = "build",
                                     .title = "make",
                                     .position = position,
                                     .isActive = position == 1,
@@ -101,9 +101,9 @@ template <typename T>
     };
     return vtcontrol::ListReply {
         .workspaces = { vtcontrol::WorkspaceInfo {
-                            .id = "workspace:1", .label = "", .position = 1, .tabs = { tab("tab:a", 1) } },
+                            .id = "workspace:1", .name = "", .position = 1, .tabs = { tab("tab:a", 1) } },
                         vtcontrol::WorkspaceInfo { .id = "workspace:2",
-                                                   .label = "w",
+                                                   .name = "w",
                                                    .position = 2,
                                                    .tabs = { tab("tab:b", 1), tab("tab:c", 2) } } },
     };
@@ -199,9 +199,9 @@ TEST_CASE("control records round-trip through guest memory", "[vtextension][cont
 
 TEST_CASE("a control record's flat count matches the Canonical ABI", "[vtextension][control]")
 {
-    // pane 2, direction 1, ratioPercent 2, cwd 2, command 2, label 2, focus 1.
+    // pane 2, direction 1, ratioPercent 2, cwd 2, command 2, name 2, focus 1.
     STATIC_CHECK(abi::Codec<vtcontrol::SplitRequest>::FlatCount == 12);
-    // pane 0..8, direction 8, ratioPercent 9..11, cwd 12..20, command 20..28, label 28..36, focus 36.
+    // pane 0..8, direction 8, ratioPercent 9..11, cwd 12..20, command 20..28, name 28..36, focus 36.
     STATIC_CHECK(abi::Codec<vtcontrol::SplitRequest>::Offsets
                  == std::array<uint32_t, 7> { 0, 8, 9, 12, 20, 28, 36 });
     STATIC_CHECK(abi::Codec<vtcontrol::SplitRequest>::Size == 40);

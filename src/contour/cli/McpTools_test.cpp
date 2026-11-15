@@ -76,7 +76,7 @@ TEST_CASE("McpTools.read_only_drops_input_and_write_tools", "[mcp-tools]")
                             "tab_create",
                             "pane_close",
                             "tab_close",
-                            "object_setLabel" })
+                            "object_rename" })
         CHECK_FALSE(lists(json, tool));
     for (auto const tool: { "workspace_list", "pane_capture", "block_list", "block_read", "daemon_info" })
         CHECK(lists(json, tool));

@@ -4607,7 +4607,7 @@ namespace
     return found != directory.workspaces.end() ? *found : contour::window::DirectoryWorkspace {};
 }
 
-/// Labels the daemon's workspace @p workspace @p label, as `object.setLabel` would.
+/// Names the daemon's workspace @p workspace @p label, as `object.rename` would.
 /// @return The workspace's control UUID.
 vtcontrol::Uuid labelOnDaemon(DaemonFixture& daemon, uint64_t workspace, std::string const& label)
 {

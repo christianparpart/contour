@@ -37,6 +37,7 @@
 
 #include <vtcontrol/Dispatch.hpp>
 #include <vtcontrol/Json.hpp>
+#include <vtcontrol/LegacySpelling.hpp>
 #include <vthost/CellPixelBounds.hpp>
 #include <vthost/CommandBlockWire.hpp>
 #include <vthost/ContextWire.hpp>
@@ -2742,29 +2743,59 @@ void NativeSession::serveControlRequest(uint64_t serial, proto::ControlRequest c
                                     _grants,
                                     isLocal(_id) ? vtcontrol::CallerLocality::Local
                                                  : vtcontrol::CallerLocality::Remote };
-    vtcontrol::dispatch(_services.control.get(),
-                        context,
-                        vtcontrol::Caller::Socket,
-                        request.method,
-                        request.params,
-                        // Possibly completed later -- a wait, or an upgrade -- and an upgrade's flow outlives
-                        // the connection (it closes this very one), so the completion holds the link, never
-                        // `this`: a wait is dropped by run() before it lets `this` go, an upgrade is not.
-                        [link = _upgradeLink, serial, requestId = request.requestId](
-                            std::expected<std::string, vtcontrol::ControlError> result) {
-                            auto* const session = link->session;
-                            if (session == nullptr || session->_closed)
-                                return;
-                            auto reply = proto::ControlReply { .requestId = requestId };
-                            if (result)
-                                reply.body = std::move(*result);
-                            else
-                            {
-                                reply.outcome = proto::ControlOutcome::Error;
-                                reply.body = vtcontrol::encodeJson(result.error());
-                            }
-                            session->send(serial, proto::DecodedPdu { std::move(reply) });
-                        });
+    // compat(0.9.0): a client without the names capability is read, and answered, in the old spelling.
+    auto const spelling = controlSpelling();
+    auto rewritten = spelling == vtcontrol::Spelling::Legacy
+                         ? std::optional { vtcontrol::requestFromLegacy(request.method, request.params) }
+                         : std::nullopt;
+    auto const method = rewritten && *rewritten ? std::string_view { (*rewritten)->first }
+                                                : std::string_view { request.method };
+    auto const params = rewritten && *rewritten ? std::string_view { (*rewritten)->second }
+                                                : std::string_view { request.params };
+    // Possibly completed later -- a wait, or an upgrade -- and an upgrade's flow outlives the connection (it
+    // closes this very one), so the completion holds the link, never `this`: a wait is dropped by run()
+    // before it lets `this` go, an upgrade is not.
+    auto answer = [link = _upgradeLink,
+                   serial,
+                   requestId = request.requestId,
+                   spelling,
+                   answered =
+                       std::string { method }](std::expected<std::string, vtcontrol::ControlError> result) {
+        auto* const session = link->session;
+        if (session == nullptr || session->_closed)
+            return;
+        auto reply = proto::ControlReply { .requestId = requestId };
+        if (result)
+        {
+            reply.body = std::move(*result);
+            // compat(0.9.0): the reply in the spelling the request came in; our own JSON always rewrites.
+            if (spelling == vtcontrol::Spelling::Legacy)
+                if (auto legacy = vtcontrol::replyToLegacy(answered, reply.body))
+                    reply.body = std::move(*legacy);
+        }
+        else
+        {
+            reply.outcome = proto::ControlOutcome::Error;
+            reply.body = vtcontrol::encodeJson(result.error());
+        }
+        session->send(serial, proto::DecodedPdu { std::move(reply) });
+    };
+    if (rewritten && !*rewritten)
+    {
+        answer(std::unexpected(vtcontrol::ControlError { .code = vtcontrol::ControlErrorCode::BadRequest,
+                                                         .message = (*rewritten).error().message,
+                                                         .candidates = {} }));
+        return;
+    }
+    vtcontrol::dispatch(
+        _services.control.get(), context, vtcontrol::Caller::Socket, method, params, std::move(answer));
+}
+
+vtcontrol::Spelling NativeSession::controlSpelling() const noexcept
+{
+    return _negotiated && _negotiated->shared.contains(proto::Capability::Names)
+               ? vtcontrol::Spelling::Names
+               : vtcontrol::Spelling::Legacy;
 }
 
 void NativeSession::deliverControlEvent(uint32_t subscription, vtcontrol::Event const& event)
@@ -2788,9 +2819,18 @@ void NativeSession::deliverControlEvent(uint32_t subscription, vtcontrol::Event 
                  .event = vtcontrol::encodeEvent(vtcontrol::Event {
                      .origin = {}, .payload = vtcontrol::EventsDroppedEvent { .count = count } }) } });
     }
-    send(0,
-         proto::DecodedPdu {
-             proto::ControlEvent { .subscription = subscription, .event = vtcontrol::encodeEvent(event) } });
+    auto text = vtcontrol::encodeEvent(event);
+    // compat(0.9.0): a subscriber of the old spelling hears the events it has a name for, in it.
+    if (controlSpelling() == vtcontrol::Spelling::Legacy)
+    {
+        auto legacy = vtcontrol::encodedEventToLegacy(text);
+        if (!legacy)
+            return;
+        text = std::move(*legacy);
+    }
+    send(
+        0,
+        proto::DecodedPdu { proto::ControlEvent { .subscription = subscription, .event = std::move(text) } });
 }
 
 void NativeSession::refuse(proto::DecodedFrame const& frame)

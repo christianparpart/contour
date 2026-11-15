@@ -65,6 +65,7 @@
 #include <vtcontrol/Catalog.hpp>
 #include <vtcontrol/ControlApi.hpp>
 #include <vtcontrol/Events.hpp>
+#include <vtcontrol/LegacySpelling.hpp>
 #include <vthost/AccessFile.hpp>
 #include <vthost/AttachPlan.hpp>
 #include <vthost/AuthorizedKeys.hpp>
@@ -141,7 +142,8 @@ struct HandshakePolicy
                                                                    proto::Capability::DaemonFollow,
                                                                    proto::Capability::WorkspaceMeta,
                                                                    proto::Capability::ClientGoodbye,
-                                                                   proto::Capability::LaunchFirstTab });
+                                                                   proto::Capability::LaunchFirstTab,
+                                                                   proto::Capability::Names });
 };
 
 /// When a connection sends a session's program-status set.
@@ -704,6 +706,10 @@ class NativeSession final: public SessionStreamEvents, public UpgradeObserver
     /// @param serial The request's serial.
     /// @param request The call.
     void serveControlRequest(uint64_t serial, proto::ControlRequest const& request);
+
+    /// compat(0.9.0): how this connection's client spells the control API.
+    /// @return Spelling::Names when the handshake shared Capability::Names, else Spelling::Legacy.
+    [[nodiscard]] vtcontrol::Spelling controlSpelling() const noexcept;
 
     /// Sends one event of a subscription, or counts it dropped while the send backlog is past half its bound:
     /// a subscriber that does not read loses events, never the connection, and is told how many it lost as

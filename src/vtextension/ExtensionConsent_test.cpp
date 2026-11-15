@@ -236,7 +236,7 @@ TEST_CASE("consent lists control permissions", "[vtextension][consent][control]"
               == std::vector<std::string> {
                   "Module: git@/usr/share/contour/extensions/git.wasm",
                   "May read what panes show, and their command history.",
-                  "May open, split, close and label tabs and panes (can run commands).",
+                  "May open, split, close and name tabs and panes (can run commands).",
               });
     }
 }

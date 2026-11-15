@@ -224,19 +224,19 @@ TEST_CASE("a SetName names the daemon's tab, which is then addressable by it", "
 
     REQUIRE(applyOnDaemon(h, { .session = session.value, .kind = TabEditKind::SetName, .name = "build" })
             == TabEditEffect::Changed);
-    CHECK(listedTab(h, 1).label == "build");
+    CHECK(listedTab(h, 1).name == "build");
     // The model mirrors the registry, so what reads the model (a tmux client, a status line) sees it too.
     CHECK(h.host.model().workspace(h.host.workspaceId())->tabAt(1)->name() == "build");
 
     // `tab:build` resolves to it: renaming by that address reaches the same tab.
     REQUIRE(callSync<vtcontrol::EmptyReply>(
-                h, vtcontrol::SetLabelRequest { .object = "tab:build", .label = "ci" })
+                h, vtcontrol::ObjectRenameRequest { .object = "tab:build", .name = "ci" })
                 .has_value());
-    CHECK(listedTab(h, 1).label == "ci");
+    CHECK(listedTab(h, 1).name == "ci");
 
     REQUIRE(applyOnDaemon(h, { .session = session.value, .kind = TabEditKind::ClearName })
             == TabEditEffect::Changed);
-    CHECK(listedTab(h, 1).label.empty());
+    CHECK(listedTab(h, 1).name.empty());
     CHECK(h.host.model().workspace(h.host.workspaceId())->tabAt(1)->name().empty());
 }
 
@@ -252,14 +252,14 @@ TEST_CASE("a tab's name stands beside its program's title, which names it once t
     h.drain();
     // The API states both: the user's name, and the program's title, which the name does not hide.
     auto const named = listedTab(h, 0);
-    CHECK(named.label == "build");
+    CHECK(named.name == "build");
     CHECK(named.title == "vim");
-    CHECK(vtworkspace::tabNameOf({ .name = named.label, .title = named.title }, {}) == "build");
+    CHECK(vtworkspace::tabNameOf({ .name = named.name, .title = named.title }, {}) == "build");
 
     REQUIRE(applyOnDaemon(h, { .session = session.value, .kind = TabEditKind::ClearName })
             == TabEditEffect::Changed);
     auto const cleared = listedTab(h, 0);
-    CHECK(cleared.label.empty());
+    CHECK(cleared.name.empty());
     CHECK(cleared.title == "vim");
-    CHECK(vtworkspace::tabNameOf({ .name = cleared.label, .title = cleared.title }, {}) == "vim");
+    CHECK(vtworkspace::tabNameOf({ .name = cleared.name, .title = cleared.title }, {}) == "vim");
 }

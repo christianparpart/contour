@@ -28,7 +28,7 @@ struct Fixture
 };
 } // namespace
 
-TEST_CASE("resolveTarget: id, label, position, suffix, ambiguity", "[vtcontrol][target]")
+TEST_CASE("resolveTarget: id, name, position, suffix, ambiguity", "[vtcontrol][target]")
 {
     auto const f = Fixture {};
     CHECK(resolveTarget(ObjectKind::Pane, toString(f.a.ref), f.panes) == f.a.ref);
@@ -64,7 +64,7 @@ TEST_CASE("resolveTarget: a suffix shared by two objects is ambiguous, an unknow
     CHECK(missing.error().message.contains("nonesuch"));
 }
 
-TEST_CASE("resolveTarget: an id wins over a label that spells it", "[vtcontrol][target]")
+TEST_CASE("resolveTarget: an id wins over a name that spells it", "[vtcontrol][target]")
 {
     auto f = Fixture {};
     f.panes[2].name = toString(f.a.ref);

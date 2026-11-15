@@ -64,7 +64,7 @@ std::vector<session::KnownWorkspace> DaemonSwitchDirectory::workspacesOf(
         auto known = std::ranges::to<std::vector>(rows | std::views::transform([&](WorkspaceRow const& row) {
                                                       return session::KnownWorkspace {
                                                           .position = row.position,
-                                                          .name = row.name,
+                                                          .name = row.displayName,
                                                           .role = row.id == shown->workspace
                                                                       ? session::WorkspaceRole::Current
                                                                       : session::WorkspaceRole::Other,

@@ -73,12 +73,12 @@ class IWorkspaceLister
     /// @param done Told the workspaces, or why there are none.
     virtual void list(ListTarget target, WorkspacesListed done) = 0;
 
-    /// Creates a workspace labelled @p label on @p target (`workspace.create`); @p done is told later, on the
+    /// Creates a workspace named @p name on @p target (`workspace.create`); @p done is told later, on the
     /// GUI thread, unless the lister is gone.
     /// @param target The daemon.
-    /// @param label The new workspace's label; empty names it after its folder.
+    /// @param name The new workspace's name; empty names it after its folder.
     /// @param done Told the new workspace's control id, or why there is none.
-    virtual void create(ListTarget target, std::string label, WorkspaceCreated done) = 0;
+    virtual void create(ListTarget target, std::string name, WorkspaceCreated done) = 0;
 };
 
 /// The production lister: `workspace.list` and `workspace.create` over the control API, one call each, on a

@@ -70,7 +70,7 @@ TEST_CASE("the WIT spells records, enums and fields in kebab-case", "[vtcontrol]
                        "        ratio-percent: option<u8>,\n"
                        "        cwd: string,\n"
                        "        command: list<string>,\n"
-                       "        label: string,\n"
+                       "        name: string,\n"
                        "        focus: focus-policy,\n"
                        "    }\n"));
     CHECK(wit.contains("    enum control-error-code {\n        bad-request,\n        method-not-found,\n"));
@@ -79,7 +79,7 @@ TEST_CASE("the WIT spells records, enums and fields in kebab-case", "[vtcontrol]
                        "        message: string,\n"
                        "        candidates: list<string>,\n"
                        "    }\n"));
-    CHECK(wit.contains("object-set-label: func(request: set-label-request) -> result<_, control-error>;"));
+    CHECK(wit.contains("object-rename: func(request: object-rename-request) -> result<_, control-error>;"));
     CHECK(wit.contains("    /// Split a pane and start a shell or command in the new half.\n"
                        "    /// Needs `write`, and `input` as well for running a command.\n"
                        "    pane-split: func("));

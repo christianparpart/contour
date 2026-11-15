@@ -55,6 +55,7 @@
 #include <vtcontrol/Api.hpp>
 #include <vtcontrol/Events.hpp>
 #include <vtcontrol/Json.hpp>
+#include <vtcontrol/LegacySpelling.hpp>
 #include <vthost/CommandBlockWire.hpp>
 #include <vthost/DaemonControlWire.hpp>
 #include <vthost/FlushPolicy.hpp>
@@ -5973,14 +5974,18 @@ namespace
 HarnessOptions controlApiOptions(HarnessOptions options = {})
 {
     options.control = ControlServing::Served;
-    options.services.handshake.capabilities = proto::CapabilitySet::of({ proto::Capability::ControlApi });
+    options.services.handshake.capabilities =
+        proto::CapabilitySet::of({ proto::Capability::ControlApi, proto::Capability::Names });
     return options;
 }
 
-/// @return A Control hello that offers the control API.
-proto::ClientHello controlApiHello()
+/// @return A Control hello that offers the control API, in the spelling @p spelling.
+proto::ClientHello controlApiHello(vtcontrol::Spelling spelling = vtcontrol::Spelling::Names)
 {
-    return proto::ClientHello { .capabilities = proto::CapabilitySet::of({ proto::Capability::ControlApi }),
+    auto capabilities = proto::CapabilitySet::of({ proto::Capability::ControlApi });
+    if (spelling == vtcontrol::Spelling::Names)
+        capabilities.idents.push_back(std::to_underlying(proto::Capability::Names));
+    return proto::ClientHello { .capabilities = std::move(capabilities),
                                 .role = proto::ConnectionRole::Control };
 }
 
@@ -6130,6 +6135,101 @@ TEST_CASE("a ControlRequest is answered with its reply", "[vthost][native][contr
     auto const error = vtcontrol::decodeJson<vtcontrol::ControlError>(unknown.body);
     REQUIRE(error.has_value());
     CHECK(error->code == vtcontrol::ControlErrorCode::MethodNotFound);
+}
+
+// compat(0.9.0): the shapes a client of the old spelling decodes, as they were before the rename. In a named
+// namespace: glaze reflects a type by its name, which one without linkage does not have.
+namespace legacyspelling
+{
+struct LegacyPaneInfo
+{
+    std::string id {};
+    std::string label {};
+    std::string title {};
+    std::string cwd {};
+    bool isActive = false;
+    vtcontrol::Size size {};
+    std::vector<vtcontrol::ProgramStatusInfo> programStatus {};
+    std::optional<vtcontrol::BlockInfo> lastFinished {};
+};
+
+struct LegacyTabInfo
+{
+    std::string id {};
+    std::string label {};
+    std::string title {};
+    uint32_t position = 0;
+    bool isActive = false;
+    std::vector<LegacyPaneInfo> panes {};
+};
+
+struct LegacyWorkspaceInfo
+{
+    std::string id {};
+    std::string label {};
+    uint32_t position = 0;
+    std::string native {};
+    std::string visibility {};
+    uint32_t clients = 0;
+    std::vector<LegacyTabInfo> tabs {};
+    std::optional<vtcontrol::WorkspaceGitInfo> git {};
+};
+
+struct LegacyListReply
+{
+    std::vector<LegacyWorkspaceInfo> workspaces {};
+};
+} // namespace legacyspelling
+
+using legacyspelling::LegacyListReply;
+
+TEST_CASE("a client without the names capability is answered in the old spelling",
+          "[vthost][native][control][compat-0.9.0]")
+{
+    auto h = NativeHarness { controlApiOptions() };
+    auto const session = newSession(h.host);
+    auto const [workspace, tabOfSession, pane] = h.host.model().findSessionLeaf(session);
+    REQUIRE(tabOfSession != nullptr);
+    auto const tab = vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab,
+                                            .uuid = *h.host.objects().uuidOf(tabOfSession->id()) };
+    h.host.objects().setName(tab, "build");
+    auto const got =
+        h.exchange({ controlApiHello(vtcontrol::Spelling::Legacy),
+                     controlCall(1, "workspace.list"),
+                     controlCall(2, "object.setLabel", R"({"object":"tab:build","label":"release"})"),
+                     controlCall(3, "workspace.list") },
+                   4);
+    REQUIRE(got.size() == 4);
+    REQUIRE(isControlReply(got[1]));
+    auto const& first = std::get<proto::ControlReply>(got[1].pdu);
+    REQUIRE(first.outcome == proto::ControlOutcome::Ok);
+    // Strict, as an old window decodes it: a `name` key would be an unknown key.
+    auto const legacy = vtcontrol::decodeJson<LegacyListReply>(first.body);
+    REQUIRE(legacy.has_value());
+    REQUIRE(legacy->workspaces.size() == 1);
+    REQUIRE(legacy->workspaces[0].tabs.size() == 1);
+    CHECK(legacy->workspaces[0].tabs[0].label == "build");
+
+    // The old setter is read as object.rename.
+    REQUIRE(isControlReply(got[2]));
+    CHECK(std::get<proto::ControlReply>(got[2].pdu).outcome == proto::ControlOutcome::Ok);
+    auto const renamed =
+        vtcontrol::decodeJson<LegacyListReply>(std::get<proto::ControlReply>(got[3].pdu).body);
+    REQUIRE(renamed.has_value());
+    CHECK(renamed->workspaces[0].tabs[0].label == "release");
+    CHECK(h.host.objects().nameOf(tab) == "release");
+}
+
+TEST_CASE("a client with the names capability is answered with name keys", "[vthost][native][control]")
+{
+    auto h = NativeHarness { controlApiOptions() };
+    std::ignore = newSession(h.host);
+    auto const got = h.exchange({ controlApiHello(), controlCall(1, "workspace.list") }, 2);
+    REQUIRE(got.size() == 2);
+    REQUIRE(isControlReply(got[1]));
+    auto const body = std::get<proto::ControlReply>(got[1].pdu).body;
+    CHECK(vtcontrol::decodeJson<vtcontrol::ListReply>(body).has_value());
+    CHECK_FALSE(vtcontrol::decodeJson<LegacyListReply>(body).has_value());
 }
 
 TEST_CASE("without the ControlApi capability a ControlRequest is Unsupported", "[vthost][native][control]")

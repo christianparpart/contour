@@ -13,6 +13,8 @@ add_library(vtcontrol STATIC
     Events.cpp
     Events.hpp
     Json.cpp
+    LegacySpelling.cpp
+    LegacySpelling.hpp
     Json.hpp
     ObjectRef.cpp
     ObjectRef.hpp
@@ -54,6 +56,7 @@ if(VTCONTROL_TESTING)
         Grants_test.cpp
         Events_test.cpp
         Json_test.cpp
+        LegacySpelling_test.cpp
         ObjectRef_test.cpp
         Target_test.cpp
         Uuid_test.cpp

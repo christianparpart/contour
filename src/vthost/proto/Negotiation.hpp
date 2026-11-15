@@ -131,6 +131,10 @@ enum class Capability : uint8_t
     /// for the first one, which the daemon opens there. Without it the client waits for a tab, which is what
     /// an older daemon makes of every attach to such a workspace.
     LaunchFirstTab = 31,
+    /// compat(0.9.0): the peer speaks the control API's `name` spelling (`name` keys, `object.rename`,
+    /// `object.renamed`). Without it the other end speaks the old one to it (`label` keys, `object.setLabel`,
+    /// `workspace.labelChanged`), through vtcontrol's legacy spelling table.
+    Names = 32,
 };
 
 /// One row of the table naming a Capability.
@@ -171,6 +175,7 @@ constexpr std::array CapabilityTable {
     CapabilityRow { .capability = Capability::WorkspaceMeta, .name = "workspace-meta" },
     CapabilityRow { .capability = Capability::ClientGoodbye, .name = "client-goodbye" },
     CapabilityRow { .capability = Capability::LaunchFirstTab, .name = "launch-first-tab" },
+    CapabilityRow { .capability = Capability::Names, .name = "names" },
 };
 
 /// A set of capability idents. Raw idents, so a newer peer's unknown ones survive decoding and tracing.

@@ -1845,7 +1845,7 @@ struct OpenFirstTab
 
 /// Client→server (Capability::WorkspaceMeta): set a workspace's name, which is what the sidebar's rename
 /// does. The daemon applies it to the object registry, so every client is told through WorkspaceMeta, and
-/// every control-API subscriber through `workspace.labelChanged`. An empty name clears it; an unknown
+/// every control-API subscriber through `object.renamed`. An empty name clears it; an unknown
 /// workspace changes nothing.
 struct SetWorkspaceName
 {

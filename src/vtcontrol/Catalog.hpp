@@ -67,7 +67,7 @@ inline constexpr std::array PermissionPhrases {
                        .weight = ConsentWeight::CanRunCommands },
     // Opening a tab or a pane starts a shell in it, with the command it is given.
     PermissionPhrase { .permission = Permission::Write,
-                       .phrase = "open, split, close and label tabs and panes",
+                       .phrase = "open, split, close and name tabs and panes",
                        .weight = ConsentWeight::CanRunCommands },
 };
 
@@ -251,14 +251,14 @@ inline constexpr auto Methods = std::tuple {
         Permission::Read,
         Exposure::Everywhere,
         R"({"workspace":""})",
-        R"({"workspaces":[{"id":"workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab","label":"","position":1,"tabs":[{"id":"tab:018f3c4e-9a1b-7c2d-8e3f-0123456789ac","label":"build","title":"zsh","position":1,"isActive":true,"panes":[{"id":"pane:018f3c4e-9a1b-7c2d-8e3f-0123456789ad","label":"","title":"zsh","cwd":"/home/me","isActive":true,"size":{"columns":80,"lines":24},"programStatus":[]}]}]}]})",
+        R"({"workspaces":[{"id":"workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab","name":"","position":1,"tabs":[{"id":"tab:018f3c4e-9a1b-7c2d-8e3f-0123456789ac","name":"build","title":"zsh","position":1,"isActive":true,"panes":[{"id":"pane:018f3c4e-9a1b-7c2d-8e3f-0123456789ad","name":"","title":"zsh","cwd":"/home/me","isActive":true,"size":{"columns":80,"lines":24},"programStatus":[]}]}]}]})",
     },
     Method<CreateTabRequest, CreateTabReply> {
         "tab.create",
         "Open a tab, optionally in a new workspace and running a command.",
         Permission::Write,
         Exposure::Everywhere,
-        R"({"workspace":"","placement":"existing","cwd":"/tmp","command":["make","-j8"],"label":"build","focus":"keep"})",
+        R"({"workspace":"","placement":"existing","cwd":"/tmp","command":["make","-j8"],"name":"build","focus":"keep"})",
         R"({"workspace":"workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab","tab":"tab:018f3c4e-9a1b-7c2d-8e3f-0123456789ac","pane":"pane:018f3c4e-9a1b-7c2d-8e3f-0123456789ad"})",
         CommandNeedsInput<CreateTabRequest>,
     },
@@ -267,7 +267,7 @@ inline constexpr auto Methods = std::tuple {
         "Split a pane and start a shell or command in the new half.",
         Permission::Write,
         Exposure::Everywhere,
-        R"({"pane":"logs","direction":"below","ratioPercent":30,"cwd":"","command":[],"label":"tail","focus":"keep"})",
+        R"({"pane":"logs","direction":"below","ratioPercent":30,"cwd":"","command":[],"name":"tail","focus":"keep"})",
         R"({"tab":"tab:018f3c4e-9a1b-7c2d-8e3f-0123456789ac","pane":"pane:018f3c4e-9a1b-7c2d-8e3f-0123456789ae"})",
         CommandNeedsInput<SplitRequest>,
     },
@@ -305,19 +305,11 @@ inline constexpr auto Methods = std::tuple {
     },
     Method<CreateWorkspaceRequest, CreateWorkspaceReply> {
         "workspace.create",
-        "Open a workspace with one tab, named after its folder unless a label is given.",
+        "Open a workspace with one tab, named after its folder unless a name is given.",
         Permission::Write,
         Exposure::Everywhere,
-        R"({"cwd":"/home/me/src/contour","label":""})",
+        R"({"cwd":"/home/me/src/contour","name":""})",
         R"({"workspace":"workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab","tab":"tab:018f3c4e-9a1b-7c2d-8e3f-0123456789ac","pane":"pane:018f3c4e-9a1b-7c2d-8e3f-0123456789ad"})",
-    },
-    Method<RenameWorkspaceRequest, EmptyReply> {
-        "workspace.rename",
-        "Rename a workspace; an empty label clears it.",
-        Permission::Write,
-        Exposure::Everywhere,
-        R"({"workspace":"build","label":"release"})",
-        R"({})",
     },
     Method<CloseWorkspaceRequest, EmptyReply> {
         "workspace.close",
@@ -358,15 +350,15 @@ inline constexpr auto Methods = std::tuple {
         "Ask one window to switch to another workspace or daemon.",
         Permission::Write,
         Exposure::SocketOnly,
-        R"({"toLabel":"admin","toHost":"","toWorkspace":"build"})",
+        R"({"toName":"admin","toHost":"","toWorkspace":"build"})",
         R"({"outcome":"switched","detail":""})",
     },
-    Method<SetLabelRequest, EmptyReply> {
-        "object.setLabel",
-        "Give a workspace, tab or pane a label to address it by; an empty label clears it.",
+    Method<ObjectRenameRequest, EmptyReply> {
+        "object.rename",
+        "Give a workspace, tab or pane a name to address it by; an empty name clears it.",
         Permission::Write,
         Exposure::Everywhere,
-        R"({"object":"pane:logs","label":"tail"})",
+        R"({"object":"pane:logs","name":"tail"})",
         R"({})",
     },
     Method<ReportStatusRequest, EmptyReply> {

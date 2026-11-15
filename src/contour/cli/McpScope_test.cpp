@@ -25,10 +25,10 @@ constexpr auto TabB = "tab:018f3c4e-0000-7000-8000-0000000000bb";
 vtcontrol::ListReply workspace()
 {
     auto tabB = vtcontrol::TabInfo { .id = TabB, .position = 1 };
-    tabB.panes.push_back(vtcontrol::PaneInfo { .id = B1, .label = "build" });
+    tabB.panes.push_back(vtcontrol::PaneInfo { .id = B1, .name = "build" });
     auto tabA = vtcontrol::TabInfo { .id = TabA, .position = 2 };
-    tabA.panes.push_back(vtcontrol::PaneInfo { .id = A1, .label = "build" });
-    tabA.panes.push_back(vtcontrol::PaneInfo { .id = A2, .label = "tests" });
+    tabA.panes.push_back(vtcontrol::PaneInfo { .id = A1, .name = "build" });
+    tabA.panes.push_back(vtcontrol::PaneInfo { .id = A2, .name = "tests" });
     auto workspace =
         vtcontrol::WorkspaceInfo { .id = "workspace:018f3c4e-0000-7000-8000-0000000000ff", .position = 1 };
     workspace.tabs.push_back(tabB);

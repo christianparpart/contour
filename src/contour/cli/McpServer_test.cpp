@@ -36,10 +36,10 @@ constexpr auto TabB = "tab:018f3c4e-0000-7000-8000-0000000000bb";
 vtcontrol::ListReply workspace()
 {
     auto tabA = vtcontrol::TabInfo { .id = TabA, .position = 1 };
-    tabA.panes.push_back(vtcontrol::PaneInfo { .id = A1, .label = "build" });
-    tabA.panes.push_back(vtcontrol::PaneInfo { .id = A2, .label = "tests" });
+    tabA.panes.push_back(vtcontrol::PaneInfo { .id = A1, .name = "build" });
+    tabA.panes.push_back(vtcontrol::PaneInfo { .id = A2, .name = "tests" });
     auto tabB = vtcontrol::TabInfo { .id = TabB, .position = 2 };
-    tabB.panes.push_back(vtcontrol::PaneInfo { .id = B1, .label = "other" });
+    tabB.panes.push_back(vtcontrol::PaneInfo { .id = B1, .name = "other" });
     auto workspace =
         vtcontrol::WorkspaceInfo { .id = "workspace:018f3c4e-0000-7000-8000-0000000000ff", .position = 1 };
     workspace.tabs.push_back(tabA);
@@ -253,21 +253,21 @@ TEST_CASE("OwnTab will not close another tab", "[mcp-server]")
     CHECK(f.channel.count("tab.close") == 0);
 }
 
-TEST_CASE("object_setLabel is confined to the own tab", "[mcp-server]")
+TEST_CASE("object_rename is confined to the own tab", "[mcp-server]")
 {
     auto f = Fixture {};
-    CHECK(f.call("object_setLabel", R"({"object":"pane:tests","label":"t"})").contains(R"("isError":false)"));
-    CHECK(f.channel.last("object.setLabel")->params.contains(A2));
-    CHECK(f.call("object_setLabel", std::format(R"({{"object":"{}","label":"t"}})", TabA))
+    CHECK(f.call("object_rename", R"({"object":"pane:tests","name":"t"})").contains(R"("isError":false)"));
+    CHECK(f.channel.last("object.rename")->params.contains(A2));
+    CHECK(f.call("object_rename", std::format(R"({{"object":"{}","name":"t"}})", TabA))
               .contains(R"("isError":false)"));
     f.channel.calls.clear();
-    CHECK(f.call("object_setLabel", std::format(R"({{"object":"{}","label":"t"}})", B1))
+    CHECK(f.call("object_rename", std::format(R"({{"object":"{}","name":"t"}})", B1))
               .contains(R"("isError":true)"));
-    CHECK(f.call("object_setLabel", std::format(R"({{"object":"{}","label":"t"}})", TabB))
+    CHECK(f.call("object_rename", std::format(R"({{"object":"{}","name":"t"}})", TabB))
               .contains(R"("isError":true)"));
-    CHECK(f.call("object_setLabel", R"({"object":"workspace:1","label":"t"})").contains(R"("isError":true)"));
-    CHECK(f.call("object_setLabel", R"({"object":"bogus","label":"t"})").contains(R"("isError":true)"));
-    CHECK(f.channel.count("object.setLabel") == 0);
+    CHECK(f.call("object_rename", R"({"object":"workspace:1","name":"t"})").contains(R"("isError":true)"));
+    CHECK(f.call("object_rename", R"({"object":"bogus","name":"t"})").contains(R"("isError":true)"));
+    CHECK(f.channel.count("object.rename") == 0);
 }
 
 TEST_CASE("block_read scopes a block by its pane", "[mcp-server]")

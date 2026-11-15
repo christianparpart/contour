@@ -113,8 +113,8 @@ TEST_CASE("the workspace and tab mutations need the write grant", "[vtcontrol][d
         std::string_view method;
         std::string_view params;
     };
-    auto const verb = GENERATE(Call { "workspace.create", R"({"cwd":"/tmp","label":"x"})" },
-                               Call { "workspace.rename", R"({"workspace":"1","label":"x"})" },
+    auto const verb = GENERATE(Call { "workspace.create", R"({"cwd":"/tmp","name":"x"})" },
+                               Call { "object.rename", R"({"object":"workspace:1","name":"x"})" },
                                Call { "workspace.close", R"({"workspace":"1"})" },
                                Call { "workspace.move", R"({"workspace":"1","toPosition":2})" },
                                Call { "tab.move", R"({"tab":"1","toWorkspace":"2","toPosition":1})" },
@@ -127,7 +127,7 @@ TEST_CASE("the workspace and tab mutations need the write grant", "[vtcontrol][d
     REQUIRE_FALSE(*refused);
     CHECK(refused->error().code == vtcontrol::ControlErrorCode::Forbidden);
     CHECK_FALSE(api.lastCreateWorkspace);
-    CHECK_FALSE(api.lastRenameWorkspace);
+    CHECK_FALSE(api.lastRename);
     CHECK_FALSE(api.lastMoveWorkspace);
     CHECK_FALSE(api.lastCloseWorkspace);
     CHECK_FALSE(api.lastMoveTab);
@@ -137,7 +137,7 @@ TEST_CASE("the workspace and tab mutations need the write grant", "[vtcontrol][d
     auto const served = call(api, api.context, vtcontrol::Caller::Socket, verb.method, verb.params);
     REQUIRE(served);
     CHECK(*served);
-    CHECK((api.lastCreateWorkspace || api.lastRenameWorkspace || api.lastMoveWorkspace || api.lastMoveTab
+    CHECK((api.lastCreateWorkspace || api.lastRename || api.lastMoveWorkspace || api.lastMoveTab
            || api.lastCloseWorkspace || api.lastMovePane));
 }
 

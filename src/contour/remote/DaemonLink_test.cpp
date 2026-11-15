@@ -2935,11 +2935,11 @@ TEST_CASE(
     CHECK(daemon.onDaemon([&daemon] { return daemon.live.size(); }) == 0);
     app.startupLister().answer(std::vector {
         vtcontrol::WorkspaceInfo { .id = "workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789aa",
-                                   .label = {},
+                                   .name = {},
                                    .position = 1,
                                    .native = std::to_string(ids[0]) },
         vtcontrol::WorkspaceInfo { .id = "workspace:018f3c4e-9a1b-7c2d-8e3f-0123456789ab",
-                                   .label = "work",
+                                   .name = "work",
                                    .position = 2,
                                    .native = std::to_string(ids[1]) },
     });

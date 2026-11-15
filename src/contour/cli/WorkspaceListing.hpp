@@ -23,9 +23,9 @@ namespace contour::cli
 [[nodiscard]] std::expected<std::vector<vtcontrol::WorkspaceInfo>, std::string> decodeWorkspaceList(
     std::string_view replyJson);
 
-/// @param label The new workspace's label; empty names it after its folder.
+/// @param name The new workspace's name; empty names it after its folder.
 /// @return The `workspace.create` request JSON for it.
-[[nodiscard]] std::string encodeCreateWorkspace(std::string const& label);
+[[nodiscard]] std::string encodeCreateWorkspace(std::string const& name);
 
 /// Reads what `workspace.create` answered.
 /// @param replyJson The reply JSON.
@@ -34,7 +34,7 @@ namespace contour::cli
     std::string_view replyJson);
 
 /// Resolves what `contour client --workspace` names to the daemon's native id of it, in the forms every
-/// control verb takes (vtcontrol::resolveTarget): its id or an id suffix, its label, or its 1-based position.
+/// control verb takes (vtcontrol::resolveTarget): its id or an id suffix, its name, or its 1-based position.
 /// @param spec What the user named.
 /// @param workspaces The daemon's workspaces, as `workspace.list` answered.
 /// @return The native id; why none, when the spec names no workspace, several, or one too old to have one.

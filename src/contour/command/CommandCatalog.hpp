@@ -138,7 +138,7 @@ enum class WorkspaceRowRole : uint8_t
 struct WorkspaceRow
 {
     uint32_t position = 0; ///< 1-based position among the daemon's workspaces.
-    std::string name;      ///< Label, else the active tab's title, else "workspace N".
+    std::string name;      ///< Its name, else the active tab's title, else "workspace N".
     WorkspaceRowRole role = WorkspaceRowRole::Other; ///< Whether the window shows it.
 };
 

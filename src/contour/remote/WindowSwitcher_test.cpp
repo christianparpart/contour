@@ -1517,7 +1517,7 @@ TEST_CASE("WindowSwitcher: a window that runs in-process makes the workspace it 
     auto const rows = rig.switcher.windowWorkspaceRows(made);
     auto const named = std::ranges::find(rows, made.value, &contour::remote::WorkspaceRow::id);
     REQUIRE(named != rows.end());
-    CHECK(named->label == "billing");
+    CHECK(named->name == "billing");
 }
 
 TEST_CASE("WindowSwitcher: a window that runs in-process refuses another daemon and a new window",
@@ -1791,7 +1791,7 @@ TEST_CASE("WindowSwitcher: a switch a pane asks for is asked about, and switches
     auto api = ControlApi { rig.a };
     auto const* const oldLink = &rig.launchLink();
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
 
     auto& asking = awaitSwitchQuestion(rig);
     CHECK(questionLine(asking).contains(QStringLiteral("the workspace “2” of the daemon “b”")));
@@ -1833,7 +1833,7 @@ TEST_CASE("WindowSwitcher: a switch question unanswered until shortly before the
     auto api = ControlApi { rig.a };
     auto const* const oldLink = &rig.launchLink();
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
     auto& asking = awaitSwitchQuestion(rig);
     REQUIRE(expiries.armed.size() == 1);
     CHECK(expiries.armed.front().delay
@@ -1868,7 +1868,7 @@ TEST_CASE("WindowSwitcher: an allowed switch lands before the daemon gives up, w
     auto const landingWindow =
         std::chrono::milliseconds { vthost::SwitchAnswerTimeout } - contour::remote::SwitchReplyMargin;
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
     auto& asking = awaitSwitchQuestion(rig);
     contour::test::answerShown(asking, PermissionDecision::Allow, PermissionMemory::Once);
 
@@ -1904,14 +1904,14 @@ TEST_CASE("WindowSwitcher: a switch the user refused to have asked again is refu
     auto api = ControlApi { rig.a };
     auto const before = rig.windowSessions();
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
     contour::test::answerShown(awaitSwitchQuestion(rig), PermissionDecision::Deny, PermissionMemory::Session);
     auto const first = awaitAnswer(api);
     CHECK(first.outcome == "refused");
     CHECK(first.detail == contour::remote::SwitchRefusedDetail);
 
     // Another workspace of the same daemon is the same pair: refused at once, nothing asked.
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "1" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "1" });
     auto const second = awaitAnswer(api);
     CHECK(second.outcome == "refused");
     auto const* const session = rig.app.manager().actingSessionOfWindow(rig.shown());
@@ -1955,7 +1955,7 @@ TEST_CASE("WindowSwitcher: a client that does not answer switch requests is stil
     auto rig = SwitchRig { contour::remote::NativeController::SwitchRequests::Declined };
     auto api = ControlApi { rig.a };
 
-    api.callFromPaneOf(rig.aWorkspaces[0], { .toLabel = "b", .toWorkspace = "2" });
+    api.callFromPaneOf(rig.aWorkspaces[0], { .toName = "b", .toWorkspace = "2" });
 
     auto const reply = awaitAnswer(api);
     CHECK(reply.outcome == "failed");

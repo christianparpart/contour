@@ -46,7 +46,7 @@ namespace
             std::ranges::to<std::vector>(rows | std::views::transform([](auto const& row) {
                                              return vtcontrol::TargetCandidate {
                                                  .ref = row.ref,
-                                                 .name = row.label,
+                                                 .name = row.name,
                                                  .position = row.position,
                                              };
                                          }));
@@ -139,11 +139,11 @@ std::vector<WorkspaceRow> workspaceRowsOf(std::span<vtcontrol::WorkspaceInfo con
         rows.push_back(WorkspaceRow {
             .id = id,
             .ref = vtcontrol::parseObjectRef(info.id).value_or(vtcontrol::ObjectRef {}),
-            .label = info.label,
+            .name = info.name,
             .position = info.position,
-            .name = workspaceDisplayName(
-                info.label,
-                active != info.tabs.end() ? vtworkspace::tabNameOf({ .name = active->label }, active->title)
+            .displayName = workspaceDisplayName(
+                info.name,
+                active != info.tabs.end() ? vtworkspace::tabNameOf({ .name = active->name }, active->title)
                                           : "",
                 info.position),
             .visibility = visibility != Visibilities.end() ? *visibility : WorkspaceVisibility::Hidden,
@@ -169,9 +169,9 @@ std::vector<WorkspaceRow> workspaceRowsOf(window::WorkspaceDirectory const& dire
                        ? vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Workspace,
                                                 .uuid = vtcontrol::Uuid { .bytes = workspace.controlId } }
                        : localRefOf(workspace.id),
-            .label = workspace.name,
+            .name = workspace.name,
             .position = position,
-            .name = workspaceDisplayName(workspace.name, workspace.tabs.front().name, position),
+            .displayName = workspaceDisplayName(workspace.name, workspace.tabs.front().name, position),
             .visibility = shown ? vthost::WorkspaceVisibility::Shown : vthost::WorkspaceVisibility::Hidden,
             .tabs = workspace.tabs.size(),
             .shownByWindowHere = shown,
@@ -251,7 +251,7 @@ std::vector<window::SwitcherWorkspace> switcherWorkspacesOf(std::span<WorkspaceR
                                                 .position = row.position,
                                                 // Another daemon's name is the user's text: made fit for a
                                                 // row as the sidebar makes its own (bidi disarmed, capped).
-                                                .name = window::rowTextOf(row.name),
+                                                .name = window::rowTextOf(row.displayName),
                                                 .tabs = row.tabs,
                                                 .state = stateOf(row),
                                                 .status = row.status,
@@ -278,10 +278,10 @@ std::vector<window::SwitcherWorkspace> windowWorkspacesOf(
     return workspaces;
 }
 
-std::string workspaceDisplayName(std::string_view label, std::string_view activeTabTitle, uint32_t position)
+std::string workspaceDisplayName(std::string_view name, std::string_view activeTabTitle, uint32_t position)
 {
-    if (!label.empty())
-        return std::string { label };
+    if (!name.empty())
+        return std::string { name };
     if (!activeTabTitle.empty())
         return std::string { activeTabTitle };
     return std::format("workspace {}", position);

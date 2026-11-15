@@ -103,7 +103,7 @@ class McpServer
     [[nodiscard]] ToolResult toolOnPane(ToolRow const& row, std::string_view arguments);
     [[nodiscard]] ToolResult toolPaneClose(ToolRow const& row, std::string_view arguments);
     [[nodiscard]] ToolResult toolTabClose(ToolRow const& row, std::string_view arguments);
-    [[nodiscard]] ToolResult toolSetLabel(ToolRow const& row, std::string_view arguments);
+    [[nodiscard]] ToolResult toolRename(ToolRow const& row, std::string_view arguments);
     [[nodiscard]] ToolResult toolBlockRead(ToolRow const& row, std::string_view arguments);
 
     /// @return The `workspace.list` snapshot, or why there is none (including a vanished caller pane).
