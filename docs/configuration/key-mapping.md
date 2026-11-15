@@ -219,7 +219,7 @@ input_mapping:
 
 A binding without `clicks` fires on every press that no `clicks` binding claimed. Like the selection
 it replaces, a `clicks` binding never takes a click that an application asked for, unless the
-[`bypass_mouse_protocol_modifier`](index.md#bypass_mouse_protocol_modifiers) is held.
+[`bypass_mouse_protocol_modifier`](index.md#bypass_mouse_protocol_modifier) is held.
 
 `clicks` applies to the `Left`, `Middle` and `Right` buttons only: a wheel step is never more than a
 first click. An entry that gives it to a key or a wheel, or a count other than 1 to 4, is dropped and
@@ -308,3 +308,5 @@ sidebar's **＋** button runs it.
 
 The settings are `sidebar: { visible, width }` and `tab_placement: sidebar | top`; see
 [the sidebar guide](../sidebar.md#configuration).
+
+--8<-- "configuration/key-mapping-actions.md"

@@ -1,33 +1,28 @@
-# Contour Terminal Emulator
+# Contour
 
-Contour is modern, fast, and designed for everyday use.
-It's not just a terminal emulator, but a powerhouse of features tailored for those who seek efficiency and control. With GPU-accelerated rendering and high-DPI support, experience the smoothest and most responsive terminal emulator like never before.
+A modern terminal emulator for everyday use: GPU-accelerated, high-DPI, Unicode-correct, with sessions that outlive the window.
 
-Contour is designed with the advanced power user in mind, offering high-speed, feature-rich functionality across all major platforms. From Linux and macOS to FreeBSD, OpenBSD and Windows, we've got you covered. <br/>
-Contour offers a suite of unique features designed to enhance your productivity and user experience. Enjoy support for font ligatures, emoji, and Unicode grapheme clusters. Navigate quickly with vertical line markers and vi-like input modes. Control your settings with runtime configuration reload and customizable key bindings. <br/>
-Bring your terminal to life with color schemes, profiles, and sixel inline images. Enjoy the convenience of clickable hyperlinks, and set your clipboard with OSC 52.  <br/>
+[install](install.md){ .btn .fill }
+[features](features.md){ .btn }
+[github ↗](https://github.com/contour-terminal/contour){ .btn }
+[discord ↗](https://discord.gg/ncv4pG9){ .btn }
+{ .cta }
 
-**This website is still in DRAFT mode, please be patient while we're building up the content.**
+![Contour showing a terminal session](screenshots/contour-main-dark.png){ .shot .banner }
 
-![screenshot showcasing notcurses ncneofetch on KDE/Fedora](screenshots/contour-notcurses-ncneofetch.png "Screenshot")
+## Highlights
 
-[Install](install.md){ .md-button .md-button--primary }
-[Join :simple-discord: ](https://discord.gg/ncv4pG9){ .md-button .md-button--primary }
+<div class="cards" markdown>
 
+- [**Persistent sessions** A daemon keeps your shells alive. Detach and reattach, locally or over the network.](persistent-sessions.md)
+- [**Command blocks** Fold output, see the exit status in the gutter, keep the command pinned while you scroll.](demo/command-blocks.md)
+- [**Vi-like modes** Navigate, select and copy the scrollback without leaving the keyboard.](input-modes.md)
+- [**Workspaces, tabs, panes** A sidebar that also tells you which program is waiting for you.](sidebar.md)
+- [**Images and ligatures** Sixel, kitty graphics and ReGIS; font ligatures, emoji and grapheme clusters.](features.md#text-and-graphics)
+- [**Scriptable** A control API, CLI verbs and an MCP server for coding agents.](control-api.md)
 
-## Key Features
+</div>
 
-:material-check-bold:{.check-mark}  Available on all major platforms, Linux, macOS, FreeBSD, OpenBSD, Windows. <br/>
-:material-check-bold:{.check-mark}  [Font ligatures](demo/font-ligatures.md) support (very useful for programming and scripting) <br/>
-![demo](screenshots/contour-font-ligatures.png){ align=left }
-:material-check-bold:{.check-mark}  Complex Unicode support, including colored Emoji (-: 🌈  💝  😛  👪  - including ZWJ, VS15, VS16 emoji :-) <br/>
-:material-check-bold:{.check-mark}  [Persistent sessions](persistent-sessions.md) that survive the window (daemon mode) — reattach locally or over the network <br/>
-:material-check-bold:{.check-mark}  [Vi-like input modes](input-modes.md) for improved navigation, selection and copy'n'paste experience <br/>
-:material-check-bold:{.check-mark}  [Vertical Line Markers](demo/line-marks.md) (quickly jump to markers in your history!) <br/>
-:material-check-bold:{.check-mark}  [Command blocks](demo/command-blocks.md) from shell integration: folding, an exit-status gutter, scrollbar marks and a sticky command header <br/>
-:material-check-bold:{.check-mark}  Profiles (grouped customization of: color scheme, login shell, and related behaviors) <br/>
-:material-check-bold:{.check-mark}  [Sixel Image support](demo/images.md) <br/>
-![sixel-index-demo](screenshots/contour-sixel-plot.png){ align=left}
-:material-check-bold:{.check-mark}  [VT320 Host-programmable and Indicator statusline support](demo/statusline.md) <br/>
-:material-check-bold:{.check-mark}  Bold and italic fonts <br/>
-:material-arrow-right:{.arrow-right-bold} [For a full list of features, click here](features.md) <br/>
+## Runs on
+
+Linux · macOS · Windows · FreeBSD · OpenBSD
