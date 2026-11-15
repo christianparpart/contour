@@ -39,6 +39,11 @@
     #include <sys/syscall.h>
 #endif
 
+#ifdef __FreeBSD__
+    #include <sys/sysctl.h>
+    #include <sys/types.h>
+#endif
+
 namespace vthost::keeper
 {
 
@@ -95,15 +100,27 @@ namespace
         ::fcntl(fd, F_SETFD, ::fcntl(fd, F_GETFD) | FD_CLOEXEC);
     }
 
-    /// @return The descriptors this process has open, counted from its descriptor listing; or by asking for
-    ///         every number below @p limit where there is no listing.
+    /// @return The descriptors this process has open: from the kernel on FreeBSD, from the descriptor listing
+    ///         on Linux and macOS; or by asking for every number below @p limit where neither answers.
     [[nodiscard]] std::size_t countOpenDescriptors(rlim_t limit)
     {
-#ifdef __linux__
-        auto const listing = std::filesystem::path { "/proc/self/fd" };
+#ifdef __FreeBSD__
+        // Not /dev/fd: without fdescfs mounted, FreeBSD's lists 0, 1 and 2 whatever is open, and the budget
+        // would never move. The kernel counts them instead.
+    #ifdef KERN_PROC_NFDS
+        auto name = std::array { CTL_KERN, KERN_PROC, KERN_PROC_NFDS };
+        auto count = 0;
+        auto size = sizeof(count);
+        if (::sysctl(name.data(), static_cast<u_int>(name.size()), &count, &size, nullptr, 0) == 0
+            && count >= 0)
+            return static_cast<std::size_t>(count);
+    #endif
 #else
+    #ifdef __linux__
+        auto const listing = std::filesystem::path { "/proc/self/fd" };
+    #else
         auto const listing = std::filesystem::path { "/dev/fd" };
-#endif
+    #endif
         auto error = std::error_code {};
         auto entries = std::filesystem::directory_iterator { listing, error };
         if (!error)
@@ -113,6 +130,7 @@ namespace
                 static_cast<std::size_t>(std::distance(entries, std::filesystem::directory_iterator {}));
             return count > 0 ? count - 1 : 0;
         }
+#endif
         constexpr auto SweepBound = rlim_t { 65'536 };
         auto const bound = static_cast<int>(std::min(limit, SweepBound));
         return static_cast<std::size_t>(std::ranges::count_if(

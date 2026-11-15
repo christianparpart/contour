@@ -62,9 +62,21 @@ namespace
     /// The status the harness daemon exits with when the handshake with its keeper failed.
     constexpr auto AttachFailureStatus = 2;
 
+    /// @return This test binary, absolute: the daemon image the harness keeper starts.
+    ///
+    /// currentExecutablePath() first, as the daemon names its own image. Where that is not brought up
+    /// (FreeBSD), selfExecutablePath(), which the keeper itself spawns by and which asks the kernel there.
+    /// Not selfExecutablePath() everywhere: on Linux it is /proc/self/exe, which names a different file in
+    /// every process that opens it.
     [[nodiscard]] std::filesystem::path ownExecutable()
     {
-        auto path = vtpty::currentExecutablePath();
+        auto path = vtpty::currentExecutablePath().or_else(
+            [](std::error_code const& error) -> std::expected<std::filesystem::path, std::error_code> {
+                if (error != std::errc::not_supported)
+                    return std::unexpected(error);
+                return vtpty::selfExecutablePath().transform(
+                    [](std::string const& self) { return std::filesystem::path { self }; });
+            });
         if (!path)
             throw std::runtime_error { std::format("cannot locate the test binary: {}",
                                                    path.error().message()) };
