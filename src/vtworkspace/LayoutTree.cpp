@@ -131,8 +131,8 @@ Tab* realizeLayoutTab(SessionModel& model,
     if (modelTab == nullptr)
         return nullptr;
 
-    if (tab.title)
-        model.setTabTitle(modelTab->id(), *tab.title);
+    if (tab.name)
+        model.setTabName(modelTab->id(), *tab.name);
     if (tab.color)
         model.setTabColor(modelTab->id(), TabColorSource::User, *tab.color);
 
@@ -166,8 +166,8 @@ LayoutPane serializePane(Pane const& pane, LeafResolver const& resolve)
 LayoutTab serializeTab(Tab const& tab, LeafResolver const& resolve)
 {
     LayoutTab out;
-    if (tab.runtimeTitle())
-        out.title = *tab.runtimeTitle();
+    if (!tab.name().empty())
+        out.name = tab.name();
     if (auto const color = tab.color(TabColorSource::User))
         out.color = *color;
     out.root = serializePane(*tab.rootPane(), resolve);

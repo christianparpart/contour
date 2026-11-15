@@ -329,15 +329,13 @@ class SessionModel
     SessionId replaceLeafSession(TabId tab, PaneId leaf, SessionId session);
 
     // }}}
-    // {{{ Title & color (authoritative state lives here, below the GUI)
-
-    void setTabTitle(TabId tab, std::string title);
-    void resetTabTitle(TabId tab);
+    // {{{ Name & color (authoritative state lives here, below the GUI)
 
     /// Sets @p tab's user-given name (Tab::name()), which names it over its title, and tells the observers
-    /// as a title change (ModelEvents::tabTitleChanged) when it changed. An empty name clears it.
+    /// as a title change (ModelEvents::tabTitleChanged) when it changed. An empty or all-blank name clears
+    /// it.
     /// @param tab The tab.
-    /// @param name Its name, as the daemon holds it.
+    /// @param name Its name.
     void setTabName(TabId tab, std::string name);
 
     /// Assigns @p tab's color on behalf of @p source. Sources are independent and ranked, so a user's

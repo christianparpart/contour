@@ -151,8 +151,8 @@ namespace
         TabEditName { .kind = TabEditKind::ActivatePane, .name = "activate-pane" },
         TabEditName { .kind = TabEditKind::Zoom, .name = "zoom" },
         TabEditName { .kind = TabEditKind::Unzoom, .name = "unzoom" },
-        TabEditName { .kind = TabEditKind::SetTitle, .name = "set-title" },
-        TabEditName { .kind = TabEditKind::ClearTitle, .name = "clear-title" },
+        TabEditName { .kind = TabEditKind::SetName, .name = "set-name" },
+        TabEditName { .kind = TabEditKind::ClearName, .name = "clear-name" },
         TabEditName { .kind = TabEditKind::SetColor, .name = "set-color" },
         TabEditName { .kind = TabEditKind::ClearColor, .name = "clear-color" },
         TabEditName { .kind = TabEditKind::ActivateTab, .name = "activate-tab" },
@@ -481,7 +481,7 @@ namespace
         TraceRow { PduType::EditTab,
                    "EditTab",
                    +[](DecodedPdu const& pdu) {
-                       // The title is sized, never transcribed: it is the user's own text.
+                       // The name is sized, never transcribed: it is the user's own text.
                        auto const& value = std::get<EditTab>(pdu);
                        auto const known = std::ranges::find(TabEditNames, value.kind, &TabEditName::kind);
                        auto text = std::format("session={} {}",
@@ -489,8 +489,8 @@ namespace
                                                known != TabEditNames.end()
                                                    ? std::string { known->name }
                                                    : std::format("kind={}", std::to_underlying(value.kind)));
-                       if (value.kind == TabEditKind::SetTitle)
-                           text += std::format(" title={}B", value.title.size());
+                       if (value.kind == TabEditKind::SetName)
+                           text += std::format(" name={}B", value.name.size());
                        if (value.kind == TabEditKind::SetColor)
                            text += std::format(" #{:06x}", value.color);
                        return text;

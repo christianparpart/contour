@@ -104,8 +104,8 @@ namespace
     void emitTab(YAML::Emitter& out, config::LayoutTab const& tab)
     {
         out << YAML::BeginMap;
-        if (tab.title)
-            out << YAML::Key << "title" << YAML::Value << *tab.title;
+        if (tab.name)
+            out << YAML::Key << "name" << YAML::Value << *tab.name;
         if (tab.color)
             out << YAML::Key << "color" << YAML::Value << vtbackend::formatColor(*tab.color);
         if (tab.profile)

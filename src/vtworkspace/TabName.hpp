@@ -3,6 +3,8 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <string_view>
 
 namespace vtworkspace
@@ -13,15 +15,15 @@ namespace vtworkspace
 enum class TabNameSource : uint8_t
 {
     Panes, ///< Its panes, as the place naming the tab names a tab after them (a title, a template).
-    Title, ///< Its own title: the rename the user gave it.
-    Name,  ///< Its user-given name (`contour label tab:… NAME`).
+    Title, ///< Its own title, as what states the tab gives one: an older daemon states its runtime title.
+    Name,  ///< Its user-given name, set from the GUI and the control API alike.
 };
 
 /// What a tab could be named by besides its panes; an empty one names nothing.
 struct TabNameCandidates
 {
     std::string_view name {};  ///< Its user-given name.
-    std::string_view title {}; ///< Its own title, a rename.
+    std::string_view title {}; ///< Its own title, where what states the tab gives it one.
 };
 
 /// One source that names a tab over its panes, and where its text is.
@@ -58,6 +60,20 @@ constexpr auto TabNamePrecedence = std::array {
         if (!(candidates.*rule.text).empty())
             return candidates.*rule.text;
     return panes;
+}
+
+/// compat(0.9.0): before 0.9.0 a tab renamed from the GUI kept that rename as a runtime title beside its
+/// name. A handover image or a snapshot written then still carries it; restored, it becomes the name the tab
+/// lacks.
+/// @param name The name the tab was captured with; empty for none.
+/// @param runtimeTitle The runtime title it was captured with, if any.
+/// @return The name the tab is restored with: @p name, else @p runtimeTitle, else none.
+[[nodiscard]] constexpr std::string_view restoredTabName(
+    std::string_view name, std::optional<std::string> const& runtimeTitle) noexcept
+{
+    if (!name.empty() || !runtimeTitle)
+        return name;
+    return *runtimeTitle;
 }
 
 } // namespace vtworkspace

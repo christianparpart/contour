@@ -1915,9 +1915,9 @@ profiles:
 layouts:
     work:
         tabs:
-            - title: "editor"
+            - name: "editor"
               command: "nvim"
-            - title: "servers"
+            - name: "servers"
               split:
                 orientation: vertical
                 panes:
@@ -1932,13 +1932,13 @@ layouts:
     REQUIRE(resolved->startupLayout.tabs.size() == 2);
 
     auto const& editorTab = resolved->startupLayout.tabs[0];
-    CHECK(editorTab.title == "editor");
+    CHECK(editorTab.name == "editor");
     CHECK(editorTab.root.isLeaf());
     REQUIRE(editorTab.root.command.has_value());
     CHECK(*editorTab.root.command == "nvim");
 
     auto const& serversTab = resolved->startupLayout.tabs[1];
-    CHECK(serversTab.title == "servers");
+    CHECK(serversTab.name == "servers");
     REQUIRE_FALSE(serversTab.root.isLeaf());
     CHECK(serversTab.root.orientation == vtworkspace::SplitState::Vertical);
     REQUIRE(serversTab.root.children.size() == 2);

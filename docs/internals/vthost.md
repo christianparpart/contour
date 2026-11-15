@@ -260,16 +260,19 @@ tell the daemon is lost on the next attach, and never reaches another client. Tw
 back: `ResizeSplit` for a divider (below), and `EditTab` for how a tab is presented — its active
 pane, its zoom, its title, its colour, and which tab of the workspace is active.
 
-A tab's name goes one way only: the daemon's object registry holds it, `WireTab.name` carries
-it in every `LayoutState`, and a name change re-pushes the tab's workspace. A client takes it into its
-model (`vtworkspace::Tab::name()`) and never reports it back; `vtworkspace::tabNameSourceOf` makes it name
-the tab over its title wherever a tab is named.
+A tab has one name, set from the GUI and the control API alike. The daemon's object registry holds it
+(and mirrors it into its model, so a tmux client or a status line reads it as `vtworkspace::Tab::name()`),
+`WireTab.name` carries it in every `LayoutState`, and a name change re-pushes the tab's workspace. A client
+takes it into its model, and reports a rename of its own as an `EditTab`; `vtworkspace::tabNameSourceOf`
+makes it name the tab over its title wherever a tab is named. `WireTab.title` is an older daemon's runtime
+title, which a new daemon writes empty.
 
 **`EditTab`** (tag 28, gated on `Capability::TabEdits`; without it the daemon answers
 `Unsupported`) names a session and a `TabEditKind`, and `vthost::applyTabEdit` applies it through
 one table row per kind: `ActivatePane` → `setActivePane`; `Zoom`/`Unzoom` → activate the pane, then
-`toggleActivePaneZoom` only when the zoom differs; `SetTitle`/`ClearTitle` →
-`setTabTitle`/`resetTabTitle`; `SetColor`/`ClearColor` → `setTabColor`/`resetTabColor` as
+`toggleActivePaneZoom` only when the zoom differs; `SetName`/`ClearName` → the tab's name in the
+registry (`RegistryTabNames`; an old window's "set title", the same kind and field, arrives as a rename);
+`SetColor`/`ClearColor` → `setTabColor`/`resetTabColor` as
 `TabColorSource::User`; `ActivateTab` → `activateTab`. Every row compares before it mutates, so a
 client re-asserting state the daemon already holds fires no model event and so costs no client a
 layout push; a change fans out as a fresh `LayoutState` to every client, the sender included. An

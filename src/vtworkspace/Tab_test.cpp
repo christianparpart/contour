@@ -52,20 +52,20 @@ TEST_CASE("Tab: title precedence is runtime > MultiplePanes > active-leaf", "[vt
         CHECK(tab.title(resolver).rfind("session-", 0) == 0);
     }
 
-    SECTION("a split with no runtime title yields the MultiplePanes label")
+    SECTION("a split with no name yields the MultiplePanes label")
     {
         (void) tab.splitActivePane(SplitState::Vertical, ids.pane(), ids.pane(), ids.session());
         CHECK(tab.hasMultiplePanes());
         CHECK(tab.title(resolver) == std::string { Tab::MultiplePanesLabel });
     }
 
-    SECTION("a runtime title overrides everything")
+    SECTION("a name overrides everything")
     {
         (void) tab.splitActivePane(SplitState::Vertical, ids.pane(), ids.pane(), ids.session());
-        tab.setRuntimeTitle("my tab");
+        tab.setName("my tab");
         CHECK(tab.title(resolver) == "my tab");
 
-        tab.setRuntimeTitle(std::nullopt); // clearing falls back to MultiplePanes
+        tab.setName({}); // clearing falls back to MultiplePanes
         CHECK(tab.title(resolver) == std::string { Tab::MultiplePanesLabel });
     }
 }
@@ -76,7 +76,6 @@ TEST_CASE("Tab: a user-given name names the tab over its title", "[vtworkspace][
     Tab tab { TabId { 1 }, ids.pane(), ids.session() };
     auto const resolver = makeResolver();
     (void) tab.splitActivePane(SplitState::Vertical, ids.pane(), ids.pane(), ids.session());
-    tab.setRuntimeTitle("my tab");
 
     tab.setName("build");
     CHECK(tab.name() == "build");
@@ -84,8 +83,6 @@ TEST_CASE("Tab: a user-given name names the tab over its title", "[vtworkspace][
 
     // Cleared, the tab is named as before it had one.
     tab.setName("");
-    CHECK(tab.title(resolver) == "my tab");
-    tab.setRuntimeTitle(std::nullopt);
     CHECK(tab.title(resolver) == std::string { Tab::MultiplePanesLabel });
 }
 
@@ -664,8 +661,8 @@ TEST_CASE("Tab: a zoomed tab is titled after the pane on screen", "[vtworkspace]
     REQUIRE(tab.toggleZoom());
     CHECK(tab.title(resolver) == std::format("session-{}", rightSession.value));
 
-    // A rename still wins over both (it is the highest-precedence source).
-    tab.setRuntimeTitle("pinned");
+    // A name still wins over both (it is the highest-precedence source).
+    tab.setName("pinned");
     CHECK(tab.title(resolver) == "pinned");
 }
 // }}}

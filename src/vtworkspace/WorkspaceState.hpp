@@ -49,7 +49,10 @@ struct TabViewState
     PaneId activePane {};                 ///< The leaf with focus.
     ZoomState zoom = ZoomState::Unzoomed; ///< Whether it is zoomed.
     std::vector<PaneId> recentPanes;      ///< The leaves, most recently used first.
-    std::optional<std::string> title;     ///< The runtime title, where one was set.
+    /// compat(0.9.0): the runtime title a GUI rename set before 0.9.0, as an older daemon's handover image
+    /// carries it. Never written now, and read only as the name of a tab that has none
+    /// (restoredTabName()).
+    std::optional<std::string> title;
     /// The tab's colour per TabColorSource, indexed by its underlying value.
     std::array<std::optional<vtbackend::RGBColor>, 3> colors {};
 };

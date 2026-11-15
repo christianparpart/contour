@@ -369,7 +369,7 @@ This maps almost one-to-one onto `vtworkspace::SessionModel` (`src/vtworkspace/S
 which is already Qt-free and already has the whole verb set — `createTab`, `closeTab`, `activateTab`,
 `moveTab`, `moveTabToWorkspace`, `closePane`, `setActivePane`, `focusDirection`, `setPaneRatio`,
 `resizeActivePane`, `toggleActivePaneOrientation`, `swapActivePane`, `moveActivePane`,
-`toggleActivePaneZoom`, `setTabTitle`, `setTabColor`. The extension interface adds nothing but a
+`toggleActivePaneZoom`, `setTabName`, `setTabColor`. The extension interface adds nothing but a
 permission check and identity mapping.
 
 **Identity is by opaque id, not index.** `WorkspaceId`/`TabId`/`PaneId` are already stable; indices are

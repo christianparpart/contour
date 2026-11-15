@@ -605,14 +605,14 @@ TEST_CASE("SessionModel: setPaneRatio updates the split node", "[vtworkspace][mo
     CHECK(f.events.sawPrefix(std::format("ratio:{}", splitNodeId.value)));
 }
 
-TEST_CASE("SessionModel: tab title and color mutations notify", "[vtworkspace][model][title][color]")
+TEST_CASE("SessionModel: tab name and color mutations notify", "[vtworkspace][model][title][color]")
 {
     Fixture f;
     auto* win = f.model.createWorkspace();
     auto* tab = f.model.createTab(win->id());
 
-    f.model.setTabTitle(tab->id(), "build");
-    CHECK(tab->runtimeTitle() == "build");
+    f.model.setTabName(tab->id(), "build");
+    CHECK(tab->name() == "build");
     CHECK(f.events.sawPrefix(std::format("title:{}", tab->id().value)));
 
     f.model.setTabColor(tab->id(), TabColorSource::User, vtbackend::RGBColor { 0x33, 0xCC, 0x33 });
@@ -652,27 +652,22 @@ TEST_CASE("SessionModel: a tab color is tracked per source, and both changes are
     CHECK_FALSE(tab->color().has_value());
 }
 
-TEST_CASE("SessionModel: an empty or blank tab title resets to the default template",
-          "[vtworkspace][model][title]")
+TEST_CASE("SessionModel: a blank tab name clears it", "[vtworkspace][model][title]")
 {
-    // The GUI's inline rename editor opens pre-filled with the RAW override — empty for a
-    // never-renamed tab — and commits verbatim on click-away. Without normalization that stored ""
-    // as a runtime override, which takes precedence over the '{WindowTitle}' default and left the
-    // tab permanently unlabeled with no UI to recover.
+    // The GUI's inline rename editor opens pre-filled with the name — empty for a never-named tab — and
+    // commits verbatim on click-away. A blank name would leave the tab unlabeled; it clears the name instead.
     Fixture f;
     auto* win = f.model.createWorkspace();
     auto* tab = f.model.createTab(win->id());
 
-    f.model.setTabTitle(tab->id(), "");
-    CHECK_FALSE(tab->runtimeTitle().has_value());
+    f.model.setTabName(tab->id(), "build");
+    REQUIRE(tab->name() == "build");
+
+    // A whitespace-only name is visually indistinguishable from a blank label: cleared as well.
+    f.events.log.clear();
+    f.model.setTabName(tab->id(), "   ");
+    CHECK(tab->name().empty());
     CHECK(f.events.sawPrefix(std::format("title:{}", tab->id().value)));
-
-    f.model.setTabTitle(tab->id(), "build");
-    REQUIRE(tab->runtimeTitle().has_value());
-
-    // A whitespace-only rename is visually indistinguishable from a blank label: reset as well.
-    f.model.setTabTitle(tab->id(), "   ");
-    CHECK_FALSE(tab->runtimeTitle().has_value());
 }
 
 TEST_CASE("SessionModel: a tab's name notifies as its title does", "[vtworkspace][model][title]")
@@ -1301,25 +1296,25 @@ TEST_CASE("SessionModel: moveTab to the tab's current index is a silent no-op", 
     CHECK(win->tabAt(1) == b);
 }
 
-TEST_CASE("SessionModel: title and color mutations on an unknown tab are safe no-ops",
+TEST_CASE("SessionModel: name and color mutations on an unknown tab are safe no-ops",
           "[vtworkspace][model][title][color]")
 {
     Fixture f;
     auto* win = f.model.createWorkspace();
     auto* tab = f.model.createTab(win->id());
-    f.model.setTabTitle(tab->id(), "kept");
+    f.model.setTabName(tab->id(), "kept");
     f.model.setTabColor(tab->id(), TabColorSource::User, vtbackend::RGBColor { 0x11, 0x22, 0x33 });
     f.events.log.clear();
 
     auto const unknown = TabId { 999999 };
-    f.model.setTabTitle(unknown, "ignored");
-    f.model.resetTabTitle(unknown);
+    f.model.setTabName(unknown, "ignored");
+    f.model.setTabName(unknown, {});
     f.model.setTabColor(unknown, TabColorSource::User, vtbackend::RGBColor { 0xAA, 0xBB, 0xCC });
     f.model.resetTabColor(unknown, TabColorSource::User);
 
     CHECK(f.events.log.empty());
     // The real tab's overrides are untouched.
-    CHECK(tab->runtimeTitle() == "kept");
+    CHECK(tab->name() == "kept");
     REQUIRE(tab->color().has_value());
     CHECK(tab->color()->red == 0x11);
 }
@@ -2358,8 +2353,7 @@ TEST_CASE("SessionModel: mergeTabIntoSplit within a workspace keeps the active b
 
 namespace
 {
-/// A model with two workspaces: one of two tabs (the first split twice, zoomed, coloured and titled), one
-/// empty.
+/// A model with two workspaces: one of two tabs (the first split twice, zoomed and coloured), one empty.
 void populate(Fixture& fixture)
 {
     auto* const workspace = fixture.model.createWorkspace();
@@ -2369,7 +2363,6 @@ void populate(Fixture& fixture)
     (void) fixture.model.splitActivePane(first->id(), SplitState::Vertical, 0.3);
     (void) fixture.model.splitActivePane(first->id(), SplitState::Horizontal, 0.7);
     fixture.model.toggleActivePaneZoom(first->id());
-    fixture.model.setTabTitle(first->id(), "build");
     fixture.model.setTabColor(first->id(), TabColorSource::User, vtbackend::RGBColor { 1, 2, 3 });
     fixture.model.activateTab(workspace->id(), first->id());
     (void) fixture.model.createWorkspace();
@@ -2403,7 +2396,6 @@ TEST_CASE("SessionModel: restored model has the same ids and tree", "[vtworkspac
     CHECK(tab->id() == tree.workspaces[0].tabs[0].id);
     CHECK(tab->paneCount() == 3);
     CHECK(tab->isZoomed());
-    CHECK(tab->runtimeTitle() == std::optional<std::string> { "build" });
     CHECK(tab->color(TabColorSource::User) == std::optional { vtbackend::RGBColor { 1, 2, 3 } });
     CHECK(tab->activePane()->id() == tree.workspaces[0].tabs[0].view.activePane);
     CHECK(tab->leafSessions() == original.model.workspaceAt(0)->tabAt(0)->leafSessions());

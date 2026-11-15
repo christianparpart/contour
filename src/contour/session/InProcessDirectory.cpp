@@ -7,6 +7,7 @@
 #include <utility>
 
 #include <vthost/proto/Pdu.hpp>
+#include <vtworkspace/Tab.hpp>
 #include <vtworkspace/WorkspaceState.hpp>
 
 namespace contour::session
@@ -27,7 +28,9 @@ namespace
         return wire;
     }
 
-    vthost::proto::LayoutState layoutOf(vtworkspace::WorkspaceState const& workspace)
+    /// @param model Where the tabs' names are: a tree captures none.
+    vthost::proto::LayoutState layoutOf(vtworkspace::SessionModel const& model,
+                                        vtworkspace::WorkspaceState const& workspace)
     {
         auto layout = vthost::proto::LayoutState {};
         layout.workspace = workspace.id.value;
@@ -36,7 +39,8 @@ namespace
         {
             auto wire = vthost::proto::WireTab {};
             wire.tabId = tab.id.value;
-            wire.title = tab.view.title.value_or(std::string {});
+            if (auto const* const named = model.findTab(tab.id))
+                wire.name = named->name();
             wire.root = wirePaneOf(tab.root);
             layout.tabs.push_back(std::move(wire));
         }
@@ -115,7 +119,7 @@ window::WorkspaceDirectory InProcessDirectory::directory() const
     auto const owned = _owner.ownedWorkspaces();
     for (auto const& workspace: tree.workspaces)
         if (std::ranges::contains(owned, workspace.id))
-            layouts.push_back(layoutOf(workspace));
+            layouts.push_back(layoutOf(_model, workspace));
     auto const meta = MetaOfProcess { _names, _git };
     return window::directoryFromLayouts(layouts, _status, meta, _owner.displayedWorkspace().value);
 }

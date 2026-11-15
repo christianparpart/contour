@@ -1187,37 +1187,13 @@ bool SessionModel::announceZoomChange(Tab& tab, std::optional<PaneId> zoomedLeaf
 // }}}
 // {{{ Title & color
 
-void SessionModel::setTabTitle(TabId tabId, std::string title)
-{
-    auto* tab = findTab(tabId);
-    if (tab == nullptr)
-        return;
-    // An empty (or all-whitespace) rename means "reset to the default template", never "blank the
-    // label": an empty runtime override takes precedence over the default template and would
-    // leave the tab permanently unlabeled — the GUI's inline rename editor opens pre-filled with the
-    // raw override (empty for a never-renamed tab) and commits verbatim on click-away. Normalizing
-    // here keeps the invariant "no blank runtime titles" for every adapter.
-    if (std::ranges::all_of(title, [](unsigned char c) { return std::isspace(c) != 0; }))
-    {
-        resetTabTitle(tabId);
-        return;
-    }
-    tab->setRuntimeTitle(std::move(title));
-    _events.tabTitleChanged(tabId);
-}
-
-void SessionModel::resetTabTitle(TabId tabId)
-{
-    auto* tab = findTab(tabId);
-    if (tab == nullptr)
-        return;
-    tab->setRuntimeTitle(std::nullopt);
-    _events.tabTitleChanged(tabId);
-}
-
 void SessionModel::setTabName(TabId tabId, std::string name)
 {
     auto* tab = findTab(tabId);
+    // A blank name clears it, never blanks the tab: the GUI's inline rename editor opens pre-filled with the
+    // name (empty for a tab that has none) and commits verbatim on click-away.
+    if (std::ranges::all_of(name, [](unsigned char c) { return std::isspace(c) != 0; }))
+        name.clear();
     if (tab == nullptr || tab->name() == name)
         return;
     tab->setName(std::move(name));

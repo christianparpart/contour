@@ -208,10 +208,10 @@ class ISidebarHost
     /// @param name The new label.
     virtual void renameWorkspace(uint64_t workspace, std::string const& name) = 0;
 
-    /// Sets the title a tab shows, as the strip's inline rename does.
+    /// Names a tab, as the strip's inline rename does.
     /// @param tab The tab.
-    /// @param title Its title; empty clears the one the user set.
-    virtual void renameTab(TabRef tab, std::string const& title) = 0;
+    /// @param name Its name; empty clears it.
+    virtual void renameTab(TabRef tab, std::string const& name) = 0;
 
     /// Moves a workspace in the list.
     /// @param workspace The workspace's id.

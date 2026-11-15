@@ -1551,15 +1551,16 @@ contour::session::RemoteRouting NativeController::requestRemoteRenameWorkspace(u
     return contour::session::RemoteRouting::Routed;
 }
 
-contour::session::RemoteRouting NativeController::requestRemoteTabTitle(uint64_t session,
-                                                                        std::string_view title)
+contour::session::RemoteRouting NativeController::requestRemoteTabRename(uint64_t session, std::string name)
 {
     if (!negotiated())
         return contour::session::RemoteRouting::Refused;
+    auto const kind =
+        name.empty() ? vthost::proto::TabEditKind::ClearName : vthost::proto::TabEditKind::SetName;
     auto edit = vthost::proto::EditTab {
         .session = session,
-        .kind = title.empty() ? vthost::proto::TabEditKind::ClearTitle : vthost::proto::TabEditKind::SetTitle,
-        .title = std::string { title },
+        .kind = kind,
+        .name = std::move(name),
         .color = 0,
     };
     _reactor.post([this, edit = std::move(edit)] {
@@ -1665,7 +1666,7 @@ void NativeController::reportTabPresentation(contour::session::LocalTabPresentat
         .activeSession = *active,
         .zoomedSession =
             presentation.zoomedPty != nullptr ? sessionForPty(presentation.zoomedPty).value_or(0) : 0,
-        .title = presentation.title,
+        .name = presentation.name,
         .color = presentation.color,
         .activity = presentation.activity,
     };

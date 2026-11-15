@@ -364,7 +364,7 @@ class TmuxController final:
     /// TerminalSession at use time — a raw pointer would dangle the moment the
     /// anchored pane dies (tab close, or tmux removing the pane).
     std::unordered_map<uint64_t, vtworkspace::SessionId> _actingByWindow;
-    std::unordered_map<uint64_t, std::string> _pendingRenames; ///< %window-renamed titles awaiting apply.
+    std::unordered_map<uint64_t, std::string> _pendingRenames; ///< %window-renamed names awaiting apply.
     /// Panes tmux re-parented, by pane id, holding the record their DESTINATION realization needs.
     /// Parked here rather than in `_pending` until the source pty's unbind arrives: realizing while
     /// that pty is still bound would have realizeOnePane read the dying binding as "already

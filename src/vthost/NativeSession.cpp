@@ -127,8 +127,6 @@ namespace
                 wireTab.activePane = active->id().value;
             if (auto const zoomed = tab->zoomedLeafId())
                 wireTab.zoomedPane = zoomed->value;
-            if (auto const& title = tab->runtimeTitle())
-                wireTab.title = *title;
             if (auto const uuid = objects.uuidOf(tab->id()))
                 wireTab.name = objects.nameOf(
                     vtcontrol::ObjectRef { .kind = vtcontrol::ObjectKind::Tab, .uuid = *uuid });
@@ -720,11 +718,10 @@ void NativeSession::nameChanged(vtcontrol::ObjectRef const& ref, std::string_vie
             if (sharesWorkspaceMeta())
                 workspaceNameChanged(ref, name);
             return;
+        // A tab's name travels in its workspace's layout, pushed as the host mirrors the name into the model
+        // (SessionHost::mirrorTabName), whose retitle reaches every client: pushing here too would push
+        // twice.
         case vtcontrol::ObjectKind::Tab:
-            // A tab's name travels in its workspace's layout, which names the tab by it.
-            if (auto const handle = _host.objects().find(ref))
-                layoutChanged(_host.model().workspaceOfTab(std::get<vtworkspace::TabId>(*handle)));
-            return;
         case vtcontrol::ObjectKind::Pane: return;
     }
 }
@@ -2364,7 +2361,9 @@ NativeSession::TabVerb NativeSession::serveTabVerb(proto::DecodedFrame const& fr
         // Served before it is applied: the push the change fans out, to this client included, has seen it.
         _servedEdit = frame.serial;
         // A change fans out as a model event, and so as a layout push to every client, this one included.
-        if (auto const applied = applyTabEdit(_host.model(), *edit); !applied)
+        // A name is the registry's, which addresses the tab by it and tells every client.
+        auto names = RegistryTabNames { _host.objects() };
+        if (auto const applied = applyTabEdit(_host.model(), names, *edit); !applied)
             errorLog()("{}: ignoring {}: {}", _id, proto::describe(frame.pdu), describe(applied.error()));
         return TabVerb::Served;
     }

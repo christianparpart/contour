@@ -356,15 +356,15 @@ TEST_CASE("tabEditsToReport names exactly the fields that differ", "[vthost][lay
     using vthost::client::tabEditsToReport;
     using vthost::client::TabPresentation;
 
-    auto const stated = TabPresentation { .activeSession = 1, .title = std::nullopt };
+    auto const stated = TabPresentation { .activeSession = 1, .name = {} };
     CHECK(tabEditsToReport(stated, stated).empty());
     auto local = stated;
     local.activeSession = 2;
-    local.title = "build";
+    local.name = "build";
     CHECK(tabEditsToReport(local, stated)
           == std::vector<proto::EditTab> {
               { .session = 2, .kind = TabEditKind::ActivatePane },
-              { .session = 2, .kind = TabEditKind::SetTitle, .title = "build" },
+              { .session = 2, .kind = TabEditKind::SetName, .name = "build" },
           });
     auto zoomedThere = stated;
     zoomedThere.zoomedSession = 1;
@@ -381,12 +381,12 @@ TEST_CASE("tabEditsToReport orders every field and leaves a tab only the daemon 
 
     auto const daemon = TabPresentation { .activeSession = 1,
                                           .zoomedSession = 0,
-                                          .title = "old",
+                                          .name = "old",
                                           .color = 0x112233,
                                           .activity = TabActivity::Inactive };
     auto const local = TabPresentation { .activeSession = 3,
                                          .zoomedSession = 3,
-                                         .title = std::nullopt,
+                                         .name = {},
                                          .color = std::nullopt,
                                          .activity = TabActivity::Active };
     CHECK(tabEditsToReport(local, daemon)
@@ -394,7 +394,7 @@ TEST_CASE("tabEditsToReport orders every field and leaves a tab only the daemon 
               { .session = 3, .kind = TabEditKind::ActivateTab },
               { .session = 3, .kind = TabEditKind::ActivatePane },
               { .session = 3, .kind = TabEditKind::Zoom },
-              { .session = 3, .kind = TabEditKind::ClearTitle },
+              { .session = 3, .kind = TabEditKind::ClearName },
               { .session = 3, .kind = TabEditKind::ClearColor },
           });
 
@@ -415,17 +415,18 @@ TEST_CASE("presentationOf reads a daemon tab's panes by their leaf sessions", "[
     auto tab = proto::WireTab {};
     tab.activePane = 12;
     tab.zoomedPane = 12;
-    tab.title = "logs";
+    tab.name = "logs";
+    tab.title = "an older daemon's runtime title";
     tab.root = proto::WirePane { .paneId = 10,
                                  .split = 2,
                                  .children = { proto::WirePane { .paneId = 11, .session = 7 },
                                                proto::WirePane { .paneId = 12, .session = 8 } } };
     CHECK(presentationOf(tab, TabActivity::Active)
           == TabPresentation {
-              .activeSession = 8, .zoomedSession = 8, .title = "logs", .activity = TabActivity::Active });
+              .activeSession = 8, .zoomedSession = 8, .name = "logs", .activity = TabActivity::Active });
 
-    // No title, a colour, a pane id no leaf has.
-    tab.title.clear();
+    // No name, a colour, a pane id no leaf has.
+    tab.name.clear();
     tab.zoomedPane = 0;
     tab.activePane = 99;
     tab.hasColor = 1;
@@ -482,12 +483,12 @@ TEST_CASE("PendingTabEdits lays a tab activation over a push, and leaves the oth
     using proto::TabEditKind;
     auto pending = vthost::client::PendingTabEdits {};
     pending.sent(3, proto::EditTab { .session = 3, .kind = TabEditKind::ActivateTab });
-    pending.sent(4, proto::EditTab { .session = 1, .kind = TabEditKind::SetTitle, .title = "build" });
+    pending.sent(4, proto::EditTab { .session = 1, .kind = TabEditKind::SetName, .name = "build" });
 
     auto stale = twoTabs(2);
     pending.apply(stale);
     CHECK(stale.activeTab == 1);
-    CHECK(stale.tabs[0].title.empty());
+    CHECK(stale.tabs[0].name.empty());
 }
 
 TEST_CASE("PendingTabEdits leaves a push from a daemon without acks as it is",

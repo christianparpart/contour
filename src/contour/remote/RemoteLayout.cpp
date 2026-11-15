@@ -500,7 +500,7 @@ namespace
                || kind == vthost::proto::TabEditKind::ActivateTab;
     }
 
-    /// Brings how @p local is presented -- its active and zoomed pane, title, label, colour, and whether it
+    /// Brings how @p local is presented -- its active and zoomed pane, name, colour, and whether it
     /// is its window's active tab -- in line with how the daemon presents @p wire, so a change another client
     /// made arrives here too. @pre sameTree(), so every leaf of @p wire has its local session in @p bound.
     ///
@@ -522,10 +522,11 @@ namespace
             return leaf != nullptr ? bound.remoteOf(leaf->session()).value_or(0) : 0;
         };
         auto const* window = model.workspace(model.workspaceOfTab(local.id()));
+        auto names = vthost::ModelTabNames { model };
         auto const here = vthost::client::TabPresentation {
             .activeSession = remoteOf(local.activePane()),
             .zoomedSession = local.isZoomed() ? remoteOf(local.activePane()) : 0,
-            .title = local.runtimeTitle(),
+            .name = local.name(),
             .color = local.color(vtworkspace::TabColorSource::User).transform([](vtbackend::RGBColor color) {
                 return color.value();
             }),
@@ -544,10 +545,8 @@ namespace
             if (!session)
                 continue;
             edit.session = session->value;
-            std::ignore = vthost::applyTabEdit(model, edit);
+            std::ignore = vthost::applyTabEdit(model, names, edit);
         }
-        // The name is the daemon's alone (the control API sets it), so it is taken, never reported back.
-        model.setTabName(local.id(), wire.name);
     }
 
     /// Closes every pane of @p window whose remote session no layout of @p alive names: a pane closed on the

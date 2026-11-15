@@ -18,6 +18,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -25,9 +26,12 @@
 #include <vthost/HistorySeed.hpp>
 #include <vthost/SessionHost.hpp>
 #include <vthost/SessionSnapshotCodec.hpp>
+#include <vthost/TabEdits.hpp>
 #include <vthost/TappingPty.hpp>
 #include <vthost/WorkspaceCapture.hpp>
+#include <vthost/testing/ControlHarness.hpp>
 #include <vthost/testing/FakeProfileCatalog.hpp>
+#include <vthost/testing/RecordedNameEncodings.hpp>
 #include <vtworkspace/Pane.hpp>
 #include <vtworkspace/Tab.hpp>
 
@@ -149,7 +153,7 @@ TEST_CASE("a captured workspace comes back with the same shape", "[vthost][snaps
     source->splitActivePane(second->id(), SplitState::Vertical, 0.3);
     source->splitActivePane(second->id(), SplitState::Horizontal, 0.5);
     source->model().toggleActivePaneZoom(second->id());
-    source->model().setTabTitle(second->id(), "build");
+    vthost::RegistryTabNames { source->objects() }.setName(second->id(), "build");
     source->model().setTabColor(
         second->id(), vtworkspace::TabColorSource::User, vtbackend::RGBColor { 0x336699U });
     REQUIRE(source->createWorkspace() != nullptr);
@@ -583,4 +587,43 @@ TEST_CASE("SessionHost.cellPixelSize.a_corrupt_snapshot_value_is_ignored",
     CHECK(host->restoreOutcome() == RestoreOutcome::Realized);
     CHECK_FALSE(host->learnedCellPixelSize().has_value());
     CHECK(host->cellPixelSize() == vtpty::ImageSize { vtpty::Width(10), vtpty::Height(20) });
+}
+
+TEST_CASE("a restored snapshot's tab keeps its name over the runtime title an older daemon wrote",
+          "[vthost][snapshot][restore][compat-0.9.0]")
+{
+    using vthost::testing::registryNameOf;
+    using vthost::testing::renameByAddress;
+    // The recorded fixture: the tab is named "build" and carries the runtime title "edited {Cwd}".
+    auto decoded = decodeSnapshot(std::as_bytes(std::span { testing::RecordedSnapshotNames }));
+    REQUIRE(decoded.has_value());
+    auto snapshot = decoded->snapshot;
+    REQUIRE(snapshot.workspaces.size() == 1);
+    REQUIRE(snapshot.workspaces[0].tabs.size() == 1);
+    auto& recordedTab = snapshot.workspaces[0].tabs[0];
+    REQUIRE(recordedTab.title == std::optional<std::string> { "edited {Cwd}" });
+
+    SECTION("a name wins over the runtime title")
+    {
+        auto h = RestoreHarness {};
+        auto const host = h.restore(WorkspaceRestore { .snapshot = snapshot });
+        REQUIRE(host->restoreOutcome() == RestoreOutcome::Realized);
+        auto const& tab = *host->model().workspace(host->workspaceId())->tabAt(0);
+        CHECK(registryNameOf(*host, tab) == "build");
+        CHECK(tab.name() == "build");
+    }
+
+    SECTION("a tab without a name is named by its runtime title, and addressed by it")
+    {
+        recordedTab.identity->name.reset();
+        recordedTab.title = "mine";
+        auto h = RestoreHarness {};
+        auto const host = h.restore(WorkspaceRestore { .snapshot = snapshot });
+        REQUIRE(host->restoreOutcome() == RestoreOutcome::Realized);
+        auto const& tab = *host->model().workspace(host->workspaceId())->tabAt(0);
+        CHECK(registryNameOf(*host, tab) == "mine");
+        CHECK(tab.name() == "mine");
+        CHECK(renameByAddress(*host, "tab:mine", "renamed"));
+        CHECK(registryNameOf(*host, tab) == "renamed");
+    }
 }

@@ -161,7 +161,7 @@ namespace vthost::testing
         { proto::PduType::StopDaemon, proto::DecodedPdu { proto::StopDaemon { .reason = 1 } } },
         { proto::PduType::EditTab,
           proto::DecodedPdu {
-              proto::EditTab { .session = 4, .kind = proto::TabEditKind::SetTitle, .title = "build" } } },
+              proto::EditTab { .session = 4, .kind = proto::TabEditKind::SetName, .name = "build" } } },
         { proto::PduType::Heartbeat, proto::DecodedPdu { proto::Heartbeat { .nonce = 7 } } },
         { proto::PduType::ControlRequest,
           proto::DecodedPdu { proto::ControlRequest {

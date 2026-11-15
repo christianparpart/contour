@@ -19,6 +19,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include <vtcontrol/Api.hpp>
 #include <vtcontrol/ObjectRef.hpp>
 #include <vtcontrol/testing/FakeControlApi.hpp>
 #include <vtcontrol/testing/SequentialUuidSource.hpp>
@@ -118,5 +120,39 @@ struct ControlHarness
     /// Runs the loop until nothing is left to do: what a session's parser posted reaches the observers.
     void drain() { std::ignore = loop.runUntilIdle(); }
 };
+
+/// @param host The host.
+/// @param tab One of its tabs.
+/// @return The name @p host's object registry holds for @p tab; empty for none.
+[[nodiscard]] inline std::string registryNameOf(vthost::SessionHost const& host, vtworkspace::Tab const& tab)
+{
+    auto const uuid = host.objects().uuidOf(tab.id());
+    REQUIRE(uuid.has_value());
+    return std::string { host.objects().nameOf({ .kind = vtcontrol::ObjectKind::Tab, .uuid = *uuid }) };
+}
+
+/// Renames, through a control service over @p host, the object @p address names (`tab:build`, say).
+/// @param host The host; its loop must be driven by the calling thread.
+/// @param address The object's address, as a control client spells it.
+/// @param name Its new name.
+/// @return Whether the service resolved @p address and took the name.
+[[nodiscard]] inline bool renameByAddress(vthost::SessionHost& host,
+                                          std::string const& address,
+                                          std::string const& name)
+{
+    auto wall = core::platform::ManualWallClock { std::chrono::system_clock::time_point {} };
+    auto service = control::ControlService {
+        host,
+        control::ControlServiceConfig { .version = "test", .socketPath = "/run/test.sock", .clock = wall }
+    };
+    auto context = vtcontrol::testing::FakeCallContext {};
+    auto reply = std::optional<std::expected<vtcontrol::EmptyReply, vtcontrol::ControlError>> {};
+    service.handle(context,
+                   vtcontrol::SetLabelRequest { .object = address, .label = name },
+                   [&](std::expected<vtcontrol::EmptyReply, vtcontrol::ControlError> answer) {
+                       reply = std::move(answer);
+                   });
+    return reply.has_value() && reply->has_value();
+}
 
 } // namespace vthost::testing

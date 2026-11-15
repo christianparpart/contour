@@ -2347,7 +2347,7 @@ TEST_CASE("SessionHost realizes a multi-tab, multi-pane startup layout", "[vthos
     auto loop = core::net::EventLoop { source };
 
     auto splitTab = vtworkspace::LayoutTab {};
-    splitTab.title = "servers";
+    splitTab.name = "servers";
     splitTab.root.orientation = SplitState::Vertical;
     auto left = vtworkspace::LayoutPane {};
     left.command = "npm";
@@ -2385,6 +2385,11 @@ TEST_CASE("SessionHost realizes a multi-tab, multi-pane startup layout", "[vthos
     REQUIRE(serversTab->rootPane()->second() != nullptr);
     CHECK(host.terminal(serversTab->rootPane()->first()->session()) != nullptr);
     CHECK(host.terminal(serversTab->rootPane()->second()->session()) != nullptr);
+    // The layout's name is the tab's, in the registry that addresses it and in the model alike.
+    auto const serversUuid = host.objects().uuidOf(serversTab->id());
+    REQUIRE(serversUuid.has_value());
+    CHECK(host.objects().nameOf({ .kind = vtcontrol::ObjectKind::Tab, .uuid = *serversUuid }) == "servers");
+    CHECK(serversTab->name() == "servers");
 }
 
 TEST_CASE("SessionHost with an empty startup layout keeps today's single-default-tab behavior",

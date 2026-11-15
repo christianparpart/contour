@@ -2741,14 +2741,14 @@ TEST_CASE("TerminalSessionManager: a session's tab title and attention requests 
     REQUIRE(session != nullptr);
 
     // The label the strip shows, read back through it rather than re-derived.
-    manager.setTabTitleForSession(session->modelSessionId(), "build");
+    manager.setTabNameForSession(session->modelSessionId(), "build");
     CHECK(manager.tabTitleForSession(*session) == "build");
 
     // Each session is named by its own tab's row, whichever tab is shown.
     window->createNewTab();
     auto* const other = window->activeSession();
     REQUIRE(other != nullptr);
-    manager.setTabTitleForSession(other->modelSessionId(), "logs");
+    manager.setTabNameForSession(other->modelSessionId(), "logs");
     CHECK(manager.tabTitleForSession(*session) == "build");
     CHECK(manager.tabTitleForSession(*other) == "logs");
 
@@ -2796,7 +2796,7 @@ TEST_CASE("TerminalSessionManager: naming a session's tab locks only that tab's 
     window->createNewTab();
     auto* const session = window->activeSession();
     REQUIRE(session != nullptr);
-    manager.setTabTitleForSession(session->modelSessionId(), "build");
+    manager.setTabNameForSession(session->modelSessionId(), "build");
     window->createNewTab();
     auto* const busy = window->activeSession();
     REQUIRE(busy != nullptr);
@@ -4433,9 +4433,8 @@ TEST_CASE("TerminalSessionManager: a window's only tab merged into another windo
     CHECK(windowB->activeSession() == movedSession);
 
     // The session index follows the graft: a rename aimed at the moved session lands on its new tab.
-    manager.setTabTitleForSession(movedId, "merged");
-    REQUIRE(merged->runtimeTitle().has_value());
-    CHECK(*merged->runtimeTitle() == "merged");
+    manager.setTabNameForSession(movedId, "merged");
+    CHECK(merged->name() == "merged");
 
     windowB->closeTabAtIndex(0);
 }
@@ -6173,10 +6172,10 @@ class RoutingFactory final: public contour::session::SessionFactory
         closed.push_back(workspace);
         return contour::session::RemoteRouting::Routed;
     }
-    [[nodiscard]] contour::session::RemoteRouting requestRemoteTabTitle(uint64_t session,
-                                                                        std::string_view title) override
+    [[nodiscard]] contour::session::RemoteRouting requestRemoteTabRename(uint64_t session,
+                                                                         std::string name) override
     {
-        titled.emplace_back(session, std::string { title });
+        renamedTabs.emplace_back(session, std::move(name));
         return contour::session::RemoteRouting::Routed;
     }
     [[nodiscard]] contour::session::RemoteRouting requestRemoteMove(
@@ -6195,8 +6194,8 @@ class RoutingFactory final: public contour::session::SessionFactory
 
     std::vector<std::pair<uint64_t, std::string>> renamed;
     std::vector<std::pair<uint64_t, uint32_t>> moved;
-    std::vector<uint64_t> closed;                         ///< The workspaces closed.
-    std::vector<std::pair<uint64_t, std::string>> titled; ///< The tabs titled, by a session of theirs.
+    std::vector<uint64_t> closed;                              ///< The workspaces closed.
+    std::vector<std::pair<uint64_t, std::string>> renamedTabs; ///< The tabs renamed, by a session of theirs.
     std::vector<contour::session::RemoteMove> tabMoves;
 };
 
@@ -6346,9 +6345,9 @@ TEST_CASE("TerminalSessionManager: an in-process window's sidebar reaches the wo
     sidebar.rename(sidebarRowOf(sidebar, SidebarRowKind::Workspace, f.second.value), "ops");
     CHECK(f.controller().directorySource()->directory().workspaces[1].name == "ops");
     sidebar.rename(sidebarRowOf(sidebar, SidebarRowKind::Tab, f.first.value, firstTabs[0]), "edit");
-    CHECK(model.workspace(f.first)->tabAt(0)->runtimeTitle() == std::optional<std::string> { "edit" });
+    CHECK(model.workspace(f.first)->tabAt(0)->name() == "edit");
     sidebar.rename(sidebarRowOf(sidebar, SidebarRowKind::Tab, f.second.value, secondTab.value), "logs");
-    CHECK(model.workspace(f.second)->tabAt(0)->runtimeTitle() == std::optional<std::string> { "logs" });
+    CHECK(model.workspace(f.second)->tabAt(0)->name() == "logs");
 
     // A workspace row drags, and drops above the first: the second leads.
     sidebar.refreshNow();
@@ -6426,9 +6425,9 @@ TEST_CASE("TerminalSessionManager: a daemon window's sidebar routes the workspac
 
     sidebar.rename(sidebarRowOf(sidebar, SidebarRowKind::Workspace, 20), "ops");
     CHECK(factory.renamed == std::vector { std::pair<uint64_t, std::string> { 20, "ops" } });
-    // A tab of a workspace the window does not show is titled in the daemon, by a session it holds.
+    // A tab of a workspace the window does not show is renamed in the daemon, by a session it holds.
     sidebar.rename(sidebarRowOf(sidebar, SidebarRowKind::Tab, 20, 200), "logs");
-    CHECK(factory.titled == std::vector { std::pair<uint64_t, std::string> { 2000, "logs" } });
+    CHECK(factory.renamedTabs == std::vector { std::pair<uint64_t, std::string> { 2000, "logs" } });
 
     // Workspace 20 dropped above 10 is moved to the place 10 holds in the daemon's count.
     auto const workspaceDrag =

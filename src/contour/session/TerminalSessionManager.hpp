@@ -479,13 +479,13 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
     /// @param label Its new label; empty clears it.
     void renameWorkspace(window::WindowController& window, uint64_t workspace, std::string label);
 
-    /// Sets the title of the tab @p tab, whichever workspace of @p window's directory holds it, shown or not:
-    /// in its daemon for a window a daemon serves (named by a session it holds), in this process's model
-    /// otherwise. A tab the window does not list is left alone.
+    /// Names the tab @p tab, whichever workspace of @p window's directory holds it, shown or not: in its
+    /// daemon for a window a daemon serves (named by a session it holds), in this process's model otherwise.
+    /// A tab the window does not list is left alone.
     /// @param window The window the user acts in.
     /// @param tab The tab's id, as the window's directory lists it (DirectoryTab::id).
-    /// @param title Its new title; empty returns it to its automatic one.
-    void renameTab(window::WindowController& window, uint64_t tab, std::string title);
+    /// @param name Its new name; empty clears it, so its title names it again.
+    void renameTab(window::WindowController& window, uint64_t tab, std::string name);
 
     /// Moves the workspace @p workspace that @p window lists to place @p toPosition of its directory, where
     /// a daemon (or this process's model) orders it. The place is clamped.
@@ -1482,13 +1482,13 @@ class TerminalSessionManager: public QObject, public vtworkspace::ModelEvents
                         vtbackend::Progress progress,
                         std::chrono::steady_clock::time_point now);
 
-    /// Sets an explicit @p title on the tab hosting @p session, through the authoritative SessionModel
-    /// (which repaints the owning window's tab strip). Used by the tmux mirror to reflect a
-    /// `%window-renamed` onto the tab (a tmux window maps to a tab). No-op if no tab hosts @p session.
-    /// MUST be called on the GUI thread (it mutates the GUI-facing model).
-    /// @param session The session (by model id) whose hosting tab to title.
-    /// @param title The new tab title.
-    void setTabTitleForSession(vtworkspace::SessionId session, std::string title);
+    /// Names the tab hosting @p session, through the authoritative SessionModel (which repaints the owning
+    /// window's tab strip). Used by the tmux mirror to reflect a `%window-renamed` onto the tab (a tmux
+    /// window maps to a tab, and its name is the tab's). No-op if no tab hosts @p session. MUST be called on
+    /// the GUI thread (it mutates the GUI-facing model).
+    /// @param session The session (by model id) whose hosting tab to name.
+    /// @param name The tab's new name.
+    void setTabNameForSession(vtworkspace::SessionId session, std::string name);
 
     /// Assigns @p color to the tab hosting @p session (DECAC item 2 "window frame"), routing through
     /// the authoritative SessionModel so the existing tab-color pipeline repaints the tab strip. The

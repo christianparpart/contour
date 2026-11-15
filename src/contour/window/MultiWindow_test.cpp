@@ -77,10 +77,10 @@ void createTabs(contour::session::TerminalSessionManager& manager,
         REQUIRE(manager.model().createTab(controller.displayedWorkspace()) != nullptr);
 }
 
-[[nodiscard]] QString rawTitleAt(contour::window::WindowController& controller, int row)
+[[nodiscard]] QString nameAt(contour::window::WindowController& controller, int row)
 {
     return controller
-        .data(controller.index(row), static_cast<int>(contour::window::WindowController::Roles::RawTitleRole))
+        .data(controller.index(row), static_cast<int>(contour::window::WindowController::Roles::NameRole))
         .toString();
 }
 
@@ -611,30 +611,30 @@ TEST_CASE("REGRESSION: tab operations from a second window target that window, n
         CHECK(windowA->activeTabIndex() == activeInA);
     }
 
-    SECTION("setTabTitle renames the row in window B only")
+    SECTION("setTabName renames the row in window B only")
     {
-        windowB->setTabTitle(0, QStringLiteral("renamed-in-B"));
-        CHECK(rawTitleAt(*windowB, 0) == QStringLiteral("renamed-in-B"));
-        CHECK(rawTitleAt(*windowA, 0).isEmpty());
+        windowB->setTabName(0, QStringLiteral("renamed-in-B"));
+        CHECK(nameAt(*windowB, 0) == QStringLiteral("renamed-in-B"));
+        CHECK(nameAt(*windowA, 0).isEmpty());
 
-        windowB->resetTabTitle(0);
-        CHECK(rawTitleAt(*windowB, 0).isEmpty());
+        windowB->setTabName(0, QString {});
+        CHECK(nameAt(*windowB, 0).isEmpty());
     }
 
     SECTION("moveTab reorders window B's rows and leaves window A's order alone")
     {
         // Tag B's rows through the model so the order is observable, and A's likewise.
-        windowB->setTabTitle(0, QStringLiteral("b0"));
-        windowB->setTabTitle(1, QStringLiteral("b1"));
-        windowB->setTabTitle(2, QStringLiteral("b2"));
-        windowA->setTabTitle(0, QStringLiteral("a0"));
-        windowA->setTabTitle(1, QStringLiteral("a1"));
+        windowB->setTabName(0, QStringLiteral("b0"));
+        windowB->setTabName(1, QStringLiteral("b1"));
+        windowB->setTabName(2, QStringLiteral("b2"));
+        windowA->setTabName(0, QStringLiteral("a0"));
+        windowA->setTabName(1, QStringLiteral("a1"));
 
         windowB->moveTab(0, 2);
-        CHECK(rawTitleAt(*windowB, 0) == QStringLiteral("b1"));
-        CHECK(rawTitleAt(*windowB, 2) == QStringLiteral("b0"));
-        CHECK(rawTitleAt(*windowA, 0) == QStringLiteral("a0"));
-        CHECK(rawTitleAt(*windowA, 1) == QStringLiteral("a1"));
+        CHECK(nameAt(*windowB, 0) == QStringLiteral("b1"));
+        CHECK(nameAt(*windowB, 2) == QStringLiteral("b0"));
+        CHECK(nameAt(*windowA, 0) == QStringLiteral("a0"));
+        CHECK(nameAt(*windowA, 1) == QStringLiteral("a1"));
     }
 
     SECTION("closeOtherTabs / closeTabsToRight prune window B only")
@@ -780,25 +780,31 @@ TEST_CASE("WindowController projects real-session tabs and routes rename/color t
     // roleNames exposes every projected role name.
     auto const roles = window->roleNames();
     CHECK(roles.contains(static_cast<int>(contour::window::WindowController::Roles::TitleRole)));
-    CHECK(roles.contains(static_cast<int>(contour::window::WindowController::Roles::RawTitleRole)));
+    CHECK(roles.contains(static_cast<int>(contour::window::WindowController::Roles::NameRole)));
     CHECK(roles.contains(static_cast<int>(contour::window::WindowController::Roles::IsActiveRole)));
 
-    // A never-renamed tab has an empty raw title but a resolved (template-expanded) title.
-    CHECK(rawTitleAt(*window, 0).isEmpty());
-    CHECK_NOTHROW(
-        window->data(window->index(0), static_cast<int>(contour::window::WindowController::Roles::TitleRole))
-            .toString());
+    // A never-named tab has an empty name but a resolved (template-expanded) title.
+    auto const titleAt = [&](int row) {
+        return window
+            ->data(window->index(row), static_cast<int>(contour::window::WindowController::Roles::TitleRole))
+            .toString();
+    };
+    CHECK(nameAt(*window, 0).isEmpty());
+    auto const automatic = titleAt(0);
 
-    // Rename routes to the model and surfaces through RawTitleRole; reset restores the default.
-    window->setTabTitle(0, QStringLiteral("deploy"));
-    CHECK(rawTitleAt(*window, 0) == "deploy");
-    window->resetTabTitle(0);
-    CHECK(rawTitleAt(*window, 0).isEmpty());
+    // A rename sets the tab's name, which the strip shows as it is; an empty one shows the title again.
+    window->setTabName(0, QStringLiteral("deploy"));
+    CHECK(nameAt(*window, 0) == "deploy");
+    CHECK(manager.model().workspace(window->displayedWorkspace())->tabAt(0)->name() == "deploy");
+    CHECK(titleAt(0) == "deploy");
+    window->setTabName(0, QString {});
+    CHECK(nameAt(*window, 0).isEmpty());
+    CHECK(titleAt(0) == automatic);
 
-    // An empty rename resets rather than blanking (the vtworkspace-layer invariant, via the controller).
-    window->setTabTitle(0, QStringLiteral("x"));
-    window->setTabTitle(0, QString {});
-    CHECK(rawTitleAt(*window, 0).isEmpty());
+    // A blank rename clears rather than blanking (the vtworkspace-layer invariant, via the controller).
+    window->setTabName(0, QStringLiteral("x"));
+    window->setTabName(0, QStringLiteral("   "));
+    CHECK(nameAt(*window, 0).isEmpty());
 
     // Color set/reset route to the model without throwing.
     CHECK_NOTHROW(window->setTabColor(0, QColor(Qt::red)));
@@ -954,16 +960,6 @@ TEST_CASE("the default tab label shows the tab name an application sets, else th
     QCoreApplication::processEvents();
     CHECK(titleAt(0) == QStringLiteral("Tab Title")); // the tab name wins over a later window title
 
-    // An explicit {WindowTitle} template keeps showing the window title despite the tab name.
-    auto* tab = manager.model().workspace(window.id)->tabAt(0);
-    manager.model().setTabTitle(tab->id(), "{TabPosition}: {WindowTitle}");
-    QCoreApplication::processEvents();
-    CHECK(titleAt(0) == QStringLiteral("1: Another Window Title"));
-    manager.model().setTabTitle(tab->id(), "{TabPosition}: {TabName}");
-    QCoreApplication::processEvents();
-    CHECK(titleAt(0) == QStringLiteral("1: Tab Title"));
-    manager.model().setTabTitle(tab->id(), ""); // back to the default template
-
     // An empty OSC 30 clears the name: the tab falls back to its window title, not blank.
     session->terminal().writeToScreen("\033]30;\033\\");
     QCoreApplication::processEvents();
@@ -1006,12 +1002,12 @@ TEST_CASE("setTabColorForSession routes a DECAC frame color to the session's tab
     contour::test::closeAllTabs(*window);
 }
 
-TEST_CASE("setTabTitleForSession routes a tmux %window-renamed to the session's tab",
+TEST_CASE("setTabNameForSession routes a tmux %window-renamed to the session's tab",
           "[contour][multiwindow][model]")
 {
-    // The tmux mirror's %window-renamed path calls TerminalSessionManager::setTabTitleForSession(
+    // The tmux mirror's %window-renamed path calls TerminalSessionManager::setTabNameForSession(
     // sessionId, name) (posted from TmuxController::applyPendingRenames). This is the direct unit test
-    // of that routing: a session's model id resolves to its hosting tab and lands the runtime title.
+    // of that routing: a session's model id resolves to its hosting tab and lands the tab's name.
     auto factoryOwned = std::make_unique<contour::test::MockPtySessionFactory>();
     TestApp app(std::move(factoryOwned));
     auto& manager = app.manager();
@@ -1023,19 +1019,18 @@ TEST_CASE("setTabTitleForSession routes a tmux %window-renamed to the session's 
     auto* tab = manager.model().workspace(window.id)->tabAt(0);
     REQUIRE(tab != nullptr);
     auto const sessionId = tab->activePane()->session();
-    REQUIRE_FALSE(tab->runtimeTitle().has_value());
+    REQUIRE(tab->name().empty());
 
-    manager.setTabTitleForSession(sessionId, "build");
-    REQUIRE(tab->runtimeTitle().has_value());
-    CHECK(*tab->runtimeTitle() == "build");
+    manager.setTabNameForSession(sessionId, "build");
+    CHECK(tab->name() == "build");
 
     // A later rename overwrites it.
-    manager.setTabTitleForSession(sessionId, "deploy");
-    CHECK(*tab->runtimeTitle() == "deploy");
+    manager.setTabNameForSession(sessionId, "deploy");
+    CHECK(tab->name() == "deploy");
 
     // An unknown session id is a harmless no-op (the null-tab guard).
-    CHECK_NOTHROW(manager.setTabTitleForSession(vtworkspace::SessionId { 999999 }, "ghost"));
-    CHECK(*tab->runtimeTitle() == "deploy");
+    CHECK_NOTHROW(manager.setTabNameForSession(vtworkspace::SessionId { 999999 }, "ghost"));
+    CHECK(tab->name() == "deploy");
 
     contour::test::closeAllTabs(*window);
 }
@@ -1348,9 +1343,9 @@ TEST_CASE("WindowController routes bulk-close and move-tab to its own window",
 
     SECTION("moveTab reorders within the window")
     {
-        window->setTabTitle(0, QStringLiteral("first"));
+        window->setTabName(0, QStringLiteral("first"));
         window->moveTab(0, 3);
-        CHECK(rawTitleAt(*window, 3) == "first");
+        CHECK(nameAt(*window, 3) == "first");
         // Move-to-same-index is a silent no-op.
         window->moveTab(2, 2);
         CHECK(window->count() == 4);

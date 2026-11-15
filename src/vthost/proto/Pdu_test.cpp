@@ -2242,8 +2242,8 @@ TEST_CASE("EditTab and Heartbeat round-trip", "[vthost][pdu]")
 {
     auto const edit = EditTab { .session = 9, .kind = TabEditKind::SetColor, .color = 0x336699 };
     CHECK(roundTrip(DecodedPdu { edit }) == DecodedPdu { edit });
-    auto const titled = EditTab { .session = 2, .kind = TabEditKind::SetTitle, .title = "build" };
-    CHECK(roundTrip(DecodedPdu { titled }) == DecodedPdu { titled });
+    auto const named = EditTab { .session = 2, .kind = TabEditKind::SetName, .name = "build" };
+    CHECK(roundTrip(DecodedPdu { named }) == DecodedPdu { named });
     CHECK(roundTrip(DecodedPdu { Heartbeat { .nonce = 42 } }) == DecodedPdu { Heartbeat { .nonce = 42 } });
 }
 
@@ -3321,29 +3321,32 @@ TEST_CASE("the LayoutState of a named and titled tab is pinned", "[vthost][pdu][
     CHECK(decoded.tabs.at(0).title == "edited {Cwd}");
 }
 
-TEST_CASE("the EditTab that sets a tab's title is pinned", "[vthost][pdu][encoding-pin]")
+TEST_CASE("the EditTab an old window sent to set a tab's title is pinned, and names the tab",
+          "[vthost][pdu][encoding-pin]")
 {
-    auto const edit = EditTab { .session = 7, .kind = TabEditKind::SetTitle, .title = "x" };
+    auto const edit = EditTab { .session = 7, .kind = TabEditKind::SetName, .name = "x" };
     checkPinnedFrame("RecordedEditTabSetTitle", edit, vthost::testing::RecordedEditTabSetTitle);
 
     auto const decoded =
         decodeAs<EditTab>(std::as_bytes(std::span { vthost::testing::RecordedEditTabSetTitle }));
     CHECK(decoded == edit);
     CHECK(decoded.session == 7);
-    CHECK(decoded.kind == TabEditKind::SetTitle);
-    CHECK(decoded.title == "x");
+    CHECK(decoded.kind == TabEditKind::SetName);
+    CHECK(std::to_underlying(decoded.kind) == 3);
+    CHECK(decoded.name == "x");
 }
 
-TEST_CASE("the EditTab that clears a tab's title is pinned", "[vthost][pdu][encoding-pin]")
+TEST_CASE("the EditTab an old window sent to clear a tab's title is pinned, and clears its name",
+          "[vthost][pdu][encoding-pin]")
 {
-    auto const edit = EditTab { .session = 7, .kind = TabEditKind::ClearTitle };
+    auto const edit = EditTab { .session = 7, .kind = TabEditKind::ClearName };
     checkPinnedFrame("RecordedEditTabClearTitle", edit, vthost::testing::RecordedEditTabClearTitle);
 
     auto const decoded =
         decodeAs<EditTab>(std::as_bytes(std::span { vthost::testing::RecordedEditTabClearTitle }));
     CHECK(decoded == edit);
     CHECK(decoded.session == 7);
-    CHECK(decoded.kind == TabEditKind::ClearTitle);
+    CHECK(decoded.kind == TabEditKind::ClearName);
     CHECK(std::to_underlying(decoded.kind) == 4);
 }
 

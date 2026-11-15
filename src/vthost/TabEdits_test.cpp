@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include <vtcontrol/Api.hpp>
 #include <vthost/TabEdits.hpp>
+#include <vthost/control/ControlService.hpp>
+#include <vthost/testing/ControlHarness.hpp>
 #include <vtworkspace/Pane.hpp>
 #include <vtworkspace/Tab.hpp>
 
@@ -49,6 +54,7 @@ struct TwoPaneTab
     vtworkspace::Tab* first = model.createTab(workspace);
     vtworkspace::Pane* second = model.splitActivePane(first->id(), vtworkspace::SplitState::Horizontal);
     vtworkspace::Tab* other = model.createTab(workspace);
+    vthost::ModelTabNames names { model };
 
     TwoPaneTab() { model.setActivePane(first->id(), *paneOf(2)); }
 
@@ -88,14 +94,14 @@ TEST_CASE("each tab edit changes the model once and is idempotent", "[vthost][ta
           .edit = { .session = 1, .kind = TabEditKind::Unzoom },
           .prepare = [](TwoPaneTab& t) { t.model.toggleActivePaneZoom(t.first->id()); },
           .holds = [](TwoPaneTab& t) { return !t.first->isZoomed(); } },
-        { .name = "SetTitle",
-          .edit = { .session = 1, .kind = TabEditKind::SetTitle, .title = "build" },
+        { .name = "SetName",
+          .edit = { .session = 1, .kind = TabEditKind::SetName, .name = "build" },
           .prepare = nothing,
-          .holds = [](TwoPaneTab& t) { return t.first->runtimeTitle() == "build"; } },
-        { .name = "ClearTitle",
-          .edit = { .session = 1, .kind = TabEditKind::ClearTitle },
-          .prepare = [](TwoPaneTab& t) { t.model.setTabTitle(t.first->id(), "old"); },
-          .holds = [](TwoPaneTab& t) { return !t.first->runtimeTitle(); } },
+          .holds = [](TwoPaneTab& t) { return t.first->name() == "build"; } },
+        { .name = "ClearName",
+          .edit = { .session = 1, .kind = TabEditKind::ClearName },
+          .prepare = [](TwoPaneTab& t) { t.model.setTabName(t.first->id(), "old"); },
+          .holds = [](TwoPaneTab& t) { return t.first->name().empty(); } },
         { .name = "SetColor",
           .edit = { .session = 1, .kind = TabEditKind::SetColor, .color = 0x112233 },
           .prepare = nothing,
@@ -127,12 +133,12 @@ TEST_CASE("each tab edit changes the model once and is idempotent", "[vthost][ta
         REQUIRE_FALSE(row.holds(t));
         t.events.count = 0;
 
-        CHECK(applyTabEdit(t.model, row.edit) == TabEditEffect::Changed);
+        CHECK(applyTabEdit(t.model, t.names, row.edit) == TabEditEffect::Changed);
         CHECK(row.holds(t));
         CHECK(t.events.count > 0);
 
         auto const eventsAfterFirst = t.events.count;
-        CHECK(applyTabEdit(t.model, row.edit) == TabEditEffect::Unchanged);
+        CHECK(applyTabEdit(t.model, t.names, row.edit) == TabEditEffect::Unchanged);
         CHECK(row.holds(t));
         CHECK(t.events.count == eventsAfterFirst);
     }
@@ -141,17 +147,97 @@ TEST_CASE("each tab edit changes the model once and is idempotent", "[vthost][ta
 TEST_CASE("an edit naming an unknown session or kind is refused", "[vthost][tab-edits]")
 {
     auto t = TwoPaneTab {};
-    CHECK(applyTabEdit(t.model, { .session = 999, .kind = TabEditKind::SetTitle }).error()
+    CHECK(applyTabEdit(t.model, t.names, { .session = 999, .kind = TabEditKind::SetName }).error()
           == TabEditError::UnknownSession);
-    CHECK(applyTabEdit(t.model, { .session = 1, .kind = static_cast<TabEditKind>(0xEE) }).error()
+    CHECK(applyTabEdit(t.model, t.names, { .session = 1, .kind = static_cast<TabEditKind>(0xEE) }).error()
           == TabEditError::UnknownKind);
-    CHECK_FALSE(t.first->runtimeTitle());
+    CHECK(t.first->name().empty());
 }
 
 TEST_CASE("a zoom on another pane of a zoomed tab moves the zoom", "[vthost][tab-edits]")
 {
     auto t = TwoPaneTab {};
     t.model.toggleActivePaneZoom(t.first->id()); // zoomed on session 2
-    CHECK(applyTabEdit(t.model, { .session = 1, .kind = TabEditKind::Zoom }) == TabEditEffect::Changed);
+    CHECK(applyTabEdit(t.model, t.names, { .session = 1, .kind = TabEditKind::Zoom })
+          == TabEditEffect::Changed);
     CHECK(t.first->zoomedLeafId() == t.paneOf(1));
+}
+
+namespace
+{
+
+using vthost::testing::ControlHarness;
+
+/// Calls one control method and returns what it answered with, which it must answer at once.
+/// @tparam Reply The method's reply type.
+template <typename Reply, typename Request>
+[[nodiscard]] std::expected<Reply, vtcontrol::ControlError> callSync(ControlHarness& h,
+                                                                     Request const& request)
+{
+    auto result = std::optional<std::expected<Reply, vtcontrol::ControlError>> {};
+    h.service.handle(h.context, request, [&](std::expected<Reply, vtcontrol::ControlError> reply) {
+        result = std::move(reply);
+    });
+    REQUIRE(result.has_value());
+    return std::move(*result);
+}
+
+/// @return The tab at @p index of @p h's workspace, as the control API lists it.
+[[nodiscard]] vtcontrol::TabInfo listedTab(ControlHarness& h, std::size_t index)
+{
+    auto const list = callSync<vtcontrol::ListReply>(h, vtcontrol::ListRequest {});
+    REQUIRE(list.has_value());
+    REQUIRE(list->workspaces.size() == 1);
+    REQUIRE(list->workspaces[0].tabs.size() > index);
+    return list->workspaces[0].tabs[index];
+}
+
+/// Applies @p edit to @p h's daemon as a client's EditTab is: a name in its object registry.
+[[nodiscard]] std::expected<TabEditEffect, TabEditError> applyOnDaemon(ControlHarness& h, EditTab const& edit)
+{
+    auto names = vthost::RegistryTabNames { h.host.objects() };
+    return applyTabEdit(h.host.model(), names, edit);
+}
+
+} // namespace
+
+TEST_CASE("a SetName names the daemon's tab, which is then addressable by it", "[vthost][tab-edits][name]")
+{
+    auto h = ControlHarness {};
+    std::ignore = h.openTab();
+    auto const session = h.openTab();
+
+    REQUIRE(applyOnDaemon(h, { .session = session.value, .kind = TabEditKind::SetName, .name = "build" })
+            == TabEditEffect::Changed);
+    CHECK(listedTab(h, 1).label == "build");
+    // The model mirrors the registry, so what reads the model (a tmux client, a status line) sees it too.
+    CHECK(h.host.model().workspace(h.host.workspaceId())->tabAt(1)->name() == "build");
+
+    // `tab:build` resolves to it: renaming by that address reaches the same tab.
+    REQUIRE(callSync<vtcontrol::EmptyReply>(
+                h, vtcontrol::SetLabelRequest { .object = "tab:build", .label = "ci" })
+                .has_value());
+    CHECK(listedTab(h, 1).label == "ci");
+
+    REQUIRE(applyOnDaemon(h, { .session = session.value, .kind = TabEditKind::ClearName })
+            == TabEditEffect::Changed);
+    CHECK(listedTab(h, 1).label.empty());
+    CHECK(h.host.model().workspace(h.host.workspaceId())->tabAt(1)->name().empty());
+}
+
+TEST_CASE("a tab's name outlasts its pane's title, which names it once the name is cleared",
+          "[vthost][tab-edits][name]")
+{
+    auto h = ControlHarness {};
+    auto const session = h.openTab();
+
+    REQUIRE(applyOnDaemon(h, { .session = session.value, .kind = TabEditKind::SetName, .name = "build" })
+            == TabEditEffect::Changed);
+    h.terminal(session).writeToScreen("\033]2;vim\007");
+    h.drain();
+    CHECK(listedTab(h, 0).title == "build");
+
+    REQUIRE(applyOnDaemon(h, { .session = session.value, .kind = TabEditKind::ClearName })
+            == TabEditEffect::Changed);
+    CHECK(listedTab(h, 0).title == "vim");
 }

@@ -2343,7 +2343,7 @@ TEST_CASE("The terminal chrome style quantizes the tab strip to whole cells (off
         initial.insert("window", QVariant::fromValue(static_cast<QObject*>(&controller)));
         initial.insert("tabIndex", 0);
         initial.insert("tabTitle", QStringLiteral("a rather long tab title"));
-        initial.insert("tabRawTitle", QString {});
+        initial.insert("tabName", QString {});
         initial.insert("tabColor", QColor(Qt::transparent));
         initial.insert("tabActive", true);
         initial.insert("tabPaneCount", 1);
@@ -2499,7 +2499,7 @@ TEST_CASE("The terminal style rules BETWEEN tabs, not after the last one (offscr
                                                   "      window: host\n"
                                                   "      tabIndex: index\n"
                                                   "      tabTitle: \"tab \" + index\n"
-                                                  "      tabRawTitle: \"\"\n"
+                                                  "      tabName: \"\"\n"
                                                   "      tabColor: \"transparent\"\n"
                                                   "      tabActive: index === 0\n"
                                                   "      tabPaneCount: 1\n"

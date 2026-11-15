@@ -427,7 +427,7 @@ void TmuxController::windowRenamed(uint64_t window, std::string const& name)
 void TmuxController::applyPendingRenames(contour::session::TerminalSessionManager& manager)
 {
     // Resolve each pending rename to its tab's session under the lock (the acting-session
-    // map is shared with the reactor thread), then apply outside it — setTabTitleForSession
+    // map is shared with the reactor thread), then apply outside it — setTabNameForSession
     // touches the GUI model and could re-enter the controller.
     auto renames = std::vector<std::pair<vtworkspace::SessionId, std::string>> {};
     {
@@ -445,7 +445,7 @@ void TmuxController::applyPendingRenames(contour::session::TerminalSessionManage
         }
     }
     for (auto& [session, name]: renames)
-        manager.setTabTitleForSession(session, std::move(name));
+        manager.setTabNameForSession(session, std::move(name));
 }
 
 void TmuxController::panePaused(uint64_t pane, bool paused)

@@ -5761,7 +5761,7 @@ TEST_CASE("a client without ProfileByName keeps the session-settings path", "[vt
     CHECK(unbox<int>(terminal->primaryScreen().grid().maxHistoryLineCount()) == 7000);
 }
 
-TEST_CASE("a title one client sets reaches the other client's layout", "[vthost][native][tab-edits]")
+TEST_CASE("a name one client sets reaches the other client's layout", "[vthost][native][tab-edits]")
 {
     auto h = TwoClientHarness {};
     auto const* tab = h.host.createTab();
@@ -5772,14 +5772,15 @@ TEST_CASE("a title one client sets reaches the other client's layout", "[vthost]
     auto const watcherHello = encodeRequest({ editing });
     auto const editorRequest = encodeRequest(
         { editing,
-          proto::EditTab { .session = session, .kind = proto::TabEditKind::SetTitle, .title = "build" } });
+          proto::EditTab { .session = session, .kind = proto::TabEditKind::SetName, .name = "build" } });
 
     auto fromOne = std::vector<proto::DecodedFrame> {};
     auto fromTwo = std::vector<proto::DecodedFrame> {};
     auto const titled = [workspace =
                              h.host.workspaceId().value](std::vector<proto::DecodedFrame> const& got) {
         auto const* layout = lastLayoutOf(got, workspace);
-        return layout != nullptr && !layout->tabs.empty() && layout->tabs.front().title == "build";
+        return layout != nullptr && !layout->tabs.empty() && layout->tabs.front().name == "build"
+               && layout->tabs.front().title.empty();
     };
     h.loop.blockOn(
         core::net::testing::allOf(h.serverOne->run(),
@@ -5794,7 +5795,7 @@ TEST_CASE("a title one client sets reaches the other client's layout", "[vthost]
                                   collectUntil(&h.loop, h.secondPair.second.get(), titled, &fromTwo)));
 
     CHECK(titled(fromTwo));
-    CHECK(tab->runtimeTitle() == "build");
+    CHECK(tab->name() == "build");
 }
 
 TEST_CASE("an EditTab from a client without TabEdits is answered Unsupported", "[vthost][native][tab-edits]")
@@ -5805,8 +5806,8 @@ TEST_CASE("an EditTab from a client without TabEdits is answered Unsupported", "
     auto const received =
         h.exchangeUntil({ proto::ClientHello {},
                           proto::EditTab { .session = tab->rootPane()->session().value,
-                                           .kind = proto::TabEditKind::SetTitle,
-                                           .title = "x" } },
+                                           .kind = proto::TabEditKind::SetName,
+                                           .name = "x" } },
                         [](auto const& got) {
                             return std::ranges::any_of(got, [](auto const& frame) {
                                 return std::holds_alternative<proto::Unsupported>(frame.pdu);
@@ -5816,7 +5817,7 @@ TEST_CASE("an EditTab from a client without TabEdits is answered Unsupported", "
         received, [](auto const& frame) { return std::holds_alternative<proto::Unsupported>(frame.pdu); });
     REQUIRE(refused != received.end());
     CHECK(std::get<proto::Unsupported>(refused->pdu).ident == std::to_underlying(proto::PduType::EditTab));
-    CHECK_FALSE(tab->runtimeTitle());
+    CHECK(tab->name().empty());
 }
 
 TEST_CASE("a MergeTabIntoSplit grafts the tab, keeps its sessions running and pushes the merged layout",

@@ -81,6 +81,8 @@ std::expected<void, HandoverError> SessionHost::restoreHandover(HandoverImage im
                    std::to_underlying(restored.error()));
         outcome = std::unexpected(HandoverError::Malformed);
     }
+    else
+        restoreTabNames(image.tree);
 
     // No session minted from now on is named as one the previous image had: not one the tree names, not one
     // it hosted, not one it minted.

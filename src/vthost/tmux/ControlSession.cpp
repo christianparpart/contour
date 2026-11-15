@@ -15,6 +15,7 @@
 #include <utility>
 
 #include <vthost/Logging.hpp>
+#include <vthost/TabEdits.hpp>
 #include <vthost/tmux/LayoutString.hpp>
 #include <vtworkspace/Pane.hpp>
 #include <vtworkspace/Tab.hpp>
@@ -520,8 +521,8 @@ void ControlSession::paneRatioChanged(TabId tab, PaneId /*splitNode*/, double /*
 void ControlSession::tabTitleChanged(TabId tab)
 {
     auto const* tabPtr = _host.model().findTab(tab);
-    auto const title = tabPtr != nullptr ? tabPtr->runtimeTitle().value_or("") : std::string {};
-    _output.enqueueNotification(std::format("%window-renamed @{} {}", tab.value, title));
+    auto const name = tabPtr != nullptr ? tabPtr->name() : std::string {};
+    _output.enqueueNotification(std::format("%window-renamed @{} {}", tab.value, name));
 }
 
 void ControlSession::tabColorChanged(TabId /*tab*/)
@@ -632,7 +633,7 @@ ControlSession::HandlerResult ControlSession::commandListWindows(std::vector<std
             lines.push_back(std::format("{}: @{} {} [{}]",
                                         tabIndex,
                                         tab->id().value,
-                                        tab->runtimeTitle().value_or(""),
+                                        tab->name(),
                                         encodeLayout(*tab->rootPane(), pageSize())));
             continue;
         }
@@ -641,7 +642,7 @@ ControlSession::HandlerResult ControlSession::commandListWindows(std::vector<std
         auto const variables = std::array {
             FormatVariable { "#{window_id}", std::format("@{}", tab->id().value) },
             FormatVariable { "#{window_index}", std::format("{}", tabIndex) },
-            FormatVariable { "#{window_name}", tab->runtimeTitle().value_or("") },
+            FormatVariable { "#{window_name}", tab->name() },
             FormatVariable { "#{window_layout}", encodeLayout(*tab->rootPane(), pageSize()) },
         };
         auto line = expandFormat(std::string { formats.front() }, variables);
@@ -902,7 +903,9 @@ ControlSession::HandlerResult ControlSession::commandRenameWindow(std::vector<st
     auto const name = names.empty() ? std::string {} : std::string { names.back() };
     if (name.empty())
         return std::unexpected("usage: rename-window [-t @N] name");
-    _host.model().setTabTitle((*tab)->id(), name);
+    // The tab's name, the one every client names it by and the control API addresses it by.
+    auto tabNames = RegistryTabNames { _host.objects() };
+    tabNames.setName((*tab)->id(), name);
     return std::vector<std::string> {};
 }
 

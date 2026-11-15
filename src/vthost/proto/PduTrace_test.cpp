@@ -314,12 +314,12 @@ TEST_CASE("the catalog's tags are contiguous from zero, but for the retired ones
     CHECK(tags == expectedTags);
 }
 
-TEST_CASE("the trace names the new PDUs without revealing a title", "[vthost][proto]")
+TEST_CASE("the trace names the new PDUs without revealing a name", "[vthost][proto]")
 {
     CHECK(summarize(DecodedPdu { EditTab { .session = 9, .kind = TabEditKind::SetColor, .color = 0x336699 } })
           == "session=9 set-color #336699");
-    CHECK(summarize(DecodedPdu { EditTab { .session = 9, .kind = TabEditKind::SetTitle, .title = "secret" } })
-          == "session=9 set-title title=6B");
+    CHECK(summarize(DecodedPdu { EditTab { .session = 9, .kind = TabEditKind::SetName, .name = "secret" } })
+          == "session=9 set-name name=6B");
     CHECK(summarize(DecodedPdu { EditTab { .session = 9, .kind = static_cast<TabEditKind>(0xEE) } })
           == "session=9 kind=238");
     CHECK(summarize(DecodedPdu { Heartbeat { .nonce = 42 } }) == "nonce=42");

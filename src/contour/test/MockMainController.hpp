@@ -201,7 +201,7 @@ class MockMainController: public MainWindowControllerMock
         IsActiveRole = Qt::UserRole + 3,
         PaneCountRole = Qt::UserRole + 4,
         SessionIdRole = Qt::UserRole + 5,
-        RawTitleRole = Qt::UserRole + 6,
+        NameRole = Qt::UserRole + 6,
         ZoomedRole = Qt::UserRole + 7,
         ProgressStateRole = Qt::UserRole + 8,
         ProgressPercentageRole = Qt::UserRole + 9,
@@ -689,8 +689,7 @@ class MockMainController: public MainWindowControllerMock
         emitActiveRoleChanged();
         emit activeTabIndexChanged();
     }
-    Q_INVOKABLE void setTabTitle(int, QString const&) {}
-    Q_INVOKABLE void resetTabTitle(int) {}
+    Q_INVOKABLE void setTabName(int, QString const&) {}
     Q_INVOKABLE void beginActiveTabTitleEdit() { emit tabTitleEditRequested(0); }
     Q_INVOKABLE void beginActiveTabColorPick() { emit tabColorPickRequested(0); }
     Q_INVOKABLE void beginSaveLayoutPrompt() { emit saveLayoutRequested(); }
@@ -766,7 +765,7 @@ class MockMainController: public MainWindowControllerMock
         switch (static_cast<Roles>(role))
         {
             case Roles::TitleRole: return title(index.row());
-            case Roles::RawTitleRole: return QString();
+            case Roles::NameRole: return QString();
             case Roles::ColorRole: return color(index.row());
             case Roles::IsActiveRole: return index.row() == activeTabIndex();
             case Roles::PaneCountRole: return 1;
@@ -792,7 +791,7 @@ class MockMainController: public MainWindowControllerMock
             { static_cast<int>(Roles::IsActiveRole), "isActive" },
             { static_cast<int>(Roles::PaneCountRole), "paneCount" },
             { static_cast<int>(Roles::SessionIdRole), "sessionId" },
-            { static_cast<int>(Roles::RawTitleRole), "rawTitle" },
+            { static_cast<int>(Roles::NameRole), "name" },
             { static_cast<int>(Roles::ZoomedRole), "zoomed" },
             { static_cast<int>(Roles::ProgressStateRole), "progressState" },
             { static_cast<int>(Roles::ProgressPercentageRole), "progressPercentage" },

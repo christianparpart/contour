@@ -2281,8 +2281,15 @@ void YAMLConfigReader::parseLayoutNode(YAML::Node const& layoutNode, config::Lay
     for (auto const& tabNode: tabs)
     {
         config::LayoutTab tab;
-        if (auto const title = tabNode["title"]; title && title.IsScalar())
-            tab.title = title.as<std::string>();
+        if (auto const name = tabNode["name"]; name && name.IsScalar())
+            tab.name = name.as<std::string>();
+        // compat(0.9.0): a layout tab's name was its `title:` before 0.9.0.
+        else if (auto const title = tabNode["title"]; title && title.IsScalar())
+        {
+            errorLog()("Config entry layouts.*.tabs.*.title is deprecated; it is read as the tab's name: "
+                       "write name: instead.");
+            tab.name = title.as<std::string>();
+        }
         if (auto const color = tabNode["color"]; color && color.IsScalar())
         {
             // Validate the format RGBColor actually accepts ('#RRGGBB' or 0x-prefixed); its

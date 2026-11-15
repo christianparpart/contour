@@ -70,6 +70,9 @@ enum class TabZoom : std::uint8_t
 struct TabSnapshot
 {
     std::optional<ObjectIdentityRecord> identity {};
+    /// compat(0.9.0): the runtime title a GUI rename set before 0.9.0, as an older daemon's snapshot carries
+    /// it. Never written now, and read only as the name of a tab that has none
+    /// (vtworkspace::restoredTabName()).
     std::optional<std::string> title {};
     std::optional<vtbackend::RGBColor> color {};
     PaneNode root {};

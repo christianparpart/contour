@@ -226,7 +226,7 @@ class MockTabController: public QAbstractListModel
         IsActiveRole = Qt::UserRole + 3,
         PaneCountRole = Qt::UserRole + 4,
         SessionIdRole = Qt::UserRole + 5,
-        RawTitleRole =
+        NameRole =
             Qt::UserRole
             + 6, //!< Must mirror contour::session::TerminalSessionManager; TabStrip's delegate requires it.
         ZoomedRole =
@@ -254,8 +254,7 @@ class MockTabController: public QAbstractListModel
             case Roles::ColorRole: return QColor(Qt::transparent);
             case Roles::IsActiveRole: return index.row() == _activeTabIndex;
             case Roles::PaneCountRole: return 1;
-            case Roles::RawTitleRole:
-                return QString {}; // never-renamed tab: empty raw template (editor blank)
+            case Roles::NameRole: return QString {}; // never-renamed tab: empty raw template (editor blank)
             case Roles::ZoomedRole: return false;
             // 0 = ProgressState::Inactive: no operation in flight, so TabItem paints no bar.
             case Roles::ProgressStateRole:
@@ -271,14 +270,14 @@ class MockTabController: public QAbstractListModel
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override
     {
         // Must match TerminalSessionManager::roleNames() so the delegates bind the same roles —
-        // including rawTitle, which TabStrip's delegate declares as a required property.
+        // including name, which TabStrip's delegate declares as a required property.
         return { { static_cast<int>(Roles::DisplayRole), "display" },
                  { static_cast<int>(Roles::TitleRole), "title" },
                  { static_cast<int>(Roles::ColorRole), "accentColor" },
                  { static_cast<int>(Roles::IsActiveRole), "isActive" },
                  { static_cast<int>(Roles::PaneCountRole), "paneCount" },
                  { static_cast<int>(Roles::SessionIdRole), "sessionId" },
-                 { static_cast<int>(Roles::RawTitleRole), "rawTitle" },
+                 { static_cast<int>(Roles::NameRole), "name" },
                  { static_cast<int>(Roles::ZoomedRole), "zoomed" },
                  { static_cast<int>(Roles::ProgressStateRole), "progressState" },
                  { static_cast<int>(Roles::ProgressPercentageRole), "progressPercentage" },
@@ -380,8 +379,7 @@ class MockTabController: public QAbstractListModel
     std::vector<contour::window::TabSpan> tabSpans; ///< What setTabSpans() last reported.
     int springClosedTab = -1;                       ///< The row springOpens() refuses.
     std::vector<FinishedDrag> finishedDrags;        ///< Every finishNodeDrag(), in order.
-    Q_INVOKABLE void setTabTitle(int, QString const&) {}
-    Q_INVOKABLE void resetTabTitle(int) {}
+    Q_INVOKABLE void setTabName(int, QString const&) {}
     Q_INVOKABLE void beginActiveTabTitleEdit() { emit tabTitleEditRequested(0); }
     Q_INVOKABLE void beginActiveTabColorPick() { emit tabColorPickRequested(0); }
     Q_INVOKABLE void setTabColor(int index, QColor const& color)
@@ -520,7 +518,7 @@ constexpr auto TabItemBindings = "    controller: terminalSessions\n"
                                  "    window: host\n"
                                  "    tabIndex: 0\n"
                                  "    tabTitle: \"shell\"\n"
-                                 "    tabRawTitle: \"\"\n"
+                                 "    tabName: \"\"\n"
                                  "    tabColor: \"transparent\"\n"
                                  "    tabActive: true\n"
                                  "    tabPaneCount: 1\n"

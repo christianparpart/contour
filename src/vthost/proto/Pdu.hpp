@@ -1229,8 +1229,10 @@ struct WireTab
     uint64_t tabId = 0;
     uint64_t activePane = 0;
     uint64_t zoomedPane = 0; ///< 0 = not zoomed.
-    std::string title = {};  ///< The runtime-title override; empty if none.
-    std::string name = {};   ///< The user-given name, which names the tab over its title; empty if none.
+    /// An older daemon's runtime title, which it names the tab by under its name; a new daemon writes it
+    /// empty.
+    std::string title = {};
+    std::string name = {}; ///< The user-given name, which names the tab over its title; empty if none.
     uint8_t hasColor = 0;
     uint32_t color = 0; ///< 0xRRGGBB tab color when hasColor.
     WirePane root;
@@ -1543,8 +1545,8 @@ enum class TabEditKind : uint8_t
     ActivatePane = 0, ///< Make the pane hosting `session` the tab's active pane.
     Zoom = 1,         ///< Zoom the pane hosting `session`.
     Unzoom = 2,       ///< Unzoom the tab holding `session`.
-    SetTitle = 3,     ///< Set the tab's title to `title`.
-    ClearTitle = 4,   ///< Return the tab to its automatic title.
+    SetName = 3,      ///< Set the tab's name to `name`; an old window's "set title" arrives as this.
+    ClearName = 4,    ///< Clear the tab's name, so its title names it again.
     SetColor = 5,     ///< Set the tab's colour to `color`.
     ClearColor = 6,   ///< Return the tab to its default colour.
     ActivateTab = 7,  ///< Make the tab holding `session` the workspace's active tab.
@@ -1557,8 +1559,8 @@ struct EditTab
     /// The pane (ActivatePane, Zoom) or any pane of the tab (the rest) the edit addresses.
     uint64_t session = 0;
     TabEditKind kind = TabEditKind::ActivatePane;
-    std::string title = {}; ///< The new title; SetTitle only.
-    uint32_t color = 0;     ///< The new colour as 0xRRGGBB; SetColor only.
+    std::string name = {}; ///< The new name; SetName only.
+    uint32_t color = 0;    ///< The new colour as 0xRRGGBB; SetColor only.
     bool operator==(EditTab const&) const = default;
 };
 

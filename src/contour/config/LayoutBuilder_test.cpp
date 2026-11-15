@@ -34,9 +34,9 @@ TEST_CASE("emitLayoutsYaml: round-trips a leaf + bare + split layout through the
 
     config::Layout work;
 
-    // t0: a leaf tab with title + color + command + arguments + directory.
+    // t0: a leaf tab with name + color + command + arguments + directory.
     config::LayoutTab t0;
-    t0.title = "editor";
+    t0.name = "editor";
     t0.color = vtbackend::RGBColor { "#D75F00" };
     t0.root = mk("nvim");
     t0.root.arguments = { "-u", "NONE" };
@@ -48,7 +48,7 @@ TEST_CASE("emitLayoutsYaml: round-trips a leaf + bare + split layout through the
 
     // t2: a tab with a nested split: vertical { leaf, horizontal { leaf, leaf } }.
     config::LayoutTab t2;
-    t2.title = "servers";
+    t2.name = "servers";
     config::LayoutPane nested;
     nested.orientation = vtworkspace::SplitState::Horizontal;
     nested.children = { mk("htop"), mk("journalctl -f") };
@@ -66,7 +66,7 @@ TEST_CASE("emitLayoutsYaml: round-trips a leaf + bare + split layout through the
     REQUIRE(parsed.tabs.size() == 3);
 
     auto const& p0 = parsed.tabs[0];
-    CHECK(p0.title == "editor");
+    CHECK(p0.name == "editor");
     REQUIRE(p0.color.has_value());
     CHECK(*p0.color == vtbackend::RGBColor { "#D75F00" });
     CHECK(p0.root.isLeaf());
@@ -79,14 +79,14 @@ TEST_CASE("emitLayoutsYaml: round-trips a leaf + bare + split layout through the
     CHECK(*p0.root.directory == "/tmp");
 
     auto const& p1 = parsed.tabs[1];
-    CHECK_FALSE(p1.title.has_value());
+    CHECK_FALSE(p1.name.has_value());
     CHECK_FALSE(p1.color.has_value());
     CHECK(p1.root.isLeaf());
     REQUIRE(p1.root.command.has_value());
     CHECK(*p1.root.command == "claude");
 
     auto const& p2 = parsed.tabs[2];
-    CHECK(p2.title == "servers");
+    CHECK(p2.name == "servers");
     REQUIRE_FALSE(p2.root.isLeaf());
     CHECK(p2.root.orientation == vtworkspace::SplitState::Vertical);
     REQUIRE(p2.root.children.size() == 2);
@@ -204,12 +204,12 @@ TEST_CASE("emitLayoutsYaml: a YAML-significant layout name is quoted and round-t
 
 TEST_CASE("emitLayoutsYaml: a fully-default tab terminates its line", "[layout][save]")
 {
-    // A tab with nothing to say (default shell, no title/color/profile) emits a bare dash; that
+    // A tab with nothing to say (default shell, no name/color/profile) emits a bare dash; that
     // dash must not swallow the FOLLOWING tab (or the next layout) onto its own line.
     config::Layout work;
     work.tabs.emplace_back(); // fully-default tab
     config::LayoutTab second;
-    second.title = "real";
+    second.name = "real";
     second.root.command = std::string { "top" };
     work.tabs.push_back(second);
 
@@ -221,7 +221,7 @@ TEST_CASE("emitLayoutsYaml: a fully-default tab terminates its line", "[layout][
     auto const& parsed = cfg.layouts.value().at("work");
     REQUIRE(parsed.tabs.size() == 2);
     CHECK_FALSE(parsed.tabs[0].root.command.has_value());
-    CHECK(parsed.tabs[1].title == "real");
+    CHECK(parsed.tabs[1].name == "real");
     CHECK(*parsed.tabs[1].root.command == "top");
 
     // Same for a default child pane inside a split.
@@ -238,22 +238,34 @@ TEST_CASE("emitLayoutsYaml: a fully-default tab terminates its line", "[layout][
     CHECK(*parsedRoot.children[1].command == "htop");
 }
 
-TEST_CASE("emitLayoutsYaml: control characters in a title round-trip", "[layout][save]")
+TEST_CASE("emitLayoutsYaml: a tab's name is saved under name:", "[layout][save]")
+{
+    config::LayoutTab tab;
+    tab.name = "notes";
+    config::Layout work;
+    work.tabs = { tab };
+
+    auto const yaml = emitLayoutsYaml({ { "work", work } });
+    CHECK(yaml.contains("name: notes"));
+    CHECK_FALSE(yaml.contains("title:"));
+}
+
+TEST_CASE("emitLayoutsYaml: control characters in a name round-trip", "[layout][save]")
 {
     // YAML folds a raw newline inside a double-quoted scalar into a plain space; the emitter must
-    // escape it so the title survives byte-for-byte. The control characters are concatenated in
+    // escape it so the name survives byte-for-byte. The control characters are concatenated in
     // rather than written inside a word-bearing literal, because the repository's spell check
     // scans source text and would read an escape sequence and the word after it as one token.
-    auto const title = std::string { "first" } + "\n" + "second" + "\t" + "third";
+    auto const name = std::string { "first" } + "\n" + "second" + "\t" + "third";
     config::LayoutTab tab;
-    tab.title = title;
+    tab.name = name;
     tab.root.command = std::string { "top" };
     config::Layout work;
     work.tabs = { tab };
 
     auto const cfg = loadConfigFromYaml(emitLayoutsYaml({ { "work", work } }));
     REQUIRE(cfg.layouts.value().contains("work"));
-    CHECK(*cfg.layouts.value().at("work").tabs.at(0).title == title);
+    CHECK(*cfg.layouts.value().at("work").tabs.at(0).name == name);
 }
 
 TEST_CASE("emitLayoutsYaml: literal ${...} text survives the save/load round trip", "[layout][save]")

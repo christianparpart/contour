@@ -209,7 +209,6 @@ WorkspaceSnapshot captureWorkspace(SessionHost& host,
             auto entry = TabSnapshot {};
             entry.identity =
                 identityOf(host.objects(), vtcontrol::ObjectKind::Tab, host.objects().uuidOf(tab->id()));
-            entry.title = tab->runtimeTitle();
             entry.color = tab->color(vtworkspace::TabColorSource::User);
             entry.root = tree.capture(*tab->rootPane());
             entry.activeLeaf = tree.activeLeaf();

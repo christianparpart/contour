@@ -157,13 +157,13 @@ TEST_CASE("a split tab lists its panes depth-first", "[directory][inprocess]")
     // The first pane splits after the second one exists: its new neighbour is made last and sits second.
     h.model.model.setActivePane(tab, firstPane);
     REQUIRE(h.model.model.splitActivePane(tab, vtworkspace::SplitState::Horizontal) != nullptr);
-    h.model.model.setTabTitle(tab, "dev");
+    h.model.model.setTabName(tab, "dev");
 
     auto const directory = h.source.directory();
     REQUIRE(directory.workspaces.size() == 1);
     REQUIRE(directory.workspaces[0].tabs.size() == 1);
     auto const& tabRow = directory.workspaces[0].tabs[0];
-    CHECK(tabRow.title == "dev");
+    CHECK(tabRow.title.empty());
     CHECK(tabRow.name == "dev");
     // Sessions are minted in creation order (1000, 1001, 1002); the tree reads 1000, 1002, 1001.
     REQUIRE(tabRow.panes.size() == 3);

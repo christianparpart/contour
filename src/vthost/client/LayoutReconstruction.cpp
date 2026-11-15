@@ -126,7 +126,7 @@ TabPresentation presentationOf(proto::WireTab const& tab, TabActivity activity)
     return TabPresentation {
         .activeSession = tab.activePane != 0 ? leafSessionOf(tab.root, tab.activePane) : 0,
         .zoomedSession = tab.zoomedPane != 0 ? leafSessionOf(tab.root, tab.zoomedPane) : 0,
-        .title = tab.title.empty() ? std::nullopt : std::optional { tab.title },
+        .name = tab.name,
         .color = tab.hasColor != 0 ? std::optional { tab.color } : std::nullopt,
         .activity = activity,
     };
@@ -151,13 +151,13 @@ std::vector<proto::EditTab> tabEditsToReport(TabPresentation const& local,
         else
             tabWide(TabEditKind::Unzoom);
     }
-    if (local.title != lastFromDaemon.title)
+    if (local.name != lastFromDaemon.name)
     {
-        if (local.title)
+        if (!local.name.empty())
             edits.push_back(proto::EditTab {
-                .session = local.activeSession, .kind = TabEditKind::SetTitle, .title = *local.title });
+                .session = local.activeSession, .kind = TabEditKind::SetName, .name = local.name });
         else
-            tabWide(TabEditKind::ClearTitle);
+            tabWide(TabEditKind::ClearName);
     }
     if (local.color != lastFromDaemon.color)
     {

@@ -983,7 +983,7 @@ namespace
     {
         out.varint(pdu.session);
         out.u8(std::to_underlying(pdu.kind));
-        out.string(pdu.title);
+        out.string(pdu.name);
         out.u32(pdu.color);
     }
 
@@ -2208,7 +2208,7 @@ namespace
         auto error = DecodeError {};
         auto kind = uint8_t {};
         if (!assign(in.varint(), pdu.session, error) || !assign(in.u8(), kind, error)
-            || !assign(in.string(), pdu.title, error) || !assign(in.u32(), pdu.color, error))
+            || !assign(in.string(), pdu.name, error) || !assign(in.u32(), pdu.color, error))
             return std::unexpected(error);
         // Carried, not judged: the host refuses a kind it does not know.
         pdu.kind = static_cast<TabEditKind>(kind);

@@ -1818,6 +1818,15 @@ class SessionHost final: public vtworkspace::ModelEvents
     [[nodiscard]] vtworkspace::Workspace& createEmptyWorkspace(vtcontrol::Uuid name);
     /// Gives @p tab a name if no creation path did, as for a tab a move made.
     void bindUnnamed(vtworkspace::TabId tab);
+    /// Mirrors a tab's name the registry changed into the model, so the model's observers (a tmux client, a
+    /// status line) see the rename as a retitle and read it as vtworkspace::Tab::name().
+    /// @param ref The object whose name changed; anything but a tab is ignored.
+    /// @param name Its name now.
+    void mirrorTabName(vtcontrol::ObjectRef const& ref, std::string_view name);
+    /// Gives every tab a handover brought back its name in the model, as the registry holds it, migrating an
+    /// older daemon's runtime title (vtworkspace::restoredTabName()) into a tab that has none.
+    /// @param tree The tree the handover brought back.
+    void restoreTabNames(vtworkspace::WorkspaceTreeState const& tree);
 
     /// Spawns and registers the backing session for the next model allocation
     /// (the pre-mint half of the handshake).
@@ -2524,6 +2533,8 @@ class SessionHost final: public vtworkspace::ModelEvents
     /// The UUIDs and names of workspaces, tabs and panes. Declared before the model, whose events bind into
     /// it.
     ObjectRegistry _objects;
+    /// Mirrors every tab name the registry changes into the model (@see mirrorTabName()).
+    ObjectRegistry::Subscription _tabNameMirror;
     /// The UUID of the tab a creation path is about to add; bound by `tabAdded`, then cleared.
     std::optional<StagedTab> _stagedTab;
 
