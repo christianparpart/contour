@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
 
 #include <vthost/latency/BenchSupport.hpp>
 #include <vthost/latency/EchoProtocol.hpp>
@@ -100,7 +101,34 @@ TEST_CASE("publish says when the record cannot be written", "[vthost][latency]")
     CHECK_FALSE(result.has_value());
 }
 
+TEST_CASE("a child's failure names how it ended and what it printed", "[vthost][latency]")
+{
+    using vtpty::NormalExit;
+    using vtpty::SignalExit;
+    CHECK(describeChildFailure("no report", NormalExit { 3 }, "") == "no report (it exited with status 3)");
+    CHECK(describeChildFailure("no report", SignalExit { 11 }, "boom")
+          == "no report (it was killed by signal 11); its output ended with:\nboom");
+    CHECK(describeExit(std::nullopt) == "it did not end");
+}
+
 #ifndef _WIN32
+TEST_CASE("a benchmark child's last output and exit status are kept", "[vthost][latency]")
+{
+    auto process = BenchProcess::start("/bin/sh", { "-c", "echo first-words; echo last-words >&2; exit 7" });
+    REQUIRE(process.has_value());
+    auto const status = (*process)->waitFor(10s);
+    REQUIRE(status.has_value());
+    auto const* normal = std::get_if<vtpty::NormalExit>(&*status);
+    REQUIRE(normal != nullptr);
+    CHECK(normal->exitCode == 7);
+    // The drain thread reads asynchronously; give it a moment to see the last line.
+    auto const deadline = std::chrono::steady_clock::now() + 5s;
+    while ((*process)->outputTail().find("last-words") == std::string::npos
+           && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(10ms);
+    CHECK((*process)->outputTail().find("last-words") != std::string::npos);
+}
+
 TEST_CASE("a benchmark child that fills its terminal is not left blocked on it", "[vthost][latency]")
 {
     // A daemon logs to the terminal it runs on, and a pseudo terminal holds a kilobyte or so on macOS: with

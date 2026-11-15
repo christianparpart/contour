@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <iosfwd>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -60,9 +61,22 @@ class ScratchDirectory
     std::filesystem::path _path;
 };
 
-/// A child process of the benchmark, ended when this goes. Whatever it prints on its terminal is read and
-/// dropped: a terminal holds little (about a kilobyte on macOS), and a daemon that logs to it would stop
-/// mid-line, serving nothing, once it was full.
+/// @param status How a child ended; nullopt if it did not end.
+/// @return A sentence fragment such as `exited with status 3` or `killed by signal 11`.
+[[nodiscard]] std::string describeExit(std::optional<vtpty::Process::ExitStatus> const& status);
+
+/// @param reason What went wrong, such as `the GUI wrote no probe report`.
+/// @param status How the child ended.
+/// @param outputTail The last of the child's output; empty if it printed nothing.
+/// @return @p reason followed by the child's exit and, if any, its output.
+[[nodiscard]] std::string describeChildFailure(std::string_view reason,
+                                               std::optional<vtpty::Process::ExitStatus> const& status,
+                                               std::string_view outputTail);
+
+/// A child process of the benchmark, ended when this goes. Whatever it prints on its terminal is read, and
+/// all but its newest few kilobytes dropped: a terminal holds little (about a kilobyte on macOS), and a
+/// daemon that logs to it would stop mid-line, serving nothing, once it was full. The rest says why a child
+/// that failed did.
 class BenchProcess
 {
   public:
@@ -96,10 +110,16 @@ class BenchProcess
     /// Ends the process outright and waits for it.
     void kill();
 
+    /// @return The last of what the process printed on its terminal (a few kilobytes at most), as read so
+    /// far.
+    [[nodiscard]] std::string outputTail() const;
+
   private:
     explicit BenchProcess(std::unique_ptr<vtpty::Process> process);
 
     std::unique_ptr<vtpty::Process> _process;
+    mutable std::mutex _tailMutex;
+    std::string _tail;   ///< The newest output, capped; written by the drain thread. Guarded by _tailMutex.
     std::jthread _drain; ///< Reads what the process writes to its terminal; ends first, before the process.
 };
 
