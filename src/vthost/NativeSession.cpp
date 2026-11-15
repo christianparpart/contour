@@ -1110,11 +1110,9 @@ void NativeSession::refreshSelection()
     }
     if (selected != nullptr && _selectedTabs == SelectedTabs::NeverHeld)
         return;
-    // The connection moves on to the first workspace a launch would bring back; with none left it selects
-    // none, which its window takes as the end of what it showed, as closing a last tab does.
-    auto const summaries = workspaceSummaries();
-    auto const launchable = std::ranges::find_if(summaries, isLaunchable);
-    auto const next = launchable != summaries.end() ? std::optional { launchable->id } : std::nullopt;
+    // The connection moves on to the workspace a launch would bring back; with none left it selects none,
+    // which its window takes as the end of what it showed, as closing a last tab does.
+    auto const next = pickLaunchable(workspaceSummaries());
     connectionLog()("{}: workspace {} ended; selecting {}", _id, _selectedWorkspace, next.value_or(0));
     if (!next)
     {
@@ -1160,11 +1158,15 @@ void NativeSession::selectWorkspace(vtworkspace::WorkspaceId workspace)
         errorLog()("{}: not selecting workspace {}: there is none", _id, workspace.value);
         return;
     }
-    _host.noteSelected(*this);
+    // Told once the selection reads as the new one, so the host sees which workspace this one left.
     if (_selectedWorkspace == workspace.value)
+    {
+        _host.noteSelected(*this);
         return;
+    }
     _selectedWorkspace = workspace.value;
     _selectedTabs = found->tabCount() > 0 ? SelectedTabs::Held : SelectedTabs::NeverHeld;
+    _host.noteSelected(*this);
     // What the old workspace's sessions were sent is not what the new selection continues from.
     forgetUnmirroredSessions();
     announceUnmirroredPanes();
@@ -3177,8 +3179,9 @@ std::vector<WorkspaceSummary> NativeSession::workspaceSummaries() const
                                                    .tabCount = workspace->tabCount(),
                                                    .visibility = shown.contains(workspace->id().value)
                                                                      ? WorkspaceVisibility::Shown
-                                                                     : WorkspaceVisibility::Hidden });
-    std::ranges::sort(summaries, {}, &WorkspaceSummary::id);
+                                                                     : WorkspaceVisibility::Hidden,
+                                                   .leftAt = _host.leftAt(workspace->id().value) });
+    // In the model's order, the one a window lists them in, which a launch breaks ties by.
     return summaries;
 }
 

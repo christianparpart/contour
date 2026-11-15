@@ -386,13 +386,14 @@ core::async::Task<void> serveFirstOnly(vthost::ConnectionHandler serve,
 
 } // namespace
 
-TEST_CASE("DaemonLink: a launch opens one window selecting the first hidden workspace", "[attach][link]")
+TEST_CASE("DaemonLink: a launch opens one window selecting the hidden workspace left most recently",
+          "[attach][link]")
 {
     using vthost::WorkspaceVisibility;
     auto daemon = DaemonFixture {};
     auto const ids = seedWorkspaces(daemon, 3);
-    // Another connection selected the second last, and went: that leaves every workspace hidden, and the
-    // launch takes the first of them, not the one selected last.
+    // Another connection selected the second, and went: that leaves every workspace hidden, and the launch
+    // takes the one left last, not the first.
     {
         auto otherTimeline = TestTimeline {};
         auto const other = makeNativeController(
@@ -412,23 +413,23 @@ TEST_CASE("DaemonLink: a launch opens one window selecting the first hidden work
     REQUIRE(pollUntilAttached(link, 10s).has_value());
 
     // The boot window displays it; no other window, and no other connection, comes.
-    REQUIRE(waitUntil([&] { return link.workspaceOf(boot.id) == ids[0]; }));
+    REQUIRE(waitUntil([&] { return link.workspaceOf(boot.id) == ids[1]; }));
     REQUIRE(waitUntil([&] { return !sessionsOf(manager, boot.id).empty(); }));
     drainGuiEvents();
     CHECK(rig.host.opened.empty());
     CHECK(rig.host.windowLinks.empty());
     CHECK(std::ranges::to<std::vector>(manager.windowsBoundTo(link)) == std::vector { boot.id });
     CHECK(daemon.onDaemon([&daemon] { return daemon.live.size(); }) == 1);
-    CHECK(visibilityOn(daemon, ids[0]) == WorkspaceVisibility::Shown);
-    CHECK(visibilityOn(daemon, ids[1]) == WorkspaceVisibility::Hidden);
+    CHECK(visibilityOn(daemon, ids[0]) == WorkspaceVisibility::Hidden);
+    CHECK(visibilityOn(daemon, ids[1]) == WorkspaceVisibility::Shown);
     CHECK(visibilityOn(daemon, ids[2]) == WorkspaceVisibility::Hidden);
     // The others are entries of the window's directory, every one of them.
     auto const directory = link.liveController()->directory();
     CHECK(directory.workspaces.size() == 3);
-    CHECK(directory.selected == ids[0]);
+    CHECK(directory.selected == ids[1]);
 }
 
-TEST_CASE("DaemonLink: New Window shows the first hidden workspace, else a new one", "[attach][link]")
+TEST_CASE("DaemonLink: New Window shows a hidden workspace, else a new one", "[attach][link]")
 {
     using vthost::WorkspaceVisibility;
     auto daemon = DaemonFixture {};

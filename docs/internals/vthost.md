@@ -1083,7 +1083,7 @@ and that connection selects one workspace (see [which workspace a client selects
 The window displays the selected workspace, realized into a local workspace of the window's; every other workspace
 of the daemon is an entry of the window's directory (`NativeController::directory()`), fed by the layouts pushed
 for every workspace and the status stream of the panes the connection does not mirror. A launch opens one window,
-whose connection's `Default` intent selects the daemon's first workspace that no connection selects (`planAttach`, `AttachPlan.cpp`), else
+whose connection's `Default` intent selects the hidden workspace a connection left most recently (`planAttach`, `AttachPlan.cpp`), else
 creates one; `--workspace W` states `Select{W}`. New Window starts a link of its own to the same daemon target
 with the same `Default` intent (`WindowBinding::openSiblingWindow` with `SiblingShows::DaemonsChoice`), so it
 too never shows a workspace another window shows. A tab torn off a window starts a link selecting the workspace
@@ -1218,7 +1218,7 @@ that connection selects and what attaching creates:
 
 | Intent | Selects | Creates |
 | --- | --- | --- |
-| `Default` (no capability: every client before intents) | the first workspace with a tab that no connection selects | a new workspace when every one is shown; the first tab, on a daemon with no tab at all; with a working directory stated, a tab in the selected workspace |
+| `Default` (no capability: every client before intents) | the workspace with a tab that no connection selects and that one left most recently; of those never left, the first in the sidebar's order | a new workspace when every one is shown; the first tab, on a daemon with no tab at all; with a working directory stated, a tab in the selected workspace |
 | `NewWorkspace` | a new workspace of its own | that workspace |
 | `Select` | the named workspace, if it exists; else as `Default` | nothing |
 | `Resume` | the named workspace, if it survived holding a tab; else as `Default` | as `Default` when it did not survive |
@@ -1236,9 +1236,12 @@ client's directory, which the daemon cannot see. Only a `Default` that would oth
 creates a tab for it; a `Select` or `Resume` that finds its workspace never adds one.
 
 A workspace is *shown* when some connection selects it and *hidden* when none does
-(`vthost::visibilityOf`; `SessionHost::visibility`, reported by `workspace.list` as `visibility`). There is
-nothing else to remember: no connection owns a workspace, nothing is claimed, and a window that goes away
-simply stops selecting. A connection whose workspace ends picks its next one by the same rule as a `Default`
+(`vthost::visibilityOf`; `SessionHost::visibility`, reported by `workspace.list` as `visibility`). No
+connection owns a workspace, nothing is claimed, and a window that goes away simply stops selecting. The host
+remembers one thing more: when a connection last stopped selecting each workspace (`SessionHost::leftAt`, a
+count that only grows, stamped as a connection selects another workspace or detaches, and not kept across a
+restart), so a launch brings back the workspace left last (`pickLaunchable`), and breaks ties by the order the
+sidebar lists them in. A connection whose workspace ends picks its next one by the same rule as a `Default`
 (`planAttach`), so never one another window shows. A workspace the control API creates is selected by nobody
 until a window selects it.
 
