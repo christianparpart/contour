@@ -107,7 +107,9 @@ namespace
     }
 
     /// The relaying daemon: hands its channel to the test listening on @p path, and lives until the test
-    /// closes the connection.
+    /// closes the connection. It lets go of its own copy only once the test has acknowledged the receipt:
+    /// closing it while it is still in flight lets macOS's descriptor-passing garbage collection treat the
+    /// socket as unreachable and shut its receive side, so the test's first read ends in a spurious EOF.
     [[nodiscard]] int relayChannel(std::string const& path, keeperlink::KeeperAttachment attachment)
     {
         auto const connection = unixSocket(path, ::connect);
@@ -121,11 +123,21 @@ namespace
         auto const channel = std::array { attachment.channel.handle() };
         if (!keeper::sendWithDescriptors(connection.get(), runs, channel))
             return AttachFailureStatus;
+        auto byte = char {};
+        // Read to the test's acknowledgement, then to the end of the connection.
+        auto const acknowledged = [&] {
+            auto got = ssize_t { 0 };
+            do
+                got = ::read(connection.get(), &byte, 1);
+            while (got < 0 && errno == EINTR);
+            return got > 0;
+        };
+        if (!acknowledged())
+            return 0;
         // The test holds the channel now; this process holds none of it.
         {
             auto const handedOver = std::move(attachment);
         }
-        auto byte = char {};
         while (true)
         {
             auto const got = ::read(connection.get(), &byte, 1);
@@ -553,6 +565,11 @@ void KeeperFixture::acceptRelay()
     if (!received || received->fds.size() != 1)
         fail("handed over no channel");
     _channel = keeper::UniqueFd { received->fds.front() };
+    // The relay keeps its own copy of the channel until told this one arrived (see relayChannel()).
+    auto const acknowledgement = std::array<uint8_t, 1> { 1 };
+    auto const runs = std::array { std::span<uint8_t const> { acknowledgement } };
+    if (!keeper::sendWithDescriptors(_relay.get(), runs, {}))
+        fail("could not be told the channel arrived");
 }
 
 void KeeperFixture::end(Ending ending)

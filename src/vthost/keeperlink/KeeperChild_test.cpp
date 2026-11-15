@@ -110,6 +110,8 @@ struct KeeperChildHarness
                                    vtpty::SandboxEscape::Contained);
         auto const started = child->start();
         INFO(keeper.log());
+        INFO((started ? std::string {}
+                      : std::format("start failed, {}: {}", started.error().error, started.error().detail)));
         REQUIRE(started.has_value());
         return child;
     }
