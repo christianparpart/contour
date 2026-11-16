@@ -2094,11 +2094,26 @@ TEST_CASE("DaemonLink: seen marks survive a reconnect", "[attach][link][reconnec
     // Output in the hidden tab marks it, once the connection's first moments -- which repaint every pane --
     // are over (window::ResyncGracePeriod).
     rig.app.steadyClock().advance(std::chrono::seconds { 1 });
-    daemon.onDaemon([&] {
-        daemon.host->terminal(vtworkspace::SessionId { background })->writeToScreen("unseen output");
-        return 0;
-    });
-    REQUIRE(waitUntil([&] { return ledger.of(key).activity != contour::window::TabActivity::None; }));
+    // After the second tab appears the daemon pushes each session one resync snapshot, at a moment the
+    // test cannot see. Output that lands in that snapshot is part of the repaint, not news -- a missed dot by
+    // design (vthost::client::frameOf) -- so one write is not enough: write until one lands as output of its
+    // own.
+    auto const isMarked = [&] {
+        return ledger.of(key).activity != contour::window::TabActivity::None;
+    };
+    auto const writeUntilMarked = [&] {
+        for ([[maybe_unused]] auto const attempt: std::views::iota(0, 20))
+        {
+            daemon.onDaemon([&] {
+                daemon.host->terminal(vtworkspace::SessionId { background })->writeToScreen("unseen output");
+                return 0;
+            });
+            if (waitUntil(isMarked, 20))
+                return true;
+        }
+        return false;
+    };
+    REQUIRE(writeUntilMarked());
 
     // The connection goes and comes back: the mark is kept under the daemon's session id.
     auto const* const controller = link.liveController();
