@@ -212,7 +212,10 @@ std::expected<void, std::string> judgeProbe(ProbeResult const& result)
         case ProbePhase::Pausing:
         case ProbePhase::AwaitingEcho: break;
     }
-    return std::unexpected("probe did not settle");
+    // A probe left in a waiting phase ended without its own verdict: the GUI quit while it waited.
+    return std::unexpected(std::format("probe did not settle: it stopped while {}, at cursor column {}",
+                                       probePhaseName(result.phase),
+                                       result.awaitedColumn));
 }
 
 bool awaitEmptyDaemon(std::filesystem::path const& socketPath)

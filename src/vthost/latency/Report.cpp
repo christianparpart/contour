@@ -90,6 +90,11 @@ namespace
     }
 } // namespace
 
+std::string_view probePhaseName(ProbePhase phase)
+{
+    return nameOf(phase);
+}
+
 std::string formatProbeReport(ProbeResult const& result, StartupTimeline const& timeline)
 {
     auto const processStart = *timeline.at(StartupMark::ProcessStart);

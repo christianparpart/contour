@@ -29,6 +29,18 @@ ProbeResult settledAs(ProbePhase phase, int awaitedColumn = -1)
 }
 } // namespace
 
+TEST_CASE("judgeProbe names the phase a probe that never settled stopped in", "[vthost][latency]")
+{
+    // The GUI quit while the probe waited: the report names how far it had come.
+    auto const echo = judgeProbe(settledAs(ProbePhase::AwaitingEcho, 5));
+    REQUIRE_FALSE(echo.has_value());
+    CHECK(echo.error() == "probe did not settle: it stopped while awaiting-echo, at cursor column 5");
+
+    auto const prompt = judgeProbe(settledAs(ProbePhase::AwaitingPrompt));
+    REQUIRE_FALSE(prompt.has_value());
+    CHECK(prompt.error().contains("awaiting-prompt"));
+}
+
 TEST_CASE("judgeProbe names the column a timed-out probe waited for", "[vthost][latency]")
 {
     CHECK(judgeProbe(settledAs(ProbePhase::Finished)).has_value());

@@ -135,8 +135,10 @@ namespace
             auto const status = (*process)->waitFor(LaunchTimeout);
             if (!status)
                 return std::unexpected("the GUI did not end in time");
+            // Whatever went wrong with the report -- none written, or a probe that never settled because the
+            // GUI quit -- how the GUI ended and what it said last are what explain it.
             auto launched = readReport(reportFile, spawnedAt);
-            if (!launched && !std::filesystem::exists(reportFile))
+            if (!launched)
                 return std::unexpected(
                     describeChildFailure(launched.error(), status, (*process)->outputTail()));
             return launched;
