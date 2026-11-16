@@ -984,7 +984,22 @@ jobs:
             # CONTOUR_TEST_TRACE names each Catch2 case as it starts and ends, with its time, as the macOS and
             # Windows jobs do: a case that hangs here is then named in the timed-out test's output.
             export CONTOUR_TEST_TRACE=1
-            ctest --test-dir build/ --output-on-failure -LE "e2e|lint"
+            # A test that crashes leaves a core here, and its backtrace in the log: the keeper's daemon has
+            # died of SIGSEGV on this VM only (vthost_test, "300 sessions recover"), with nothing to say where.
+            # The daemon is vthost_test itself, run in another mode, so its cores read against that binary.
+            mkdir -p /tmp/cores
+            sysctl kern.corefile=/tmp/cores/%N.%P.core || true
+            ulimit -c unlimited
+            ctest --test-dir build/ --output-on-failure -LE "e2e|lint" || {
+              status=$?
+              for core in /tmp/cores/*.core; do
+                [ -e "$core" ] || continue
+                echo "== backtrace of $core"
+                program=$(find build -type f -perm -u+x -name "$(basename "$core" | cut -d. -f1)" | head -n1)
+                lldb --batch -c "$core" "${program:-build/src/vthost/vthost_test}" -o "thread backtrace all" || true
+              done
+              exit $status
+            }
             rm -rf _deps build
   # }}}
   # {{{ OpenBSD
