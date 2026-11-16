@@ -54,6 +54,10 @@ enum class ReportError : uint8_t
 /// @return The report's content, or why it is not one.
 [[nodiscard]] std::expected<ProbeReport, ReportError> parseProbeReport(std::string_view text);
 
+/// @param phase Where a probe stood.
+/// @return The name a probe report writes for @p phase, e.g. "awaiting-prompt".
+[[nodiscard]] std::string_view probePhaseName(ProbePhase phase);
+
 /// @param metric What was measured, such as `startup` or `keystroke`.
 /// @param mode Which mode measured it, such as `in-process` or `daemon`.
 /// @param summary The quantiles.
