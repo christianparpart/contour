@@ -568,6 +568,17 @@ void KeeperFixture::awaitServing()
                 throw std::runtime_error { std::format(
                     "the keeper's daemon could not spawn a session ({}):\n{}", *failure, output) };
             }
+            // A keeper that ended -- its daemon crashed before it served, say -- leaves nothing to wait for:
+            // FreeBSD's job waited out the whole bound after "the keeper ends (the daemon failed to start)".
+            if (auto const waited = awaitProcess(_keeper, std::chrono::milliseconds { 0 }))
+            {
+                _keeperState = KeeperState::Reaped;
+                auto const how = WIFSIGNALED(*waited) ? std::format("signal {}", WTERMSIG(*waited))
+                                                      : std::format("status {}", WEXITSTATUS(*waited));
+                end(Ending::AtOnce);
+                throw std::runtime_error { std::format(
+                    "the keeper ended, with {}, before its daemon served:\n{}", how, log()) };
+            }
         }
         trace.observe(now, [this] { return log(); });
         std::this_thread::sleep_for(std::chrono::milliseconds { 20 });
